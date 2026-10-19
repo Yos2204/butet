@@ -182,9 +182,14 @@ html, body { margin: 0; }
 <section class="sheet" id="sheet" hidden aria-label="Settings">
   <div class="sheet-inner">
     <h2>SETTINGS</h2>
-    <div class="keybox">
+    <div class="field"><label for="brain">Brain</label><select id="brain"><option value="key">My Claude API key (best, web search)</option><option value="free">Free Puter account (backup, no web search)</option></select></div>
+    <div class="keybox" id="keyBox">
+      <div class="field"><label for="apiKey">Your Claude API key</label><input id="apiKey" type="password" placeholder="sk-ant-…" autocomplete="off" spellcheck="false"></div>
+      <p class="note">Get one at <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a>. It is stored only on this phone and sent only to Anthropic. Each question costs about one or two cents of API credit, a bit more when Butet searches the web.</p>
+    </div>
+    <div class="keybox" id="freeBox" hidden>
       <div class="row"><span id="acctStatus" class="note">Not signed in yet.</span><button class="btn primary" id="signInBtn" type="button">Sign in</button></div>
-      <p class="note">Butet thinks with Claude through a free Puter account. Sign in once (or create a free account) and you're set. Puter gives every account a free monthly allowance, so you never need a credit card or API key.</p>
+      <p class="note">Free mode runs Claude through your own Puter account. Every account gets a free monthly allowance. No web search in this mode.</p>
     </div>
     <div class="field"><label for="userName">What should Butet call you?</label><input id="userName" type="text" placeholder="Sir"></div>
     <div class="field"><label for="voice">Voice</label><select id="voice"></select></div>
@@ -192,7 +197,8 @@ html, body { margin: 0; }
     <div class="field"><label for="pitch">Voice pitch <span id="pitchVal"></span></label><input id="pitch" type="range" min="0.6" max="1.4" step="0.05"></div>
     <div class="row"><label for="speakOn">Speak replies out loud</label><input id="speakOn" type="checkbox"></div>
     <div class="row"><label for="followUp">Keep listening for a follow-up after each reply</label><input id="followUp" type="checkbox"></div>
-    <div class="row"><label for="deep">Smarter answers (uses your free allowance faster)</label><input id="deep" type="checkbox"></div>
+    <div class="row" id="webRow"><label for="webOn">Let Butet search the web (news, weather, facts)</label><input id="webOn" type="checkbox"></div>
+    <div class="row"><label for="deep">Deep thinking (slower, smarter answers)</label><input id="deep" type="checkbox"></div>
     <p class="note">WAKE mode listens for "Butet" while this app is open on screen. Phones don't let web apps listen in the background or with the screen locked. On iPhone, turn off silent mode to hear the voice.</p>
     <div class="actions">
       <button class="btn" id="testVoice" type="button">Test voice</button>
@@ -201,7 +207,6 @@ html, body { margin: 0; }
     </div>
   </div>
 </section>
-<script src="https://js.puter.com/v2/"></script>
 <script type="module" src="app.js"></script>
 </body>
 </html>
