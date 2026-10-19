@@ -12,7 +12,7 @@ const store = {
 };
 const settings = Object.assign({
   apiKey: "", name: "", voice: "", rate: 1.02, pitch: 0.92,
-  speak: true, followUp: false, web: true, deep: false, wake: false, brain: "key", idVoice: "", listenLang: /^en/i.test(navigator.language || "") ? "en-US" : "id-ID",
+  speak: true, followUp: false, web: true, deep: false, wake: false, brain: "key", idVoice: "", listenLang: "id-ID",
 }, store.get("settings", {}));
 const saveSettings = () => store.set("settings", settings);
 let notes = store.get("notes", []);
