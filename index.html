@@ -197,7 +197,7 @@ html, body { margin: 0; }
       <div class="row"><span id="acctStatus" class="note">Not signed in yet.</span><button class="btn primary" id="signInBtn" type="button">Sign in</button></div>
       <p class="note">Free mode runs Claude through your own Puter account. Every account gets a free monthly allowance. No web search in this mode.</p>
     </div>
-    <div class="field"><label for="avatarStyle">Look</label><select id="avatarStyle"><option value="rings">Jarvis rings</option><option value="face">Holographic face</option></select></div>
+    <div class="field"><label for="avatarStyle">Look</label><select id="avatarStyle"><option value="auto">Rings, face appears when Jarvis talks</option><option value="rings">Rings only</option><option value="face">Face always</option></select></div>
     <div class="field"><label for="userName">What should Jarvis call you?</label><input id="userName" type="text" placeholder="Sir"></div>
     <div class="field"><label for="voice">English voice</label><select id="voice"></select></div>
     <div class="field"><label for="idVoice">Indonesian voice (also reads Batak Toba)</label><select id="idVoice"></select></div>
@@ -223,6 +223,6 @@ html, body { margin: 0; }
 window.addEventListener("error", function (e) { var c = document.getElementById("caption"); if (c && !window.__jarvisOK) c.textContent = "Jarvis hit a problem starting: " + (e.message || "script error") + ". Close the app fully and open it again."; });
 setTimeout(function () { if (!window.__jarvisOK) { var c = document.getElementById("caption"); if (c && c.textContent.indexOf("problem") < 0) c.textContent = "Jarvis didn't start. Close the app fully and open it again, or check your internet."; } }, 8000);
 </script>
-<script type="module" src="app.js?v=17"></script>
+<script type="module" src="app.js?v=18"></script>
 </body>
 </html>

@@ -1,5 +1,5 @@
 // Jarvis: voice assistant with a talking avatar. Brain: Claude API with the user's own key (default), or free Claude through Puter as a backup.
-import { startAvatar } from "./avatar.js?v=17";
+import { startAvatar } from "./avatar.js?v=18";
 // The Claude SDK loads on demand, so the app still starts if the CDN is slow or blocked.
 const SDK_URL = "https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk@0.131.0/+esm";
 let Anthropic = null;
@@ -17,9 +17,10 @@ const store = {
 };
 const settings = Object.assign({
   apiKey: "", name: "", voice: "", rate: 1.02, pitch: 0.92,
-  speak: true, followUp: false, web: true, deep: false, wake: false, brain: "key", voiceV: 0, avatar: "rings", needName: false, myApps: "", pause: 0.8, idVoice: "", listenLang: "id-ID",
+  speak: true, followUp: false, web: true, deep: false, wake: false, brain: "key", voiceV: 0, avatar: "auto", avatarV: 0, needName: false, myApps: "", pause: 0.8, idVoice: "", listenLang: "id-ID",
 }, store.get("settings", {}));
 const saveSettings = () => store.set("settings", settings);
+if (settings.avatarV !== 1) { settings.avatar = "auto"; settings.avatarV = 1; saveSettings(); } // new default: face only while talking
 let notes = store.get("notes", []);
 let history = store.get("history", []);
 // Ignore chat history saved by the short-lived free-only version (different message format).

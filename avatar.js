@@ -5,7 +5,7 @@ export function startAvatar(cv, S) {
   function resize() { DPR = Math.min(2, window.devicePixelRatio || 1); const r = cv.getBoundingClientRect(); W = Math.max(10, r.width); cv.width = W * DPR; cv.height = W * DPR; }
   new ResizeObserver(resize).observe(cv); resize();
   const reduce = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
-  let mouth = 0, blink = 0, nextBlink = 2, gx = 0, gy = 0, tgx = 0, tgy = 0, nextGaze = 1, ringA = 0, energy = 0, last = performance.now();
+  let mouth = 0, blink = 0, nextBlink = 2, gx = 0, gy = 0, tgx = 0, tgy = 0, nextGaze = 1, ringA = 0, energy = 0, faceAmt = 0, last = performance.now();
   const lerp = (a, b, k) => a + (b - a) * k;
   function frame(now) {
     const dt = Math.min(0.05, (now - last) / 1000); last = now; const t = now / 1000;
@@ -61,7 +61,21 @@ export function startAvatar(cv, S) {
       cx.stroke();
     }
 
-    if (S.style === "face") {
+    // Look: "auto" shows the rings, and the face appears only while Jarvis is talking.
+    const faceTarget = S.style === "face" ? 1 : S.style === "rings" ? 0 : (talking ? 1 : 0);
+    faceAmt = lerp(faceAmt, faceTarget, Math.min(1, dt * (faceTarget ? 6 : 3)));
+    if (faceAmt < 0.98) { cx.save(); cx.globalAlpha = 1 - faceAmt; cx.scale(1 - faceAmt * 0.25, 1 - faceAmt * 0.25); drawRings(); cx.restore(); }
+    if (faceAmt > 0.02) {
+      cx.save(); cx.globalAlpha = faceAmt; const k = 0.82 + faceAmt * 0.18; cx.scale(k, k); drawFace();
+      cx.restore();
+      if (faceAmt < 0.95) { // materialize: a bright scan line sweeping down the face
+        const y = (-1 + faceAmt * 2.2) * R; cx.save(); cx.globalAlpha = (1 - faceAmt) * 0.9;
+        cx.fillStyle = `rgba(${col},0.8)`; cx.fillRect(-R * 0.9, y, R * 1.8, 2); cx.restore();
+      }
+    }
+    cx.restore();
+
+    function drawFace() {
     // head
     const bob = reduce ? 0 : Math.sin(t * 1.4) * R * 0.015 + (talking ? Math.sin(t * 9) * R * 0.01 * mouth : 0);
     cx.translate(gx * R * 0.03, bob + gy * R * 0.02);
@@ -117,8 +131,15 @@ export function startAvatar(cv, S) {
     cx.quadraticCurveTo(mx, my + mh + smile * 2, mx - mw, my); cx.closePath();
     cx.fillStyle = `rgba(3,7,12,${0.4 + mouth * 0.5})`; cx.fill(); cx.stroke();
     if (mouth > 0.15) { cx.shadowBlur = 0; cx.fillStyle = `rgba(${col},${mouth * 0.35})`; cx.fillRect(mx - mw * 0.55, my + mh * 0.1, mw * 1.1, Math.max(1, mh * 0.12)); }
-    cx.restore();
-    } else {
+          // hair line and collar, for a composed gentleman's look
+      cx.shadowBlur = 6; cx.strokeStyle = `rgba(${col},0.5)`; cx.lineWidth = 1.5;
+      cx.beginPath(); cx.moveTo(-R * 0.74, -R * 0.42); cx.bezierCurveTo(-R * 0.7, -R * 0.95, R * 0.2, -R * 1.12, R * 0.74, -R * 0.5); cx.stroke();
+      cx.beginPath(); cx.moveTo(-R * 0.45, -R * 0.88); cx.quadraticCurveTo(-R * 0.05, -R * 0.62, R * 0.55, -R * 0.78); cx.stroke();
+      cx.strokeStyle = `rgba(${col},0.4)`;
+      for (const s of [-1, 1]) { cx.beginPath(); cx.moveTo(s * R * 0.32, R * 0.9); cx.lineTo(s * R * 0.36, R * 1.18); cx.lineTo(s * R * 0.9, R * 1.3); cx.stroke();
+        cx.beginPath(); cx.moveTo(s * R * 0.36, R * 1.18); cx.lineTo(s * R * 0.08, R * 1.28); cx.lineTo(0, R * 1.2); cx.stroke(); }
+    }
+    function drawRings() {
       // Jarvis holographic rings: a glowing core that swells with the voice, layered rotating rings,
       // and a ring of spectrum bars that dance while Jarvis talks.
       const pulse = talking ? mouth : energy * 0.25;
@@ -166,8 +187,7 @@ export function startAvatar(cv, S) {
       // faint crosshair
       cx.shadowBlur = 0; cx.strokeStyle = `rgba(${col},0.12)`; cx.lineWidth = 1;
       for (let i = 0; i < 4; i++) { const a = ringA * 0.3 + i * Math.PI / 2; cx.beginPath(); cx.moveTo(Math.cos(a) * W * 0.16, Math.sin(a) * W * 0.16); cx.lineTo(Math.cos(a) * W * 0.235, Math.sin(a) * W * 0.235); cx.stroke(); }
-      cx.restore();
-    }
+          }
 
     // thinking dots orbiting
     if (S.mode === "thinking") {
