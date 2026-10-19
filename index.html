@@ -69,6 +69,8 @@ header {
 .state[data-s="error"] i { background: var(--alert); }
 @keyframes blink { to { opacity: .2; } }
 header .spacer { flex: 1; }
+.wakerow { display: flex; justify-content: center; }
+#wakeBtn { height: 42px; min-width: 150px; border-radius: 21px; font-size: 14px; letter-spacing: .3em; padding: 0 22px; }
 .iconbtn {
   background: transparent; border: 1px solid var(--line); color: var(--muted);
   border-radius: 8px; height: 34px; min-width: 34px; padding: 0 10px;
@@ -159,9 +161,9 @@ html, body { margin: 0; }
     <span class="state" id="state" data-s="idle"><i></i><span id="stateText">Standing by</span></span>
     <span class="spacer"></span>
     <button class="iconbtn" id="langBtn" title="Listening language">ID</button>
-    <button class="iconbtn" id="wakeBtn" aria-pressed="false" title="Mic on: say Jarvis to start, Done to stop">WAKE</button>
     <button class="iconbtn" id="openSettings" aria-label="Settings">SET</button>
   </header>
+  <div class="wakerow"><button class="iconbtn" id="wakeBtn" aria-pressed="false" title="Mic on: say Jarvis to start, Done to stop">WAKE</button></div>
 
   <div class="stage"><canvas id="face" aria-label="Jarvis. Tap to talk." role="img"></canvas></div>
   <div class="caption hint" id="caption" aria-live="polite">Tap the face or the mic and talk, or tap WAKE: say "Jarvis" to start talking and "Done" to stop.</div>
@@ -217,6 +219,6 @@ html, body { margin: 0; }
 window.addEventListener("error", function (e) { var c = document.getElementById("caption"); if (c && !window.__jarvisOK) c.textContent = "Jarvis hit a problem starting: " + (e.message || "script error") + ". Close the app fully and open it again."; });
 setTimeout(function () { if (!window.__jarvisOK) { var c = document.getElementById("caption"); if (c && c.textContent.indexOf("problem") < 0) c.textContent = "Jarvis didn't start. Close the app fully and open it again, or check your internet."; } }, 8000);
 </script>
-<script type="module" src="app.js?v=11"></script>
+<script type="module" src="app.js?v=12"></script>
 </body>
 </html>

@@ -1,5 +1,5 @@
 // Jarvis: voice assistant with a talking avatar. Brain: Claude API with the user's own key (default), or free Claude through Puter as a backup.
-import { startAvatar } from "./avatar.js?v=11";
+import { startAvatar } from "./avatar.js?v=12";
 // The Claude SDK loads on demand, so the app still starts if the CDN is slow or blocked.
 const SDK_URL = "https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk@0.131.0/+esm";
 let Anthropic = null;
