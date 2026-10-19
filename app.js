@@ -1,6 +1,11 @@
 // Jarvis: voice assistant with a talking avatar. Brain: Claude API with the user's own key (default), or free Claude through Puter as a backup.
-import Anthropic from "https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk@0.131.0/+esm";
-import { startAvatar } from "./avatar.js";
+import { startAvatar } from "./avatar.js?v=11";
+// The Claude SDK loads on demand, so the app still starts if the CDN is slow or blocked.
+const SDK_URL = "https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk@0.131.0/+esm";
+let Anthropic = null;
+const loadSDK = () => Anthropic ? Promise.resolve(Anthropic) : import(SDK_URL).then((m) => (Anthropic = m.default));
+loadSDK().catch(() => {});
+window.__jarvisBooted = true;
 
 const $ = (id) => document.getElementById(id);
 const MODEL = "claude-opus-5-5";
@@ -22,6 +27,7 @@ if (history.some(m => typeof m.content === "string" || m.role === "tool" || m.ro
 
 // ---------- shared state + UI ----------
 const S = { mode: "idle", speaking: false, wordPulse: 0, style: settings.avatar };
+startAvatar($("face"), S);
 const stateLabels = { idle: "Off", waiting: "Standby", listening: "Listening", thinking: "Thinking", speaking: "Speaking", error: "Problem" };
 function setMode(m) { S.mode = m; $("state").dataset.s = m; $("stateText").textContent = stateLabels[m]; }
 const logEl = $("log");
@@ -289,8 +295,9 @@ const API_TOOLS = [
 
 // ---------- brain: Claude API ----------
 let client = null, clientKey = "";
-function getClient() {
+async function getClient() {
   if (!settings.apiKey) return null;
+  await loadSDK();
   if (!client || clientKey !== settings.apiKey) { client = new Anthropic({ apiKey: settings.apiKey, dangerouslyAllowBrowser: true }); clientKey = settings.apiKey; }
   return client;
 }
@@ -314,15 +321,15 @@ function setSendStop(on) {
 function abortTurn() { aborted = true; try { currentStream && currentStream.abort(); } catch {} try { freeCtl && freeCtl.abort(); } catch {} }
 
 function errorCopy(e) {
-  if (e instanceof Anthropic.AuthenticationError) return "Your API key was rejected. Check it in Settings.";
-  if (e instanceof Anthropic.PermissionDeniedError) return "That API key isn't allowed to use this model.";
-  if (e instanceof Anthropic.RateLimitError) return "I'm getting too many requests. Give me a moment and ask again.";
-  if (e instanceof Anthropic.BadRequestError) {
+  if (Anthropic && e instanceof Anthropic.AuthenticationError) return "Your API key was rejected. Check it in Settings.";
+  if (Anthropic && e instanceof Anthropic.PermissionDeniedError) return "That API key isn't allowed to use this model.";
+  if (Anthropic && e instanceof Anthropic.RateLimitError) return "I'm getting too many requests. Give me a moment and ask again.";
+  if (Anthropic && e instanceof Anthropic.BadRequestError) {
     if (/credit balance/i.test(e.message || "")) return "Your Claude API account is out of credit. Add credit at console.anthropic.com, then ask again.";
     return "Claude couldn't accept that request. Try clearing the chat in Settings.";
   }
-  if (e instanceof Anthropic.APIConnectionError) return "I can't reach the internet right now.";
-  if (e instanceof Anthropic.InternalServerError || (e && e.status === 529)) return "Anthropic's servers are busy. Please try again shortly.";
+  if (Anthropic && e instanceof Anthropic.APIConnectionError) return "I can't reach the internet right now.";
+  if (Anthropic && e instanceof Anthropic.InternalServerError || (e && e.status === 529)) return "Anthropic's servers are busy. Please try again shortly.";
   return "Something went wrong reaching my brain. Please try again.";
 }
 
@@ -344,7 +351,11 @@ function ask(text) {
 }
 
 async function askKey(text) {
-  const c = getClient();
+  let c;
+  try { c = await getClient(); } catch {
+    const m = "I can't load my brain right now. Check your internet and try again.";
+    addMsg("err", m); caption(m, true); setMode("idle"); resumeListening(); return;
+  }
   if (!c) {
     const m = "I need your Claude API key before I can think. Add it in Settings.";
     addMsg("err", m); caption(m, true); openSheet(true); $("apiKey").focus(); return;
@@ -409,7 +420,7 @@ async function askKey(text) {
     currentStream = null; busy = false; setSendStop(false);
     history = history.slice(0, startLen); // roll back the unfinished turn so the history stays valid
     store.set("history", history);
-    if (aborted || e instanceof Anthropic.APIUserAbortError) {
+    if (aborted || Anthropic && e instanceof Anthropic.APIUserAbortError) {
       bubble.textContent = (said || "") + " (stopped)"; setMode("idle"); caption("Stopped.", true);
     } else {
       bubble.remove();
@@ -591,6 +602,6 @@ else if (!settings.apiKey) caption("Welcome. Open Settings (SET) and add your Cl
 if (settings.wake && settings.apiKey) caption("Tap WAKE to turn the mic on again.", true);
 settings.wake = false; syncWake();
 
-startAvatar($("face"), S);
 
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+window.__jarvisOK = true;
