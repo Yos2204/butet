@@ -159,12 +159,12 @@ html, body { margin: 0; }
     <span class="state" id="state" data-s="idle"><i></i><span id="stateText">Standing by</span></span>
     <span class="spacer"></span>
     <button class="iconbtn" id="langBtn" title="Listening language">ID</button>
-    <button class="iconbtn" id="wakeBtn" aria-pressed="false" title="Mic always on: talk any time">WAKE</button>
+    <button class="iconbtn" id="wakeBtn" aria-pressed="false" title="Mic on: say Jarvis to start, Done to stop">WAKE</button>
     <button class="iconbtn" id="openSettings" aria-label="Settings">SET</button>
   </header>
 
   <div class="stage"><canvas id="face" aria-label="Jarvis. Tap to talk." role="img"></canvas></div>
-  <div class="caption hint" id="caption" aria-live="polite">Tap the face or the mic and talk, or tap WAKE to keep the mic on and just talk.</div>
+  <div class="caption hint" id="caption" aria-live="polite">Tap the face or the mic and talk, or tap WAKE: say "Jarvis" to start talking and "Done" to stop.</div>
   <div class="chips" id="timers"></div>
 
   <div class="log" id="log"></div>
@@ -201,11 +201,10 @@ html, body { margin: 0; }
     <div class="field"><label for="pitch">Voice pitch <span id="pitchVal"></span></label><input id="pitch" type="range" min="0.6" max="1.4" step="0.05"></div>
     <div class="row"><label for="speakOn">Speak replies out loud</label><input id="speakOn" type="checkbox"></div>
     <div class="field"><label for="pause">Answer after I pause for <span id="pauseVal"></span></label><input id="pause" type="range" min="0.5" max="2" step="0.1"></div>
-    <div class="row"><label for="needName">Only answer when I say "Jarvis" (for noisy places)</label><input id="needName" type="checkbox"></div>
     <div class="row"><label for="followUp">Keep listening for a follow-up after each reply</label><input id="followUp" type="checkbox"></div>
     <div class="row" id="webRow"><label for="webOn">Let Jarvis search the web (news, weather, facts)</label><input id="webOn" type="checkbox"></div>
     <div class="row"><label for="deep">Deep thinking (slower, smarter answers)</label><input id="deep" type="checkbox"></div>
-    <p class="note">WAKE keeps the mic on while this app is open on screen, and answers whenever you pause. Phones don't let web apps listen in the background or with the screen locked. On iPhone, turn off silent mode to hear the voice.</p>
+    <p class="note">WAKE keeps the mic on while this app is open. Say "Jarvis" to start a conversation and "Done" (or "selesai") to end it. Phones don't let web apps listen in the background or with the screen locked. On iPhone, turn off silent mode to hear the voice.</p>
     <div class="actions">
       <button class="btn" id="testVoice" type="button">Test voice</button>
       <button class="btn" id="clearChat" type="button">Clear chat</button>

@@ -22,7 +22,7 @@ if (history.some(m => typeof m.content === "string" || m.role === "tool" || m.ro
 
 // ---------- shared state + UI ----------
 const S = { mode: "idle", speaking: false, wordPulse: 0, style: settings.avatar };
-const stateLabels = { idle: "Standing by", waiting: "Waiting", listening: "Listening", thinking: "Thinking", speaking: "Speaking", error: "Problem" };
+const stateLabels = { idle: "Off", waiting: "Standby", listening: "Listening", thinking: "Thinking", speaking: "Speaking", error: "Problem" };
 function setMode(m) { S.mode = m; $("state").dataset.s = m; $("stateText").textContent = stateLabels[m]; }
 const logEl = $("log");
 function addMsg(kind, text) {
@@ -123,13 +123,30 @@ function stopListening() {
   listenKind = null;
   if (recog) { const r = recog; recog = null; try { r.abort(); } catch {} }
 }
+// Conversation mode: saying "Jarvis" (or tapping WAKE or the face) starts a conversation. From then on
+// everything you say is answered, until you say "Done" (or "selesai" / "cukup"). Then Jarvis goes back
+// to standby and waits for its name again.
+let inConvo = false;
+const STOP = /^\s*(?:ok(?:ay)?|oke|baik|thanks?|thank you|terima kasih)?[\s,]*(?:jarvis[\s,]*)?(?:done|i'?m done|we'?re done|that'?s all|that is all|stop|selesai|sudah selesai|udah selesai|sudah|udah|cukup|sudah cukup|udah cukup)[\s,]*(?:jarvis|thanks?|thank you|terima kasih)?[\s.!]*$/i;
+function endConvo(text) {
+  inConvo = false;
+  const bye = langOf(text) === "id" && !/\b(done|that|stop)\b/i.test(text)
+    ? "Baik, saya standby. Panggil \u201cJarvis\u201d kalau butuh saya."
+    : "Very good, " + callName() + ". I'll be on standby.";
+  addMsg("sys", "Conversation ended"); addMsg("ai", bye); caption(bye); chime(); speak(bye);
+  if (!synth || !settings.speak) resumeListening();
+}
 // What to do with a finished utterance.
 function handleHeard(text, auto) {
   text = text.trim();
+  if (STOP.test(text)) { endConvo(text); return; }
   const m = text.match(WAKE);
-  if (auto && settings.needName && !m) { resumeListening(); return; } // not for Jarvis: keep listening
+  if (auto && !inConvo) {
+    if (!m) { resumeListening(); return; } // on standby: ignore anything that isn't for Jarvis
+    inConvo = true;
+  }
   const cmd = m && m.index < 12 ? (text.slice(0, m.index) + " " + text.slice(m.index + m[0].length)).trim() : text;
-  if (cmd.replace(/[^\p{L}\p{N}]/gu, "").length < 2) { chime(); caption("Yes?", true); startRecognizer(auto); return; }
+  if (cmd.replace(/[^\p{L}\p{N}]/gu, "").length < 2) { chime(); caption(langOf(text) === "id" ? "Ya?" : "Yes?", true); startRecognizer(auto); return; }
   ask(cmd);
 }
 function startRecognizer(auto) {
@@ -151,13 +168,15 @@ function startRecognizer(auto) {
   };
   r.onstart = () => {
     if (recog !== r) return;
-    $("mic").classList.add("live"); setMode("listening");
-    caption(settings.needName && auto ? "Listening… say “Jarvis” and your question." : "Listening…", true);
+    const standby = auto && !inConvo;
+    $("mic").classList.toggle("live", !standby); setMode(standby ? "waiting" : "listening");
+    if (standby) caption("Standby. Say \u201cJarvis\u201d to start talking.", true);
+    else if (!heard) caption("Listening\u2026", true);
   };
   r.onresult = (e) => {
     if (recog !== r || done) return;
     let txt = ""; for (let i = 0; i < e.results.length; i++) txt += e.results[i][0].transcript;
-    heard = txt; if (txt.trim()) caption(txt);
+    heard = txt; if (txt.trim() && (inConvo || !auto || WAKE.test(txt))) caption(txt);
     // Answer as soon as you pause.
     clearTimeout(silence);
     silence = setTimeout(finish, Math.round(settings.pause * 1000));
@@ -181,14 +200,15 @@ function startRecognizer(auto) {
 // After a reply: keep listening in WAKE mode, or once for a follow-up if that's switched on.
 function resumeListening() {
   if (busy || S.speaking || document.hidden || !micOK || recog) return;
-  if (settings.wake || settings.followUp) startRecognizer(true);
+  if (settings.wake) startRecognizer(true);
+  else if (settings.followUp && inConvo) startRecognizer(false);
 }
 function tapToTalk() {
   unlockAudio();
   if (listenKind === "command" && !settings.wake) { const r = recog; if (r) try { r.stop(); } catch {} return; }
   if (S.speaking) { stopSpeaking(); setMode("idle"); if (settings.wake) startRecognizer(true); return; }
   if (busy) abortTurn();
-  micOK = !!SR; chime(); startRecognizer(settings.wake);
+  micOK = !!SR; chime(); inConvo = true; startRecognizer(settings.wake);
 }
 $("mic").addEventListener("click", tapToTalk);
 $("face").addEventListener("click", tapToTalk);
@@ -278,7 +298,9 @@ const persona = () => `You are J.A.R.V.I.S. (Jarvis), a personal AI assistant mo
 - You speak only three languages: Bahasa Indonesia, Bahasa Batak Toba, and English. Reply in whichever of the three the user used. If the user writes in any other language, answer briefly in Bahasa Indonesia that you only speak Indonesian, Batak Toba and English.
 - Speech recognition may turn spoken Batak Toba into odd Indonesian-looking text; if a message reads like Batak Toba, treat it as Batak Toba and reply in Batak Toba.
 - Reply in plain spoken sentences. No markdown, no lists, no emoji, no URLs unless asked.
-- Keep it short: one to three sentences unless the user asks for detail.
+- This is a live, spoken back-and-forth conversation. Talk naturally, like a person in the room: react to what they said, remember everything said earlier in the conversation, and ask a short follow-up question when it helps. Keep it short: one to three sentences unless the user asks for detail.
+- Speech recognition can mishear words. If a message seems garbled, make your best guess from context, or briefly ask what they meant.
+- When the user says \"done\" the app ends the conversation itself; you don't need to handle that.
 - Use your tools when they help: time, timers, notes, battery, location, and web search for current events, weather, scores and facts you aren't sure of. Never invent the time or date; call get_current_time.
 - ${settings.web ? "You may search the web when it helps." : "Web search is switched off by the user; don't use it, and say so if they ask for live information."}
 - You cannot control other apps, make calls or send messages. If asked, say so briefly and offer what you can do.`;
@@ -496,7 +518,7 @@ $("dock").addEventListener("submit", (e) => {
 // ---------- settings ----------
 function openSheet(open) { $("sheet").hidden = !open; $("scrim").hidden = !open; if (open) syncSettingsUI(); }
 function syncSettingsUI() {
-  $("needName").checked = settings.needName; $("pause").value = settings.pause; $("pauseVal").textContent = Number(settings.pause).toFixed(1) + " s";
+  $("pause").value = settings.pause; $("pauseVal").textContent = Number(settings.pause).toFixed(1) + " s";
   $("avatarStyle").value = settings.avatar;
   $("brain").value = settings.brain; $("keyBox").hidden = settings.brain === "free"; $("freeBox").hidden = settings.brain !== "free"; $("webRow").hidden = settings.brain === "free";
   if (settings.brain === "free") syncAccount();
@@ -523,7 +545,6 @@ syncLang();
 $("rate").oninput = (e) => { settings.rate = Number(e.target.value); saveSettings(); syncSettingsUI(); };
 $("pitch").oninput = (e) => { settings.pitch = Number(e.target.value); saveSettings(); syncSettingsUI(); };
 $("speakOn").onchange = (e) => { settings.speak = e.target.checked; saveSettings(); if (!settings.speak) stopSpeaking(); };
-$("needName").onchange = (e) => { settings.needName = e.target.checked; saveSettings(); };
 $("pause").oninput = (e) => { settings.pause = Number(e.target.value); saveSettings(); $("pauseVal").textContent = settings.pause.toFixed(1) + " s"; };
 $("followUp").onchange = (e) => { settings.followUp = e.target.checked; saveSettings(); };
 $("webOn").onchange = (e) => { settings.web = e.target.checked; saveSettings(); };
@@ -544,8 +565,8 @@ function syncWake() {
 $("wakeBtn").onclick = () => {
   unlockAudio();
   settings.wake = !settings.wake; saveSettings(); micOK = !!SR; syncWake();
-  if (settings.wake) { chime(); stopSpeaking(); if (busy) abortTurn(); startRecognizer(true); }
-  else { stopListening(); $("mic").classList.remove("live"); setMode("idle"); caption("Mic off. Tap WAKE to talk hands-free again.", true); }
+  if (settings.wake) { chime(); stopSpeaking(); if (busy) abortTurn(); inConvo = true; startRecognizer(true); }
+  else { inConvo = false; stopListening(); $("mic").classList.remove("live"); setMode("idle"); caption("Mic off. Tap WAKE to talk hands-free again.", true); }
 };
 syncWake();
 

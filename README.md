@@ -4,7 +4,7 @@ A voice assistant with a talking holographic face, powered by the Claude API. It
 
 ## What it does
 
-- Tap WAKE and the mic stays on: just talk, and Jarvis answers as soon as you pause. Or tap the face to ask one question. Jarvis answers out loud while its face lip-syncs.
+- Tap WAKE or say "Jarvis" to start a conversation. Talk back and forth naturally; Jarvis answers each time you pause and remembers what you said. Say "Done" (or "selesai" / "cukup") to end it, and Jarvis goes back to standby, waiting for "Jarvis". Tap WAKE again to turn the mic off. Jarvis answers out loud while its face lip-syncs.
 - Claude is the brain. By default it uses your own Claude API key (Claude Opus 5.5, with web search). A free backup mode runs Claude through a Puter account (no web search).
 - Jarvis can set timers, save notes, and read the time, battery and location.
 - Settings, notes and chat history stay on the phone.
