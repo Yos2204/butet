@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Butet</title>
+<meta name="theme-color" content="#03070c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Butet">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one-screen HUD. Avatar on top, live caption, scrolling log, input dock pinned at the bottom. Deliberately single dark theme (holographic display). */
+:root {
+  --void: #03070c;
+  --panel: #0a1520;
+  --line: #17334a;
+  --holo: #5fe3ff;
+  --holo-dim: #2a7d96;
+  --text: #d7f3ff;
+  --muted: #7fa3b5;
+  --gold: #ffb547;
+  --alert: #ff5a5a;
+  --font-display: "Chakra Petch", "Segoe UI", system-ui, sans-serif;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  color-scheme: dark;
+}
+html, body { height: 100%; }
+body {
+  background: radial-gradient(120% 70% at 50% 0%, #0b1d2b 0%, var(--void) 60%) fixed, var(--void);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 15px;
+  overflow: hidden;
+}
+.app {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  max-width: 640px;
+  margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 10px 12px;
+  gap: 10px;
+  box-sizing: border-box;
+}
+header {
+  display: flex; align-items: center; gap: 10px;
+}
+.brand {
+  font-family: var(--font-display); font-weight: 700; letter-spacing: 0.32em;
+  font-size: 15px; color: var(--holo); text-shadow: 0 0 12px rgba(95,227,255,.5);
+}
+.state {
+  font-family: var(--font-mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--muted); display: flex; align-items: center; gap: 6px; white-space: nowrap;
+}
+.state i { width: 7px; height: 7px; border-radius: 50%; background: var(--holo-dim); display: inline-block; }
+.state[data-s="listening"] i { background: var(--gold); box-shadow: 0 0 8px var(--gold); }
+.state[data-s="thinking"] i { background: var(--holo); animation: blink .6s infinite alternate; }
+.state[data-s="speaking"] i { background: var(--holo); box-shadow: 0 0 8px var(--holo); }
+.state[data-s="error"] i { background: var(--alert); }
+@keyframes blink { to { opacity: .2; } }
+header .spacer { flex: 1; }
+.iconbtn {
+  background: transparent; border: 1px solid var(--line); color: var(--muted);
+  border-radius: 8px; height: 34px; min-width: 34px; padding: 0 10px;
+  font-family: var(--font-display); font-size: 12px; letter-spacing: .1em; cursor: pointer;
+}
+.iconbtn:hover, .iconbtn:focus-visible { color: var(--holo); border-color: var(--holo-dim); outline: none; }
+.iconbtn[aria-pressed="true"] { color: var(--void); background: var(--holo); border-color: var(--holo); }
+
+.stage { position: relative; flex: 0 0 auto; display: grid; place-items: center; }
+#face { width: min(72vw, 38vh, 340px); aspect-ratio: 1; max-width: 100%; display: block; touch-action: manipulation; cursor: pointer; }
+.caption {
+  min-height: 2.8em; max-height: 6.2em; overflow-y: auto; text-align: center;
+  font-family: var(--font-body); font-size: 16px; line-height: 1.45; color: var(--text);
+  text-wrap: balance; padding: 0 4px;
+}
+.caption.hint { color: var(--muted); font-size: 14px; }
+
+.log {
+  flex: 1 1 auto; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;
+  border-top: 1px solid var(--line); padding-top: 10px; scroll-behavior: smooth;
+}
+.msg { max-width: 86%; padding: 8px 11px; border-radius: 10px; line-height: 1.45; white-space: pre-wrap; word-wrap: break-word; min-width: 0; }
+.msg.user { align-self: flex-end; background: #11293a; color: var(--text); }
+.msg.ai { align-self: flex-start; background: transparent; border: 1px solid var(--line); color: var(--text); }
+.msg.ai::before { content: "BUTET"; display: block; font-family: var(--font-display); font-size: 10px; letter-spacing: .24em; color: var(--holo-dim); margin-bottom: 3px; }
+.msg.sys { align-self: center; color: var(--muted); font-family: var(--font-mono); font-size: 12px; text-align: center; max-width: 100%; }
+.msg.err { align-self: center; color: var(--alert); font-size: 13px; text-align: center; max-width: 100%; }
+
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { font-family: var(--font-mono); font-size: 12px; color: var(--gold); border: 1px solid rgba(255,181,71,.4); border-radius: 999px; padding: 3px 10px; font-variant-numeric: tabular-nums; }
+
+.dock { display: flex; gap: 8px; align-items: center; }
+#msg {
+  flex: 1; min-width: 0; height: 46px; border-radius: 12px; border: 1px solid var(--line);
+  background: var(--panel); color: var(--text); padding: 0 14px; font: inherit; font-size: 16px;
+}
+#msg:focus-visible { outline: 2px solid var(--holo-dim); outline-offset: 1px; }
+#msg::placeholder { color: var(--muted); }
+.round {
+  width: 46px; height: 46px; flex: 0 0 46px; border-radius: 50%; border: 1px solid var(--holo-dim);
+  background: var(--panel); color: var(--holo); display: grid; place-items: center; cursor: pointer;
+}
+.round svg { width: 20px; height: 20px; }
+.round:focus-visible { outline: 2px solid var(--holo); outline-offset: 2px; }
+#mic.live { background: var(--gold); color: var(--void); border-color: var(--gold); box-shadow: 0 0 18px rgba(255,181,71,.55); }
+#send.stop { color: var(--alert); border-color: var(--alert); }
+
+/* Settings sheet */
+.sheet {
+  position: fixed; inset: auto 0 0 0; z-index: 20; background: var(--panel); border-top: 1px solid var(--line);
+  border-radius: 16px 16px 0 0; max-height: 82%; overflow-y: auto;
+  padding-left: max(18px, env(safe-area-inset-left, 0px)); padding-right: max(18px, env(safe-area-inset-right, 0px));
+  padding-block: 16px calc(18px + env(safe-area-inset-bottom, 0px));
+  box-shadow: 0 -20px 60px rgba(0,0,0,.6);
+}
+.sheet-inner { max-width: 560px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+.sheet h2 { margin: 0; font-family: var(--font-display); font-size: 14px; letter-spacing: .24em; color: var(--holo); font-weight: 600; }
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field label, .row label { font-size: 13px; color: var(--muted); }
+.field select, .field input[type="text"] {
+  height: 40px; border-radius: 8px; border: 1px solid var(--line); background: var(--void); color: var(--text); padding: 0 10px; font: inherit;
+}
+.field input[type="range"] { accent-color: var(--holo); }
+.row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.row input[type="checkbox"] { width: 22px; height: 22px; accent-color: var(--holo); }
+.note { font-size: 13px; color: var(--muted); line-height: 1.5; margin: 0; }
+.sheet .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.btn { height: 40px; padding: 0 16px; border-radius: 8px; border: 1px solid var(--holo-dim); background: transparent; color: var(--holo); font-family: var(--font-display); letter-spacing: .08em; cursor: pointer; }
+.btn.primary { background: var(--holo); color: var(--void); border-color: var(--holo); }
+.scrim { position: fixed; inset: 0; z-index: 19; background: rgba(0,0,0,.5); }
+@media (prefers-reduced-motion: reduce) { .state[data-s="thinking"] i { animation: none; } .log { scroll-behavior: auto; } }
+</style>
+<style>
+html, body { margin: 0; }
+:root { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); box-sizing: border-box; height: 100%; }
+[hidden] { display: none !important; }
+.state[data-s="waiting"] i { background: var(--holo); opacity: .6; animation: blink 1.6s infinite alternate; }
+.field input[type="password"] { height: 40px; border-radius: 8px; border: 1px solid var(--line); background: var(--void); color: var(--text); padding: 0 10px; font: inherit; }
+.note a { color: var(--holo); }
+.keybox { border: 1px solid rgba(255,181,71,.4); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <span class="brand">B.U.T.E.T.</span>
+    <span class="state" id="state" data-s="idle"><i></i><span id="stateText">Standing by</span></span>
+    <span class="spacer"></span>
+    <button class="iconbtn" id="wakeBtn" aria-pressed="false" title="Always listen for 'Butet'">WAKE</button>
+    <button class="iconbtn" id="openSettings" aria-label="Settings">SET</button>
+  </header>
+
+  <div class="stage"><canvas id="face" aria-label="Butet avatar. Tap to talk." role="img"></canvas></div>
+  <div class="caption hint" id="caption" aria-live="polite">Tap the face or the mic and talk, or turn on WAKE and just say "Butet".</div>
+  <div class="chips" id="timers"></div>
+
+  <div class="log" id="log"></div>
+
+  <form class="dock" id="dock" autocomplete="off">
+    <button type="button" class="round" id="mic" aria-label="Talk">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+    </button>
+    <input id="msg" type="text" placeholder="Ask Butet anything…" enterkeyhint="send">
+    <button type="submit" class="round" id="send" aria-label="Send">
+      <svg id="sendIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l16-8-6 16-2-7-8-1z"/></svg>
+    </button>
+  </form>
+</div>
+
+<div class="scrim" id="scrim" hidden></div>
+<section class="sheet" id="sheet" hidden aria-label="Settings">
+  <div class="sheet-inner">
+    <h2>SETTINGS</h2>
+    <div class="keybox">
+      <div class="field"><label for="apiKey">Your Claude API key</label><input id="apiKey" type="password" placeholder="sk-ant-…" autocomplete="off" spellcheck="false"></div>
+      <p class="note">Get one at <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a>. It is stored only on this phone and sent only to Anthropic. Each question costs about one or two cents of API credit, a bit more when Butet searches the web.</p>
+    </div>
+    <div class="field"><label for="userName">What should Butet call you?</label><input id="userName" type="text" placeholder="Sir"></div>
+    <div class="field"><label for="voice">Voice</label><select id="voice"></select></div>
+    <div class="field"><label for="rate">Speaking speed <span id="rateVal"></span></label><input id="rate" type="range" min="0.7" max="1.4" step="0.05"></div>
+    <div class="field"><label for="pitch">Voice pitch <span id="pitchVal"></span></label><input id="pitch" type="range" min="0.6" max="1.4" step="0.05"></div>
+    <div class="row"><label for="speakOn">Speak replies out loud</label><input id="speakOn" type="checkbox"></div>
+    <div class="row"><label for="followUp">Keep listening for a follow-up after each reply</label><input id="followUp" type="checkbox"></div>
+    <div class="row"><label for="webOn">Let Butet search the web (news, weather, facts)</label><input id="webOn" type="checkbox"></div>
+    <div class="row"><label for="deep">Deep thinking (slower, smarter answers)</label><input id="deep" type="checkbox"></div>
+    <p class="note">WAKE mode listens for "Butet" while this app is open on screen. Phones don't let web apps listen in the background or with the screen locked. On iPhone, turn off silent mode to hear the voice.</p>
+    <div class="actions">
+      <button class="btn" id="testVoice" type="button">Test voice</button>
+      <button class="btn" id="clearChat" type="button">Clear chat</button>
+      <button class="btn primary" id="closeSettings" type="button">Done</button>
+    </div>
+  </div>
+</section>
+<script type="module" src="app.js"></script>
+</body>
+</html>
