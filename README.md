@@ -6,7 +6,7 @@ A voice assistant with a talking holographic face, powered by the Claude API. It
 
 - Tap WAKE or say "Jarvis" to start a conversation. Talk back and forth naturally; Jarvis answers each time you pause and remembers what you said. Say "Done" (or "selesai" / "cukup") to end it, and Jarvis goes back to standby, waiting for "Jarvis". Tap WAKE again to turn the mic off. Jarvis answers out loud while its face lip-syncs.
 - Claude is the brain. By default it uses your own Claude API key (Claude Opus 5.5, with web search). A free backup mode runs Claude through a Puter account (no web search).
-- Jarvis can set timers, save notes, read the time, battery and location, and open your Tata Ibadah Workbench ("open my workbench" / "buka tata ibadah").
+- Jarvis can set timers, save notes, read the time, battery and location, and open apps by name ("open WhatsApp", "buka tata ibadah"). Add any other app under My apps in Settings, or run an iPhone Shortcut by name.
 - Settings, notes and chat history stay on the phone.
 
 ## Languages

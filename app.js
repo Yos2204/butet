@@ -1,5 +1,5 @@
 // Jarvis: voice assistant with a talking avatar. Brain: Claude API with the user's own key (default), or free Claude through Puter as a backup.
-import { startAvatar } from "./avatar.js?v=15";
+import { startAvatar } from "./avatar.js?v=16";
 // The Claude SDK loads on demand, so the app still starts if the CDN is slow or blocked.
 const SDK_URL = "https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk@0.131.0/+esm";
 let Anthropic = null;
@@ -17,7 +17,7 @@ const store = {
 };
 const settings = Object.assign({
   apiKey: "", name: "", voice: "", rate: 1.02, pitch: 0.92,
-  speak: true, followUp: false, web: true, deep: false, wake: false, brain: "key", voiceV: 0, avatar: "rings", needName: false, pause: 0.8, idVoice: "", listenLang: "id-ID",
+  speak: true, followUp: false, web: true, deep: false, wake: false, brain: "key", voiceV: 0, avatar: "rings", needName: false, myApps: "", pause: 0.8, idVoice: "", listenLang: "id-ID",
 }, store.get("settings", {}));
 const saveSettings = () => store.set("settings", settings);
 let notes = store.get("notes", []);
@@ -277,31 +277,104 @@ setInterval(() => {
 }, 1000);
 
 // ---------- apps Jarvis can open ----------
-const APPS = {
-  tata_ibadah_workbench: { name: "Tata Ibadah Workbench", url: "https://claude.ai/artifact/85CBgHbEwL7LBAJ8eKR2iH" },
-  tata_ibadah_workbench_website: { name: "Tata Ibadah Workbench (website)", url: "https://yos2204.github.io/Weekly-tata-ibadah-powerpoint/" },
-};
-function openApp(key) {
-  const app = APPS[key]; if (!app) return { error: "Unknown app." };
-  // Always leave a button in the chat, because phones often block pages that open without a tap.
+// Web apps can't see what's installed, but most phone apps answer to a link (a "URL scheme").
+// Names are matched loosely; Indonesian names work too. Any other app: add it in Settings,
+// or make an iPhone Shortcut and say "run shortcut <name>".
+const APPS = [
+  { name: "Tata Ibadah Workbench", url: "https://claude.ai/artifact/85CBgHbEwL7LBAJ8eKR2iH", alias: "tata ibadah|workbench|church workbench|liturgi" },
+  { name: "Tata Ibadah Workbench website", url: "https://yos2204.github.io/Weekly-tata-ibadah-powerpoint/", alias: "tata ibadah website|workbench website" },
+  { name: "WhatsApp", url: "whatsapp://", alias: "wa|whatsapp|watsap" },
+  { name: "Telegram", url: "tg://", alias: "telegram" },
+  { name: "Instagram", url: "instagram://", alias: "instagram|ig" },
+  { name: "Facebook", url: "fb://", alias: "facebook|fb" },
+  { name: "Messenger", url: "fb-messenger://", alias: "messenger" },
+  { name: "TikTok", url: "snssdk1233://", alias: "tiktok|tik tok" },
+  { name: "X", url: "twitter://", alias: "x|twitter" },
+  { name: "LinkedIn", url: "linkedin://", alias: "linkedin" },
+  { name: "YouTube", url: "youtube://", alias: "youtube" },
+  { name: "YouTube Music", url: "youtubemusic://", alias: "youtube music" },
+  { name: "Spotify", url: "spotify://", alias: "spotify" },
+  { name: "Netflix", url: "nflx://", alias: "netflix" },
+  { name: "Apple Music", url: "music://", alias: "music|apple music|musik" },
+  { name: "Podcasts", url: "podcasts://", alias: "podcast|podcasts" },
+  { name: "Gmail", url: "googlegmail://", alias: "gmail" },
+  { name: "Mail", url: "message://", alias: "mail|email|surel" },
+  { name: "Outlook", url: "ms-outlook://", alias: "outlook" },
+  { name: "Teams", url: "msteams://", alias: "teams|microsoft teams" },
+  { name: "Zoom", url: "zoomus://", alias: "zoom" },
+  { name: "Google Maps", url: "comgooglemaps://", alias: "google maps|gmaps" },
+  { name: "Maps", url: "maps://", alias: "maps|apple maps|peta" },
+  { name: "Waze", url: "waze://", alias: "waze" },
+  { name: "Gojek", url: "gojek://", alias: "gojek|go jek" },
+  { name: "Grab", url: "grab://", alias: "grab" },
+  { name: "Tokopedia", url: "tokopedia://", alias: "tokopedia|tokped" },
+  { name: "Shopee", url: "shopeeid://", alias: "shopee" },
+  { name: "Chrome", url: "googlechrome://", alias: "chrome|google chrome" },
+  { name: "Google", url: "https://www.google.com/", alias: "google|safari|browser" },
+  { name: "Claude", url: "https://claude.ai/", alias: "claude" },
+  { name: "Bible", url: "youversion://", alias: "bible|alkitab|youversion" },
+  { name: "Phone", url: "tel:", alias: "phone|telepon|telpon|dialer" },
+  { name: "Messages", url: "sms:", alias: "messages|sms|pesan|imessage" },
+  { name: "FaceTime", url: "facetime:", alias: "facetime" },
+  { name: "Photos", url: "photos-redirect://", alias: "photos|foto|galeri|gallery" },
+  { name: "Calendar", url: "calshow://", alias: "calendar|kalender" },
+  { name: "Notes", url: "mobilenotes://", alias: "notes|catatan" },
+  { name: "Reminders", url: "x-apple-reminderkit://", alias: "reminders|pengingat" },
+  { name: "Clock", url: "clock-alarm://", alias: "clock|alarm|jam" },
+  { name: "Wallet", url: "shoebox://", alias: "wallet|dompet" },
+  { name: "App Store", url: "itms-apps://", alias: "app store|appstore" },
+  { name: "Files", url: "shareddocuments://", alias: "files|file" },
+  { name: "Shortcuts", url: "shortcuts://", alias: "shortcuts|pintasan" },
+];
+// Your own apps from Settings: one per line, "Name = link".
+function customApps() {
+  return String(settings.myApps || "").split("\n").map(l => l.split("=")).filter(p => p.length >= 2 && p[0].trim() && p.slice(1).join("=").trim())
+    .map(p => ({ name: p[0].trim(), url: p.slice(1).join("=").trim(), alias: p[0].trim().toLowerCase() }));
+}
+const norm = (t) => String(t || "").toLowerCase().replace(/\b(the|app|aplikasi|my|saya|ku)\b/g, " ").replace(/[^\p{L}\p{N} ]/gu, " ").replace(/\s+/g, " ").trim();
+function findApp(q) {
+  const n = norm(q); if (!n) return null;
+  const all = [...customApps(), ...APPS];
+  for (const a of all) if (norm(a.name) === n || a.alias.split("|").includes(n)) return a;   // exact
+  for (const a of all) if (a.alias.split("|").some(x => x.length > 2 && (n.includes(x) || x.includes(n)))) return a; // loose
+  return null;
+}
+function launch(name, url) {
+  // Always leave a button in the chat, because phones often block links that open without a tap.
   const row = addMsg("sys", ""); const a = document.createElement("a");
-  a.href = app.url; a.target = "_blank"; a.rel = "noopener"; a.className = "openbtn"; a.textContent = "Open " + app.name;
+  a.href = url; a.className = "openbtn"; a.textContent = "Open " + name;
+  if (/^https?:/.test(url)) { a.target = "_blank"; a.rel = "noopener"; }
   row.appendChild(a);
   const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone;
   setTimeout(() => {
-    if (standalone) { location.href = app.url; return; } // home-screen app: opens on top of Jarvis, "Done" comes back
-    const w = window.open(app.url, "_blank"); if (w) try { w.opener = null; } catch {}
-    if (!w) caption("Tap “Open " + app.name + "” below to open it.", true);
+    if (!/^https?:/.test(url) || standalone) { location.href = url; return; } // apps, or home-screen mode: opens on top of Jarvis
+    const w = window.open(url, "_blank"); if (w) try { w.opener = null; } catch {}
+    if (!w) caption("Tap “Open " + name + "” below to open it.", true);
   }, 1500); // let Jarvis say it's opening first
-  return { opening: app.name, note: "If the phone blocks it, a button labelled Open " + app.name + " is in the chat." };
+}
+function openApp(q) {
+  const app = findApp(q);
+  if (!app) return { error: "No app called '" + q + "' is set up. Known apps: " + [...customApps(), ...APPS].map(a => a.name).join(", ") + ". The user can add any app in Jarvis Settings under 'My apps', or make an iPhone Shortcut that opens it and ask you to run that shortcut." };
+  launch(app.name, app.url);
+  return { opening: app.name, note: "If the app isn't installed nothing will happen. A button 'Open " + app.name + "' is also in the chat in case the phone blocks it." };
+}
+function runShortcut(name) {
+  name = String(name || "").trim(); if (!name) return { error: "No shortcut name." };
+  launch("shortcut " + name, "shortcuts://run-shortcut?name=" + encodeURIComponent(name));
+  return { running: name, note: "Runs the user's iPhone Shortcut with that exact name, if it exists." };
 }
 
 // ---------- tools Jarvis can use on the phone ----------
 const localTools = {
   open_app: {
-    description: "Opens one of the user's own apps on the phone. tata_ibadah_workbench is the user's Tata Ibadah (church order of service) Workbench in Claude, the default when they ask for the workbench or tata ibadah; tata_ibadah_workbench_website is the same workbench on its own website, only if they ask for the website version.",
-    schema: { properties: { app: { type: "string", enum: Object.keys(APPS) } }, required: ["app"] },
+    description: "Opens an app on the user's phone by name, e.g. WhatsApp, YouTube, Spotify, Maps, Phone, Messages, Camera roll (Photos), Gojek, or the user's Tata Ibadah Workbench (their church order-of-service app in Claude; use 'Tata Ibadah Workbench website' only if they ask for the website). Also opens any app the user added in Settings. Returns the list of known apps if the name isn't found.",
+    schema: { properties: { app: { type: "string", description: "The app's name as the user said it" } }, required: ["app"] },
     run: (i) => openApp(i.app),
+  },
+  run_shortcut: {
+    description: "Runs one of the user's iPhone Shortcuts by its exact name. Use for apps open_app doesn't know, if the user has made a Shortcut for them, or when they ask to run a shortcut.",
+    schema: { properties: { name: { type: "string" } }, required: ["name"] },
+    run: (i) => runShortcut(i.name),
   },
   get_current_time: {
     description: "Returns the user's current local date, time and time zone. Use for any question about the time, date or day.",
@@ -362,7 +435,7 @@ const persona = () => `You are J.A.R.V.I.S. (Jarvis), a personal AI assistant mo
 - This is a live, spoken back-and-forth conversation. Talk naturally, like a person in the room: react to what they said, remember everything said earlier in the conversation, and ask a short follow-up question when it helps. Keep it short: one to three sentences unless the user asks for detail.
 - Speech recognition can mishear words. If a message seems garbled, make your best guess from context, or briefly ask what they meant.
 - When the user says \"done\" the app ends the conversation itself; you don't need to handle that.
-- When the user asks to open their Tata Ibadah workbench (or church workbench, \"buka tata ibadah\"), call open_app and say briefly that you're opening it.
+- When the user asks to open an app (\"open WhatsApp\", \"buka YouTube\", \"open my tata ibadah workbench\"), call open_app and say in a few words that you're opening it. If it isn't known, say so and mention they can add it under My apps in Settings or make a Shortcut for it.
 - Use your tools when they help: time, timers, notes, battery, location, and web search for current events, weather, scores and facts you aren't sure of. Never invent the time or date; call get_current_time.
 - ${settings.web ? "You may search the web when it helps." : "Web search is switched off by the user; don't use it, and say so if they ask for live information."}
 - You cannot control other apps, make calls or send messages. If asked, say so briefly and offer what you can do.`;
@@ -591,7 +664,7 @@ function syncSettingsUI() {
   $("apiKey").value = settings.apiKey; $("userName").value = settings.name; $("voice").value = settings.voice;
   $("rate").value = settings.rate; $("pitch").value = settings.pitch;
   $("rateVal").textContent = Number(settings.rate).toFixed(2) + "×"; $("pitchVal").textContent = Number(settings.pitch).toFixed(2);
-  $("speakOn").checked = settings.speak; $("deep").checked = settings.deep; $("followUp").checked = settings.followUp; $("webOn").checked = settings.web;
+  $("speakOn").checked = settings.speak; $("deep").checked = settings.deep; $("followUp").checked = settings.followUp; $("webOn").checked = settings.web; $("myApps").value = settings.myApps || "";
 }
 $("openSettings").onclick = () => openSheet(true);
 $("closeSettings").onclick = $("scrim").onclick = () => openSheet(false);
@@ -614,6 +687,7 @@ $("speakOn").onchange = (e) => { settings.speak = e.target.checked; saveSettings
 $("pause").oninput = (e) => { settings.pause = Number(e.target.value); saveSettings(); $("pauseVal").textContent = settings.pause.toFixed(1) + " s"; };
 $("followUp").onchange = (e) => { settings.followUp = e.target.checked; saveSettings(); };
 $("webOn").onchange = (e) => { settings.web = e.target.checked; saveSettings(); };
+$("myApps").oninput = (e) => { settings.myApps = e.target.value; saveSettings(); };
 $("deep").onchange = (e) => { settings.deep = e.target.checked; saveSettings(); };
 $("testVoice").onclick = () => { unlockAudio(); stopSpeaking(); speak("At your service, " + callName() + ". All systems are online."); speak("Horas! Jarvis siap membantu kamu hari ini."); };
 $("clearChat").onclick = () => { history = []; store.set("history", history); freeHistory = []; store.set("freeHistory", freeHistory); logEl.innerHTML = ""; greet(); openSheet(false); };
