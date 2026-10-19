@@ -1,5 +1,5 @@
 // Jarvis: voice assistant with a talking avatar. Brain: Claude API with the user's own key (default), or free Claude through Puter as a backup.
-import { startAvatar } from "./avatar.js?v=18";
+import { startAvatar } from "./avatar.js?v=19";
 // The Claude SDK loads on demand, so the app still starts if the CDN is slow or blocked.
 const SDK_URL = "https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk@0.131.0/+esm";
 let Anthropic = null;
@@ -368,8 +368,104 @@ function runShortcut(name) {
   return { running: name, note: "Runs the user's iPhone Shortcut with that exact name, if it exists." };
 }
 
+// ---------- builder: Jarvis writes small apps from spoken instructions ----------
+// Each build is one self-contained HTML file, kept on this phone (last 12). The preview runs in a locked-down
+// sandbox with its own empty origin, so a built app can never read Jarvis's settings or your API key.
+let builds = store.get("builds", []);
+const saveBuilds = () => { while (builds.length > 12) builds.shift(); try { localStorage.setItem("butet.builds", JSON.stringify(builds)); } catch { if (builds.length > 1) { builds.shift(); saveBuilds(); } } };
+const findBuild = (name) => { const n = norm(name); return builds.slice().reverse().find(b => norm(b.name) === n) || builds.slice().reverse().find(b => n && (norm(b.name).includes(n) || n.includes(norm(b.name)))); };
+const BUILD_SYSTEM = `You write complete, working single-file web apps. Output ONLY the HTML document, starting with <!doctype html>, with no explanation and no markdown fences.
+- Everything inline in one file (CSS in <style>, JS in <script>). External libraries only from https://cdnjs.cloudflare.com with exact versions, and only when really needed.
+- It must work well on a phone screen (viewport meta, touch-friendly, no horizontal scroll) and look polished: clear layout, good spacing, a pleasant colour scheme.
+- If the app keeps data, use localStorage wrapped in try/catch and keep working in memory when storage is unavailable (the preview runs in a sandbox without storage).
+- No backend, no API keys, no tracking. Text in the language the user's request is written in (Indonesian, Batak Toba or English).
+- When given an existing app to change, return the whole updated file, keeping everything the user didn't ask to change.`;
+function showBuild(b) {
+  let ov = $("buildView");
+  if (!ov) {
+    ov = document.createElement("div"); ov.id = "buildView";
+    ov.innerHTML = '<div class="bvbar"><span id="bvName"></span><button class="iconbtn" id="bvSave">SAVE</button><button class="iconbtn" id="bvClose">CLOSE</button></div><iframe id="bvFrame" sandbox="allow-scripts allow-forms allow-modals"></iframe>';
+    document.body.appendChild(ov);
+    $("bvClose").onclick = () => { ov.hidden = true; $("bvFrame").srcdoc = ""; };
+  }
+  $("bvName").textContent = b.name; $("bvFrame").srcdoc = b.html; ov.hidden = false;
+  $("bvSave").onclick = () => { // download the file; opened on its own it works fully, saving data included
+    const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([b.html], { type: "text/html" }));
+    a.download = (b.name.replace(/[^\p{L}\p{N} _-]/gu, "").trim().replace(/\s+/g, "-").toLowerCase() || "app") + ".html"; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  };
+}
+function buildButton(b) {
+  const row = addMsg("sys", ""); const btn = document.createElement("button");
+  btn.type = "button"; btn.className = "openbtn"; btn.textContent = "Open " + b.name; btn.onclick = () => showBuild(b);
+  row.appendChild(btn);
+}
+async function runBuild(name, instructions, base) {
+  const note = addMsg("sys", "Building “" + name + "”…");
+  try {
+    const c = await getClient(); if (!c) throw new Error("no key");
+    const content = base
+      ? `Here is my app "${base.name}":\n\n${base.html}\n\nChange it like this: ${instructions}`
+      : `Build me an app called "${name}". ${instructions}`;
+    const stream = c.beta.messages.stream({
+      model: MODEL, max_tokens: 32000, system: BUILD_SYSTEM, messages: [{ role: "user", content }],
+      thinking: { type: "adaptive", block_binding: { prefix_mismatch_behavior: "drop_block" } },
+      output_config: { effort: "medium" }, fallbacks: "default",
+      betas: ["server-side-fallback-2026-07-01", "thinking-binding-controls-2026-08-01"],
+    });
+    let n = 0; stream.on("text", (d) => { n += d.length; note.textContent = "Building “" + name + "”… " + Math.round(n / 1000) + "k characters written"; });
+    const msg = await stream.finalMessage();
+    let html = msg.content.filter(b => b.type === "text").map(b => b.text).join("").trim();
+    html = html.replace(/^```[a-z]*\s*/i, "").replace(/```\s*$/, "").trim();
+    const i = html.search(/<!doctype html|<html/i); if (i > 0) html = html.slice(i);
+    if (!/<html|<body|<script|<div/i.test(html)) throw new Error("no html");
+    builds = builds.filter(b => norm(b.name) !== norm(name));
+    const b = { name, html, at: new Date().toISOString(), request: instructions.slice(0, 500) };
+    builds.push(b); saveBuilds();
+    note.textContent = (base ? "Updated" : "Built") + " “" + name + "”";
+    buildButton(b);
+    const line = base ? "I've updated " + name + ", " + callName() + ". Tap Open to see it." : "Your app " + name + " is ready, " + callName() + ". Tap Open to try it.";
+    addMsg("ai", line); if (!busy) { caption(line); chime(); speak(line); }
+  } catch (e) {
+    const m = e && e.message === "no key" ? "Building apps needs your Claude API key in Settings." : "I couldn't finish building " + name + ". Please try again.";
+    note.textContent = "Build failed"; addMsg("err", m); if (!busy) { caption(m, true); speak(m); }
+  }
+}
+function startBuild(i) {
+  if (settings.brain === "free" || !settings.apiKey) return { error: "Building apps needs the user's Claude API key (Settings > Brain). It doesn't work in free mode." };
+  const instructions = String(i.instructions || "").trim(); if (!instructions) return { error: "No instructions." };
+  let name = String(i.name || "").trim().slice(0, 40);
+  const base = i.change_existing ? findBuild(name || instructions) : null;
+  if (i.change_existing && !base) return { error: "No saved app by that name. Saved apps: " + (builds.map(b => b.name).join(", ") || "none") };
+  if (base) name = base.name; if (!name) name = "New app";
+  runBuild(name, instructions, base);
+  return { started: true, name, note: "Building in the background; it takes about a minute. Jarvis announces when it's ready and shows an Open button." };
+}
+function sendToClaude(prompt) {
+  prompt = String(prompt || "").trim(); if (!prompt) return { error: "Nothing to send." };
+  try { navigator.clipboard && navigator.clipboard.writeText(prompt).catch(() => {}); } catch {}
+  launch("Claude", "https://claude.ai/new?q=" + encodeURIComponent(prompt));
+  return { opened: "Claude", note: "Opens the user's own Claude with the request filled in (also copied to the clipboard in case it shows up empty)." };
+}
+
 // ---------- tools Jarvis can use on the phone ----------
 const localTools = {
+  build_app: {
+    description: "Writes a working app (a single web page: tools, games, calculators, trackers, lists, forms, slideshows and so on) from the user's spoken instructions, or changes an app built earlier. Runs in the background for about a minute and then shows an Open button. Ask one short question first only if the request is too vague to build anything sensible.",
+    schema: { properties: { name: { type: "string", description: "Short app name, e.g. 'Tithe tracker'" }, instructions: { type: "string", description: "Everything the user wants, in detail, including earlier details from the conversation" }, change_existing: { type: "boolean", description: "true to change an app built earlier (name = that app's name)" } }, required: ["instructions"] },
+    run: (i) => startBuild(i),
+  },
+  list_builds: { description: "Lists apps Jarvis built earlier on this phone, newest last.", run: () => ({ apps: builds.map(b => ({ name: b.name, built: b.at, request: b.request })) }) },
+  open_build: {
+    description: "Opens an app Jarvis built earlier, full screen.",
+    schema: { properties: { name: { type: "string" } }, required: ["name"] },
+    run: (i) => { const b = findBuild(i.name); if (!b) return { error: "Not found. Saved apps: " + (builds.map(b => b.name).join(", ") || "none") }; showBuild(b); return { opened: b.name }; },
+  },
+  send_to_claude: {
+    description: "Opens the user's own Claude (claude.ai) with a request filled in, for big jobs Jarvis can't do here: work on their GitHub code, long documents, their Claude projects. Write the prompt in full so Claude has everything it needs.",
+    schema: { properties: { prompt: { type: "string" } }, required: ["prompt"] },
+    run: (i) => sendToClaude(i.prompt),
+  },
   open_app: {
     description: "Opens an app on the user's phone by name, e.g. WhatsApp, YouTube, Spotify, Maps, Phone, Messages, Camera roll (Photos), Gojek, or the Tata Ibadah Workbench (the church order-of-service app; use 'Tata Ibadah Workbench in Claude' only if they ask for the Claude version). Also opens any app the user added in Settings. Returns the list of known apps if the name isn't found.",
     schema: { properties: { app: { type: "string", description: "The app's name as the user said it" } }, required: ["app"] },
@@ -440,6 +536,7 @@ const persona = () => `You are J.A.R.V.I.S. (Jarvis), a personal AI assistant mo
 - Speech recognition can mishear words. If a message seems garbled, make your best guess from context, or briefly ask what they meant.
 - When the user says \"done\" the app ends the conversation itself; you don't need to handle that.
 - When the user asks to open an app (\"open WhatsApp\", \"buka YouTube\", \"open my tata ibadah workbench\"), call open_app and say in a few words that you're opening it. If it isn't known, say so and mention they can add it under My apps in Settings or make a Shortcut for it.
+- You can build apps: when the user asks you to make, code or build something (an app, a tool, a game, a page), call build_app with full instructions and say in one sentence that you're on it. To change it later, call build_app with change_existing. You can't see the user's Claude chats, projects or GitHub; for jobs that need those, offer send_to_claude.
 - Use your tools when they help: time, timers, notes, battery, location, and web search for current events, weather, scores and facts you aren't sure of. Never invent the time or date; call get_current_time.
 - ${settings.web ? "You may search the web when it helps." : "Web search is switched off by the user; don't use it, and say so if they ask for live information."}
 - You cannot control other apps, make calls or send messages. If asked, say so briefly and offer what you can do.`;
