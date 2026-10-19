@@ -104,6 +104,9 @@ header .spacer { flex: 1; }
 #bvName { flex: 1; color: var(--holo); font-family: var(--font-display); letter-spacing: .1em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #bvFrame { flex: 1; width: 100%; border: 0; background: #fff; }
 button.openbtn { border: 0; cursor: pointer; }
+#markView { position: fixed; inset: 0; z-index: 40; background: rgba(0,0,0,.92); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 16px; }
+#markView p { color: var(--holo); font-family: var(--font-display); letter-spacing: .08em; margin: 0; }
+#markView img { max-width: 100%; max-height: 75vh; border-radius: 8px; cursor: crosshair; }
 .msg.err { align-self: center; color: var(--alert); font-size: 13px; text-align: center; max-width: 100%; }
 
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -204,6 +207,10 @@ html, body { margin: 0; }
       <p class="note">Free mode runs Claude through your own Puter account. Every account gets a free monthly allowance. No web search in this mode.</p>
     </div>
     <div class="field"><label for="avatarStyle">Look</label><select id="avatarStyle"><option value="auto">Rings, face appears when Jarvis talks</option><option value="rings">Rings only</option><option value="face">Face always</option></select></div>
+    <div class="field"><label>Gentleman photo (optional, shown while Jarvis talks)</label>
+      <div class="actions" style="justify-content:flex-start"><button class="btn" id="photoPick" type="button">Choose photo</button><button class="btn" id="photoMark" type="button" hidden>Mark mouth</button><button class="btn" id="photoClear" type="button" hidden>Remove</button></div>
+      <input id="photoFile" type="file" accept="image/*" hidden>
+      <p class="note">Pick a front-facing portrait, then tap his mouth once. Use a photo you have the right to use, like your own, an AI-made portrait, or a free stock photo. Without a photo, Jarvis uses the drawn gentleman.</p></div>
     <div class="field"><label for="userName">What should Jarvis call you?</label><input id="userName" type="text" placeholder="Sir"></div>
     <div class="field"><label for="voice">English voice</label><select id="voice"></select></div>
     <div class="field"><label for="idVoice">Indonesian voice (also reads Batak Toba)</label><select id="idVoice"></select></div>
@@ -229,6 +236,6 @@ html, body { margin: 0; }
 window.addEventListener("error", function (e) { var c = document.getElementById("caption"); if (c && !window.__jarvisOK) c.textContent = "Jarvis hit a problem starting: " + (e.message || "script error") + ". Close the app fully and open it again."; });
 setTimeout(function () { if (!window.__jarvisOK) { var c = document.getElementById("caption"); if (c && c.textContent.indexOf("problem") < 0) c.textContent = "Jarvis didn't start. Close the app fully and open it again, or check your internet."; } }, 8000);
 </script>
-<script type="module" src="app.js?v=19"></script>
+<script type="module" src="app.js?v=20"></script>
 </body>
 </html>

@@ -66,7 +66,7 @@ export function startAvatar(cv, S) {
     faceAmt = lerp(faceAmt, faceTarget, Math.min(1, dt * (faceTarget ? 6 : 3)));
     if (faceAmt < 0.98) { cx.save(); cx.globalAlpha = 1 - faceAmt; cx.scale(1 - faceAmt * 0.25, 1 - faceAmt * 0.25); drawRings(); cx.restore(); }
     if (faceAmt > 0.02) {
-      cx.save(); cx.globalAlpha = faceAmt; const k = 0.82 + faceAmt * 0.18; cx.scale(k, k); drawFace();
+      cx.save(); cx.globalAlpha = faceAmt; const k = 0.82 + faceAmt * 0.18; cx.scale(k, k); if (S.photo && S.photo.img && S.photo.img.complete && S.photo.img.naturalWidth) drawPhoto(); else drawFace();
       cx.restore();
       if (faceAmt < 0.95) { // materialize: a bright scan line sweeping down the face
         const y = (-1 + faceAmt * 2.2) * R; cx.save(); cx.globalAlpha = (1 - faceAmt) * 0.9;
@@ -75,6 +75,38 @@ export function startAvatar(cv, S) {
     }
     cx.restore();
 
+    function drawPhoto() {
+      // A real photo, with the jaw lowered in time with the voice (a simple lip-sync effect).
+      const { img, mx, my } = S.photo;
+      const D = W * 0.84, iw = img.naturalWidth, ih = img.naturalHeight;
+      const sc = Math.max(D / iw, D / ih), dw = iw * sc, dh = ih * sc;
+      const zoom = 1 + (talking ? mouth * 0.006 : 0) + (reduce ? 0 : Math.sin(t * 0.8) * 0.004);
+      cx.save(); cx.scale(zoom, zoom);
+      const clip = new Path2D(); clip.arc(0, 0, D / 2, 0, Math.PI * 2);
+      cx.save(); cx.clip(clip);
+      // keep the mouth near the lower middle of the circle
+      const ox = -dw * mx, oy = Math.min(-D / 2, Math.max(D / 2 - dh, -dh * my + D * 0.2));
+      const x0 = Math.min(-D / 2, Math.max(D / 2 - dw, ox));
+      cx.drawImage(img, x0, oy, dw, dh);
+      const mX = x0 + dw * mx, mY = oy + dh * my, fw = dh * 0.32; // fw: rough face width around the mouth
+      const d = (talking ? mouth : 0) * fw * 0.11;
+      if (d > 0.4) {
+        const jaw = new Path2D(); jaw.ellipse(mX, mY + fw * 0.2, fw * 0.4, fw * 0.36, 0, 0, Math.PI * 2);
+        cx.save(); cx.clip(jaw); cx.beginPath(); cx.rect(mX - fw, mY, fw * 2, fw); cx.clip();
+        cx.drawImage(img, x0, oy + d, dw, dh); // lower lip and chin move down
+        cx.restore();
+        // the open mouth
+        const rx = fw * 0.16;
+        const g = cx.createRadialGradient(mX, mY + d * 0.5, 0, mX, mY + d * 0.5, rx);
+        g.addColorStop(0, "rgba(25,6,8,0.95)"); g.addColorStop(0.75, "rgba(55,18,20,0.9)"); g.addColorStop(1, "rgba(90,40,40,0)");
+        cx.fillStyle = g; cx.beginPath(); cx.ellipse(mX, mY + d * 0.5, rx, d * 0.62, 0, 0, Math.PI * 2); cx.fill();
+        cx.fillStyle = `rgba(235,230,220,${Math.min(0.55, d / fw * 4)})`; // a hint of upper teeth
+        cx.beginPath(); cx.ellipse(mX, mY + d * 0.12, rx * 0.62, Math.max(0.5, d * 0.16), 0, 0, Math.PI); cx.fill();
+      }
+      cx.restore();
+      cx.shadowColor = `rgba(${col},0.9)`; cx.shadowBlur = 14; cx.strokeStyle = `rgba(${col},0.75)`; cx.lineWidth = 2; cx.stroke(clip);
+      cx.restore();
+    }
     function drawFace() {
       // A holographic gentleman in a suit: combed hair, clean-shaven, shirt, tie and jacket.
       const bob = reduce ? 0 : Math.sin(t * 1.4) * R * 0.015 + (talking ? Math.sin(t * 9) * R * 0.008 * mouth : 0);

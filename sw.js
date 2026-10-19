@@ -1,6 +1,6 @@
 // Offline shell: serve the app's own files from cache when offline, always try the network first.
-const CACHE = "jarvis-v19";
-const SHELL = ["./", "index.html", "app.js?v=19", "avatar.js?v=19", "manifest.webmanifest", "icon.svg", "icon-192.png", "icon-512.png"];
+const CACHE = "jarvis-v20";
+const SHELL = ["./", "index.html", "app.js?v=20", "avatar.js?v=20", "manifest.webmanifest", "icon.svg", "icon-192.png", "icon-512.png"];
 self.addEventListener("install", (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener("activate", (e) => { e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim())); });
 self.addEventListener("fetch", (e) => {

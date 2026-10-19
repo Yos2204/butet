@@ -1,5 +1,5 @@
 // Jarvis: voice assistant with a talking avatar. Brain: Claude API with the user's own key (default), or free Claude through Puter as a backup.
-import { startAvatar } from "./avatar.js?v=19";
+import { startAvatar } from "./avatar.js?v=20";
 // The Claude SDK loads on demand, so the app still starts if the CDN is slow or blocked.
 const SDK_URL = "https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk@0.131.0/+esm";
 let Anthropic = null;
@@ -27,7 +27,14 @@ let history = store.get("history", []);
 if (history.some(m => typeof m.content === "string" || m.role === "tool" || m.role === "system")) history = [];
 
 // ---------- shared state + UI ----------
-const S = { mode: "idle", speaking: false, wordPulse: 0, style: settings.avatar };
+const S = { mode: "idle", speaking: false, wordPulse: 0, style: settings.avatar, photo: null };
+// Optional real photo for the talking face (Settings > Look). Kept on this phone only.
+function loadPhoto() {
+  const p = store.get("photo", null);
+  if (!p || !p.src) { S.photo = null; return; }
+  const img = new Image(); img.src = p.src; S.photo = { img, mx: p.mx ?? 0.5, my: p.my ?? 0.72 };
+}
+loadPhoto();
 startAvatar($("face"), S);
 const stateLabels = { idle: "Off", waiting: "Standby", listening: "Listening", thinking: "Thinking", speaking: "Speaking", error: "Problem" };
 function setMode(m) { S.mode = m; $("state").dataset.s = m; $("stateText").textContent = stateLabels[m]; }
@@ -774,6 +781,38 @@ $("apiKey").oninput = $("apiKey").onchange = (e) => { settings.apiKey = e.target
 $("userName").oninput = (e) => { settings.name = e.target.value.slice(0, 40); saveSettings(); };
 $("voice").onchange = (e) => { settings.voice = e.target.value; saveSettings(); };
 $("avatarStyle").onchange = (e) => { settings.avatar = e.target.value; S.style = settings.avatar; saveSettings(); };
+function syncPhotoUI() { const has = !!store.get("photo", null); $("photoMark").hidden = !has; $("photoClear").hidden = !has; $("photoPick").textContent = has ? "Change photo" : "Choose photo"; }
+$("photoPick").onclick = () => $("photoFile").click();
+$("photoFile").onchange = (e) => {
+  const f = e.target.files && e.target.files[0]; e.target.value = ""; if (!f) return;
+  const img = new Image(); const url = URL.createObjectURL(f);
+  img.onload = () => {
+    const sc = Math.min(1, 640 / Math.max(img.width, img.height));
+    const c = document.createElement("canvas"); c.width = Math.round(img.width * sc); c.height = Math.round(img.height * sc);
+    c.getContext("2d").drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url);
+    const src = c.toDataURL("image/jpeg", 0.85);
+    try { localStorage.setItem("butet.photo", JSON.stringify({ src, mx: 0.5, my: 0.72 })); } catch { caption("That photo is too big to keep. Try a smaller one.", true); return; }
+    loadPhoto(); syncPhotoUI(); markMouth();
+  };
+  img.src = url;
+};
+$("photoClear").onclick = () => { try { localStorage.removeItem("butet.photo"); } catch {} loadPhoto(); syncPhotoUI(); };
+$("photoMark").onclick = () => markMouth();
+// Ask the user to tap the mouth once, so the lip-sync moves the right spot.
+function markMouth() {
+  const p = store.get("photo", null); if (!p) return;
+  const ov = document.createElement("div"); ov.id = "markView";
+  ov.innerHTML = '<p>Tap the middle of his mouth</p><img alt="Your photo">';
+  const im = ov.querySelector("img"); im.src = p.src;
+  im.onclick = (e) => {
+    const r = im.getBoundingClientRect();
+    p.mx = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)); p.my = Math.min(1, Math.max(0, (e.clientY - r.top) / r.height));
+    try { localStorage.setItem("butet.photo", JSON.stringify(p)); } catch {}
+    loadPhoto(); ov.remove();
+  };
+  document.body.appendChild(ov);
+}
+syncPhotoUI();
 $("idVoice").onchange = (e) => { settings.idVoice = e.target.value; saveSettings(); };
 function syncLang() { $("langBtn").textContent = settings.listenLang.startsWith("en") ? "EN" : "ID"; $("langBtn").setAttribute("aria-label", "Listening language: " + (settings.listenLang.startsWith("en") ? "English" : "Indonesian or Batak Toba")); }
 $("langBtn").onclick = () => {
