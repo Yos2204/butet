@@ -1,9 +1,7 @@
-// Butet: voice assistant with a talking avatar, powered by the Claude API.
-import Anthropic from "https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk@0.131.0/+esm";
+// Butet: voice assistant with a talking avatar. Claude runs free through Puter.js (user-pays, free monthly allowance).
 import { startAvatar } from "./avatar.js";
 
 const $ = (id) => document.getElementById(id);
-const MODEL = "claude-opus-5-5";
 
 // ---------- storage (best effort) ----------
 const store = {
@@ -11,12 +9,14 @@ const store = {
   set(k, v) { try { localStorage.setItem("butet." + k, JSON.stringify(v)); } catch {} },
 };
 const settings = Object.assign({
-  apiKey: "", name: "", voice: "", rate: 1.02, pitch: 0.92,
-  speak: true, followUp: false, web: true, deep: false, wake: false,
+  name: "", voice: "", rate: 1.02, pitch: 0.92,
+  speak: true, followUp: false, deep: false, wake: false,
 }, store.get("settings", {}));
 const saveSettings = () => store.set("settings", settings);
 let notes = store.get("notes", []);
 let history = store.get("history", []);
+// Drop chat history saved by the older API-key version (different message format).
+if (history.some(m => Array.isArray(m.content))) history = [];
 
 // ---------- shared state + UI ----------
 const S = { mode: "idle", speaking: false, wordPulse: 0 };
@@ -227,66 +227,53 @@ const localTools = {
     description: "Returns the phone's battery level and charging state, if the browser allows it.",
     run: async () => { try { const b = await navigator.getBattery(); return { percent: Math.round(b.level * 100), charging: b.charging }; } catch { return { error: "Battery info isn't available in this browser." }; } },
   },
-  get_location: {
-    description: "Returns the user's approximate latitude and longitude from the phone (asks permission). Use before a web search for local weather or nearby places.",
-    run: () => new Promise((res) => {
-      if (!navigator.geolocation) return res({ error: "Location isn't available." });
-      navigator.geolocation.getCurrentPosition(
-        (p) => res({ latitude: +p.coords.latitude.toFixed(3), longitude: +p.coords.longitude.toFixed(3) }),
-        () => res({ error: "The user didn't allow location access." }),
-        { timeout: 10000, maximumAge: 600000 });
-    }),
-  },
 };
 // The tool list stays the same for the whole conversation (changing it mid-chat would invalidate Claude's earlier reasoning).
-const API_TOOLS = [
-  ...Object.entries(localTools).map(([name, t]) => ({ name, description: t.description, input_schema: { type: "object", properties: {}, ...(t.schema || {}) } })),
-  { type: "web_search_20260209", name: "web_search", max_uses: 3 },
-];
-
-// ---------- brain: Claude API ----------
-let client = null, clientKey = "";
-function getClient() {
-  if (!settings.apiKey) return null;
-  if (!client || clientKey !== settings.apiKey) { client = new Anthropic({ apiKey: settings.apiKey, dangerouslyAllowBrowser: true }); clientKey = settings.apiKey; }
-  return client;
+// ---------- brain: Claude through Puter (free, no API key) ----------
+// Puter.js (loaded in index.html) lets each user run Claude on their own free Puter account.
+const MODELS = { fast: "anthropic/claude-haiku-5-5", smart: "anthropic/claude-sonnet-5-5" };
+const API_TOOLS = Object.entries(localTools).map(([name, t]) => ({
+  type: "function",
+  function: { name, description: t.description, parameters: { type: "object", properties: {}, ...(t.schema || {}) } },
+}));
+const P = () => window.puter;
+function signedIn() { try { return !!(P() && P().auth.isSignedIn()); } catch { return false; } }
+async function signIn() {
+  if (!P()) { caption("I couldn't load my brain. Check your internet connection and reload.", true); return false; }
+  try { await P().auth.signIn(); } catch {}
+  syncAccount();
+  return signedIn();
 }
 const persona = () => `You are Butet, a personal AI assistant in the spirit of J.A.R.V.I.S., Tony Stark's butler AI: calm, capable, quietly witty, with a dry British politeness. Address the user as "${callName()}". Your words are spoken aloud by a voice on the user's phone, so:
 - Reply in the language the user speaks to you in (for example English or Indonesian).
 - Reply in plain spoken sentences. No markdown, no lists, no emoji, no URLs unless asked.
 - Keep it short: one to three sentences unless the user asks for detail.
-- Use your tools when they help: time, timers, notes, battery, location, and web search for current events, weather, scores and facts you aren't sure of. Never invent the time or date; call get_current_time.
-- ${settings.web ? "You may search the web when it helps." : "Web search is switched off by the user; don't use it, and say so if they ask for live information."}
-- You cannot control other apps, make calls or send messages. If asked, say so briefly and offer what you can do.`;
+- Use your tools when they help: time, timers, notes, battery. Never invent the time or date; call get_current_time.
+- You cannot browse the web, see live news or weather, control other apps, make calls or send messages. If asked, say so briefly and offer what you can do.`;
 
-let busy = false, currentStream = null, aborted = false;
+let busy = false, ctl = null;
 function setSendStop(on) {
   $("send").classList.toggle("stop", on);
   $("send").setAttribute("aria-label", on ? "Stop" : "Send");
   $("sendIcon").innerHTML = on ? '<rect x="7" y="7" width="10" height="10" rx="1"/>' : '<path d="M4 12l16-8-6 16-2-7-8-1z"/>';
 }
-function abortTurn() { aborted = true; try { currentStream && currentStream.abort(); } catch {} }
-
+function abortTurn() { try { ctl && ctl.abort(); } catch {} }
 function errorCopy(e) {
-  if (e instanceof Anthropic.AuthenticationError) return "Your API key was rejected. Check it in Settings.";
-  if (e instanceof Anthropic.PermissionDeniedError) return "That API key isn't allowed to use this model.";
-  if (e instanceof Anthropic.RateLimitError) return "I'm getting too many requests. Give me a moment and ask again.";
-  if (e instanceof Anthropic.BadRequestError) {
-    if (/credit balance/i.test(e.message || "")) return "Your Claude API account is out of credit. Add credit at console.anthropic.com, then ask again.";
-    return "Claude couldn't accept that request. Try clearing the chat in Settings.";
-  }
-  if (e instanceof Anthropic.APIConnectionError) return "I can't reach the internet right now.";
-  if (e instanceof Anthropic.InternalServerError || (e && e.status === 529)) return "Anthropic's servers are busy. Please try again shortly.";
+  const msg = String((e && (e.error?.message || e.message || e.code)) || e || "");
+  if (/insufficient|funds|limit|quota|usage|credit/i.test(msg)) return "You've used up this month's free allowance on your Puter account. It refills next month.";
+  if (/auth|sign|token|401|403/i.test(msg)) return "I need you to sign in to Puter again. Open Settings and tap Sign in.";
+  if (/network|fetch|offline|timeout/i.test(msg)) return "I can't reach the internet right now.";
   return "Something went wrong reaching my brain. Please try again.";
 }
-
 function trimHistory() {
-  // Keep the conversation from growing forever: cut at a plain user message near the end.
   if (history.length <= 40) return;
   for (let i = history.length - 20; i < history.length; i++) {
-    const m = history[i];
-    if (m.role === "user" && Array.isArray(m.content) && m.content.some(b => b.type === "text")) { history = history.slice(i); return; }
+    if (history[i].role === "user") { history = history.slice(i); return; }
   }
+}
+function speakAll(text) {
+  const parts = text.match(/[^.!?\n]+[.!?]*["')\]]*\s*/g) || [text];
+  for (const p of parts) if (p.trim().length > 1) speak(p);
 }
 
 async function ask(text) {
@@ -294,74 +281,50 @@ async function ask(text) {
   if (busy) abortTurn();
   stopSpeaking(); stopListening();
   addMsg("user", text);
-  const c = getClient();
-  if (!c) {
-    const m = "I need your Claude API key before I can think. Add it in Settings.";
-    addMsg("err", m); caption(m, true); openSheet(true); $("apiKey").focus(); return;
+  if (!signedIn()) {
+    const m = "Tap “Sign in” in Settings once, so I can think for free on your Puter account.";
+    addMsg("err", m); caption(m, true); openSheet(true); return;
   }
   trimHistory();
   const startLen = history.length;
-  history.push({ role: "user", content: [{ type: "text", text }] });
-  busy = true; aborted = false; setMode("thinking"); caption("Thinking…", true); setSendStop(true);
+  history.push({ role: "user", content: text });
+  busy = true; setMode("thinking"); caption("Thinking…", true); setSendStop(true);
+  ctl = new AbortController();
   const bubble = addMsg("ai", "…");
-  let said = "", spokenUpTo = 0;
-  const flush = (final) => {
-    const rest = said.slice(spokenUpTo);
-    const re = /[^.!?\n]+[.!?]+["')\]]*\s+|[^\n]+\n/g; let m, last = 0;
-    while ((m = re.exec(rest))) { if (m[0].trim().length > 1) speak(m[0]); last = re.lastIndex; }
-    spokenUpTo += last;
-    if (final) { const tail = said.slice(spokenUpTo); if (tail.trim()) speak(tail); spokenUpTo = said.length; }
-  };
+  let said = "";
   try {
-    for (let round = 0; round < 8; round++) {
-      currentStream = c.beta.messages.stream({
-        model: MODEL,
-        max_tokens: 4096,
-        system: persona(),
+    for (let round = 0; round < 6; round++) {
+      const res = await P().ai.chat([{ role: "system", content: persona() }, ...history], {
+        model: settings.deep ? MODELS.smart : MODELS.fast,
+        max_tokens: 1024,
         tools: API_TOOLS,
-        messages: history,
-        thinking: { type: "adaptive", block_binding: { prefix_mismatch_behavior: "drop_block" } },
-        output_config: { effort: settings.deep ? "medium" : "low" },
-        fallbacks: "default",
-        betas: ["server-side-fallback-2026-07-01", "thinking-binding-controls-2026-08-01"],
+        normalize: true,
+        signal: ctl.signal,
       });
-      currentStream.on("text", (delta) => {
-        said += delta; bubble.textContent = said; caption(said);
-        logEl.scrollTop = logEl.scrollHeight; flush(false);
-      });
-      const msg = await currentStream.finalMessage();
-      currentStream = null;
-      history.push({ role: "assistant", content: msg.content });
-      if (msg.stop_reason === "refusal") {
-        if (!said.trim()) { said = "I'm afraid I can't help with that one, " + callName() + "."; bubble.textContent = said; }
-        break;
-      }
-      if (msg.stop_reason === "pause_turn") continue; // web search needs another round
-      if (msg.stop_reason !== "tool_use") break;
-      const results = [];
-      for (const b of msg.content) {
-        if (b.type !== "tool_use") continue;
-        const tool = localTools[b.name];
+      const m = res && res.message;
+      if (!m) throw new Error("empty response");
+      history.push(m);
+      const t = typeof m.content === "string" ? m.content : Array.isArray(m.content) ? m.content.filter(b => b && b.type === "text").map(b => b.text).join("") : "";
+      if (t.trim()) { said += (said ? " " : "") + t.trim(); bubble.textContent = said; caption(said); speakAll(t); }
+      const calls = m.tool_calls || [];
+      if (!calls.length) break;
+      for (const call of calls) {
+        const tool = localTools[call.function && call.function.name];
+        let input = {}; try { input = JSON.parse(call.function.arguments || "{}"); } catch {}
         let out;
-        try { out = tool ? await tool.run(b.input || {}) : { error: "Unknown tool" }; } catch (err) { out = { error: String(err && err.message || err) }; }
-        results.push({ type: "tool_result", tool_use_id: b.id, content: JSON.stringify(out), ...(out && out.error ? { is_error: true } : {}) });
+        try { out = tool ? await tool.run(input) : { error: "Unknown tool" }; } catch (err) { out = { error: String(err && err.message || err) }; }
+        history.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify(out) });
       }
-      history.push({ role: "user", content: results });
-      if (said && !/\s$/.test(said)) said += " ";
     }
-    flush(true);
-    if (!said.trim()) { said = "Done."; bubble.textContent = said; }
-    caption(said);
+    if (!said.trim()) { said = "Done."; bubble.textContent = said; caption(said); speak(said); }
     store.set("history", history);
     busy = false; setSendStop(false);
     if (!speakQueue) afterSpeech();
   } catch (e) {
-    currentStream = null; busy = false; setSendStop(false);
-    history = history.slice(0, startLen); // roll back the unfinished turn so the history stays valid
-    store.set("history", history);
-    if (aborted || e instanceof Anthropic.APIUserAbortError) {
-      bubble.textContent = (said || "") + " (stopped)"; setMode("idle"); caption("Stopped.", true);
-    } else {
+    busy = false; setSendStop(false);
+    history = history.slice(0, startLen); store.set("history", history);
+    if (ctl && ctl.signal.aborted) { bubble.textContent = (said || "") + " (stopped)"; setMode("idle"); caption("Stopped.", true); }
+    else {
       bubble.remove();
       const m = errorCopy(e); addMsg("err", m); caption(m, true); setMode("error"); speak(m);
       console.error(e);
@@ -379,21 +342,29 @@ $("dock").addEventListener("submit", (e) => {
 // ---------- settings ----------
 function openSheet(open) { $("sheet").hidden = !open; $("scrim").hidden = !open; if (open) syncSettingsUI(); }
 function syncSettingsUI() {
-  $("apiKey").value = settings.apiKey; $("userName").value = settings.name; $("voice").value = settings.voice;
+  syncAccount();
+  $("userName").value = settings.name; $("voice").value = settings.voice;
   $("rate").value = settings.rate; $("pitch").value = settings.pitch;
   $("rateVal").textContent = Number(settings.rate).toFixed(2) + "×"; $("pitchVal").textContent = Number(settings.pitch).toFixed(2);
-  $("speakOn").checked = settings.speak; $("deep").checked = settings.deep; $("followUp").checked = settings.followUp; $("webOn").checked = settings.web;
+  $("speakOn").checked = settings.speak; $("deep").checked = settings.deep; $("followUp").checked = settings.followUp;
 }
 $("openSettings").onclick = () => openSheet(true);
 $("closeSettings").onclick = $("scrim").onclick = () => openSheet(false);
-$("apiKey").onchange = (e) => { settings.apiKey = e.target.value.trim(); saveSettings(); };
+function syncAccount() {
+  const ok = signedIn();
+  $("acctStatus").textContent = ok ? "Signed in. Butet is ready." : "Not signed in yet.";
+  $("signInBtn").textContent = ok ? "Sign out" : "Sign in";
+}
+$("signInBtn").onclick = async () => {
+  if (signedIn()) { try { P().auth.signOut(); } catch {} syncAccount(); return; }
+  if (await signIn()) caption("Signed in. Tap the face and talk to me.", true);
+};
 $("userName").oninput = (e) => { settings.name = e.target.value.slice(0, 40); saveSettings(); };
 $("voice").onchange = (e) => { settings.voice = e.target.value; saveSettings(); };
 $("rate").oninput = (e) => { settings.rate = Number(e.target.value); saveSettings(); syncSettingsUI(); };
 $("pitch").oninput = (e) => { settings.pitch = Number(e.target.value); saveSettings(); syncSettingsUI(); };
 $("speakOn").onchange = (e) => { settings.speak = e.target.checked; saveSettings(); if (!settings.speak) stopSpeaking(); };
 $("followUp").onchange = (e) => { settings.followUp = e.target.checked; saveSettings(); };
-$("webOn").onchange = (e) => { settings.web = e.target.checked; saveSettings(); };
 $("deep").onchange = (e) => { settings.deep = e.target.checked; saveSettings(); };
 $("testVoice").onclick = () => { unlockAudio(); stopSpeaking(); speak("At your service, " + callName() + ". All systems are online."); };
 $("clearChat").onclick = () => { history = []; store.set("history", history); logEl.innerHTML = ""; greet(); openSheet(false); };
@@ -429,9 +400,10 @@ function textOf(m) {
 const shown = history.filter(m => textOf(m)).slice(-12);
 if (shown.length) { for (const m of shown) addMsg(m.role === "user" ? "user" : "ai", textOf(m)); addMsg("sys", "Conversation restored"); }
 else greet();
-if (!settings.apiKey) caption("Welcome. Open Settings (SET) and add your Claude API key to get started.", true);
+syncAccount();
+if (!signedIn()) caption("Welcome. Open Settings (SET) and tap Sign in to get started. It\u2019s free.", true);
 // Wake mode needs a tap after each fresh load (browsers require it before using the mic and speaker).
-if (settings.wake && settings.apiKey) caption("Tap WAKE to start listening for \u201cButet\u201d again.", true);
+if (settings.wake && signedIn()) caption("Tap WAKE to start listening for \u201cButet\u201d again.", true);
 settings.wake = false; syncWake();
 
 startAvatar($("face"), S);

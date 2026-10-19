@@ -5,12 +5,12 @@ A voice assistant with a talking holographic face, powered by the Claude API. It
 ## What it does
 
 - Say "Butet" (WAKE mode) or tap the face, then talk. Butet answers out loud while its face lip-syncs.
-- Claude Opus 5.5 is the brain. Butet can search the web, set timers, save notes, and read the time, battery, and location.
+- Claude is the brain (Haiku 5.5 by default, Sonnet 5.5 with "Smarter answers"), reached through Puter.js. Butet can set timers, save notes, and read the time and battery.
 - Settings, notes and chat history stay on the phone.
 
 ## What you need
 
-- A Claude API key from https://console.anthropic.com/settings/keys with some credit on the account. Each question costs about 1 to 2 cents; web searches add a little.
+- A free Puter account (https://puter.com). Tap Sign in under Settings. Puter's user-pays model gives each account a free monthly allowance, so there is no API key and no bill. If the allowance runs out, it refills next month.
 - The app must be served over HTTPS (any static host works: GitHub Pages, Netlify, Cloudflare Pages).
 - Microphone permission when the browser asks.
 
@@ -29,7 +29,8 @@ Open the link, then use "Add to Home Screen" (Safari share menu on iPhone, or th
 
 - Web apps can't listen with the screen locked or in the background. WAKE mode keeps the screen on while the app is open.
 - On some iPhones, speech recognition doesn't work from the home-screen icon. If the mic does nothing, open the link in Safari instead.
-- The API key is stored in the browser on this phone. Don't install it on a shared device.
+- Messages go to Claude through Puter's servers.
+- No web search in the free version, so no live news or weather.
 
 ## Files
 
