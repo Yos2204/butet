@@ -1,5 +1,5 @@
 // Jarvis: voice assistant with a talking avatar. Brain: Claude API with the user's own key (default), or free Claude through Puter as a backup.
-import { startAvatar } from "./avatar.js?v=14";
+import { startAvatar } from "./avatar.js?v=15";
 // The Claude SDK loads on demand, so the app still starts if the CDN is slow or blocked.
 const SDK_URL = "https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk@0.131.0/+esm";
 let Anthropic = null;
@@ -276,8 +276,33 @@ setInterval(() => {
   if (timers.length || $("timers").childElementCount) renderTimers();
 }, 1000);
 
+// ---------- apps Jarvis can open ----------
+const APPS = {
+  tata_ibadah_workbench: { name: "Tata Ibadah Workbench", url: "https://claude.ai/artifact/85CBgHbEwL7LBAJ8eKR2iH" },
+  tata_ibadah_workbench_website: { name: "Tata Ibadah Workbench (website)", url: "https://yos2204.github.io/Weekly-tata-ibadah-powerpoint/" },
+};
+function openApp(key) {
+  const app = APPS[key]; if (!app) return { error: "Unknown app." };
+  // Always leave a button in the chat, because phones often block pages that open without a tap.
+  const row = addMsg("sys", ""); const a = document.createElement("a");
+  a.href = app.url; a.target = "_blank"; a.rel = "noopener"; a.className = "openbtn"; a.textContent = "Open " + app.name;
+  row.appendChild(a);
+  const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone;
+  setTimeout(() => {
+    if (standalone) { location.href = app.url; return; } // home-screen app: opens on top of Jarvis, "Done" comes back
+    const w = window.open(app.url, "_blank"); if (w) try { w.opener = null; } catch {}
+    if (!w) caption("Tap “Open " + app.name + "” below to open it.", true);
+  }, 1500); // let Jarvis say it's opening first
+  return { opening: app.name, note: "If the phone blocks it, a button labelled Open " + app.name + " is in the chat." };
+}
+
 // ---------- tools Jarvis can use on the phone ----------
 const localTools = {
+  open_app: {
+    description: "Opens one of the user's own apps on the phone. tata_ibadah_workbench is the user's Tata Ibadah (church order of service) Workbench in Claude, the default when they ask for the workbench or tata ibadah; tata_ibadah_workbench_website is the same workbench on its own website, only if they ask for the website version.",
+    schema: { properties: { app: { type: "string", enum: Object.keys(APPS) } }, required: ["app"] },
+    run: (i) => openApp(i.app),
+  },
   get_current_time: {
     description: "Returns the user's current local date, time and time zone. Use for any question about the time, date or day.",
     run: () => { const d = new Date(); return { local: d.toLocaleString(undefined, { dateStyle: "full", timeStyle: "short" }), timezone: Intl.DateTimeFormat().resolvedOptions().timeZone }; },
@@ -337,6 +362,7 @@ const persona = () => `You are J.A.R.V.I.S. (Jarvis), a personal AI assistant mo
 - This is a live, spoken back-and-forth conversation. Talk naturally, like a person in the room: react to what they said, remember everything said earlier in the conversation, and ask a short follow-up question when it helps. Keep it short: one to three sentences unless the user asks for detail.
 - Speech recognition can mishear words. If a message seems garbled, make your best guess from context, or briefly ask what they meant.
 - When the user says \"done\" the app ends the conversation itself; you don't need to handle that.
+- When the user asks to open their Tata Ibadah workbench (or church workbench, \"buka tata ibadah\"), call open_app and say briefly that you're opening it.
 - Use your tools when they help: time, timers, notes, battery, location, and web search for current events, weather, scores and facts you aren't sure of. Never invent the time or date; call get_current_time.
 - ${settings.web ? "You may search the web when it helps." : "Web search is switched off by the user; don't use it, and say so if they ask for live information."}
 - You cannot control other apps, make calls or send messages. If asked, say so briefly and offer what you can do.`;
