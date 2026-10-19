@@ -1,5 +1,5 @@
 // Jarvis: voice assistant with a talking avatar. Brain: Claude API with the user's own key (default), or free Claude through Puter as a backup.
-import { startAvatar } from "./avatar.js?v=16";
+import { startAvatar } from "./avatar.js?v=17";
 // The Claude SDK loads on demand, so the app still starts if the CDN is slow or blocked.
 const SDK_URL = "https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk@0.131.0/+esm";
 let Anthropic = null;
@@ -281,8 +281,10 @@ setInterval(() => {
 // Names are matched loosely; Indonesian names work too. Any other app: add it in Settings,
 // or make an iPhone Shortcut and say "run shortcut <name>".
 const APPS = [
-  { name: "Tata Ibadah Workbench", url: "https://claude.ai/artifact/85CBgHbEwL7LBAJ8eKR2iH", alias: "tata ibadah|workbench|church workbench|liturgi" },
-  { name: "Tata Ibadah Workbench website", url: "https://yos2204.github.io/Weekly-tata-ibadah-powerpoint/", alias: "tata ibadah website|workbench website" },
+  // The HTML workbench is served next to Jarvis, so it opens for anyone using Jarvis on any device.
+  { name: "Tata Ibadah Workbench", url: new URL("workbench/", location.href).href, alias: "tata ibadah|workbench|church workbench|liturgi|tata ibadah workbench" },
+  // The owner's own copy inside Claude (only opens for the owner's Claude account).
+  { name: "Tata Ibadah Workbench in Claude", url: "https://claude.ai/artifact/85CBgHbEwL7LBAJ8eKR2iH", alias: "workbench in claude|claude workbench|tata ibadah in claude" },
   { name: "WhatsApp", url: "whatsapp://", alias: "wa|whatsapp|watsap" },
   { name: "Telegram", url: "tg://", alias: "telegram" },
   { name: "Instagram", url: "instagram://", alias: "instagram|ig" },
@@ -347,7 +349,8 @@ function launch(name, url) {
   row.appendChild(a);
   const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone;
   setTimeout(() => {
-    if (!/^https?:/.test(url) || standalone) { location.href = url; return; } // apps, or home-screen mode: opens on top of Jarvis
+    const sameSite = url.startsWith(location.origin);
+    if (!/^https?:/.test(url) || (standalone && !sameSite)) { location.href = url; return; } // apps, or home-screen mode: opens on top of Jarvis
     const w = window.open(url, "_blank"); if (w) try { w.opener = null; } catch {}
     if (!w) caption("Tap “Open " + name + "” below to open it.", true);
   }, 1500); // let Jarvis say it's opening first
@@ -367,7 +370,7 @@ function runShortcut(name) {
 // ---------- tools Jarvis can use on the phone ----------
 const localTools = {
   open_app: {
-    description: "Opens an app on the user's phone by name, e.g. WhatsApp, YouTube, Spotify, Maps, Phone, Messages, Camera roll (Photos), Gojek, or the user's Tata Ibadah Workbench (their church order-of-service app in Claude; use 'Tata Ibadah Workbench website' only if they ask for the website). Also opens any app the user added in Settings. Returns the list of known apps if the name isn't found.",
+    description: "Opens an app on the user's phone by name, e.g. WhatsApp, YouTube, Spotify, Maps, Phone, Messages, Camera roll (Photos), Gojek, or the Tata Ibadah Workbench (the church order-of-service app; use 'Tata Ibadah Workbench in Claude' only if they ask for the Claude version). Also opens any app the user added in Settings. Returns the list of known apps if the name isn't found.",
     schema: { properties: { app: { type: "string", description: "The app's name as the user said it" } }, required: ["app"] },
     run: (i) => openApp(i.app),
   },
