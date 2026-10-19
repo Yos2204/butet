@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Butet</title>
+<title>Jarvis</title>
 <meta name="theme-color" content="#03070c">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Butet">
+<meta name="apple-mobile-web-app-title" content="Jarvis">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-192.png">
@@ -93,7 +93,7 @@ header .spacer { flex: 1; }
 .msg { max-width: 86%; padding: 8px 11px; border-radius: 10px; line-height: 1.45; white-space: pre-wrap; word-wrap: break-word; min-width: 0; }
 .msg.user { align-self: flex-end; background: #11293a; color: var(--text); }
 .msg.ai { align-self: flex-start; background: transparent; border: 1px solid var(--line); color: var(--text); }
-.msg.ai::before { content: "BUTET"; display: block; font-family: var(--font-display); font-size: 10px; letter-spacing: .24em; color: var(--holo-dim); margin-bottom: 3px; }
+.msg.ai::before { content: "JARVIS"; display: block; font-family: var(--font-display); font-size: 10px; letter-spacing: .24em; color: var(--holo-dim); margin-bottom: 3px; }
 .msg.sys { align-self: center; color: var(--muted); font-family: var(--font-mono); font-size: 12px; text-align: center; max-width: 100%; }
 .msg.err { align-self: center; color: var(--alert); font-size: 13px; text-align: center; max-width: 100%; }
 
@@ -155,16 +155,16 @@ html, body { margin: 0; }
 <body>
 <div class="app">
   <header>
-    <span class="brand">B.U.T.E.T.</span>
+    <span class="brand">J.A.R.V.I.S.</span>
     <span class="state" id="state" data-s="idle"><i></i><span id="stateText">Standing by</span></span>
     <span class="spacer"></span>
     <button class="iconbtn" id="langBtn" title="Listening language">ID</button>
-    <button class="iconbtn" id="wakeBtn" aria-pressed="false" title="Always listen for 'Butet'">WAKE</button>
+    <button class="iconbtn" id="wakeBtn" aria-pressed="false" title="Always listen for 'Jarvis'">WAKE</button>
     <button class="iconbtn" id="openSettings" aria-label="Settings">SET</button>
   </header>
 
-  <div class="stage"><canvas id="face" aria-label="Butet avatar. Tap to talk." role="img"></canvas></div>
-  <div class="caption hint" id="caption" aria-live="polite">Tap the face or the mic and talk, or turn on WAKE and just say "Butet".</div>
+  <div class="stage"><canvas id="face" aria-label="Jarvis avatar. Tap to talk." role="img"></canvas></div>
+  <div class="caption hint" id="caption" aria-live="polite">Tap the face or the mic and talk, or turn on WAKE and just say "Jarvis".</div>
   <div class="chips" id="timers"></div>
 
   <div class="log" id="log"></div>
@@ -173,7 +173,7 @@ html, body { margin: 0; }
     <button type="button" class="round" id="mic" aria-label="Talk">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
     </button>
-    <input id="msg" type="text" placeholder="Ask Butet anything…" enterkeyhint="send">
+    <input id="msg" type="text" placeholder="Ask Jarvis anything…" enterkeyhint="send">
     <button type="submit" class="round" id="send" aria-label="Send">
       <svg id="sendIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l16-8-6 16-2-7-8-1z"/></svg>
     </button>
@@ -187,22 +187,22 @@ html, body { margin: 0; }
     <div class="field"><label for="brain">Brain</label><select id="brain"><option value="key">My Claude API key (best, web search)</option><option value="free">Free Puter account (backup, no web search)</option></select></div>
     <div class="keybox" id="keyBox">
       <div class="field"><label for="apiKey">Your Claude API key</label><input id="apiKey" type="password" placeholder="sk-ant-…" autocomplete="off" spellcheck="false"></div>
-      <p class="note">Get one at <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a>. It is stored only on this phone and sent only to Anthropic. Each question costs about one or two cents of API credit, a bit more when Butet searches the web.</p>
+      <p class="note">Get one at <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a>. It is stored only on this phone and sent only to Anthropic. Each question costs about one or two cents of API credit, a bit more when Jarvis searches the web.</p>
     </div>
     <div class="keybox" id="freeBox" hidden>
       <div class="row"><span id="acctStatus" class="note">Not signed in yet.</span><button class="btn primary" id="signInBtn" type="button">Sign in</button></div>
       <p class="note">Free mode runs Claude through your own Puter account. Every account gets a free monthly allowance. No web search in this mode.</p>
     </div>
-    <div class="field"><label for="userName">What should Butet call you?</label><input id="userName" type="text" placeholder="Sir"></div>
+    <div class="field"><label for="userName">What should Jarvis call you?</label><input id="userName" type="text" placeholder="Sir"></div>
     <div class="field"><label for="voice">English voice</label><select id="voice"></select></div>
     <div class="field"><label for="idVoice">Indonesian voice (also reads Batak Toba)</label><select id="idVoice"></select></div>
     <div class="field"><label for="rate">Speaking speed <span id="rateVal"></span></label><input id="rate" type="range" min="0.7" max="1.4" step="0.05"></div>
     <div class="field"><label for="pitch">Voice pitch <span id="pitchVal"></span></label><input id="pitch" type="range" min="0.6" max="1.4" step="0.05"></div>
     <div class="row"><label for="speakOn">Speak replies out loud</label><input id="speakOn" type="checkbox"></div>
     <div class="row"><label for="followUp">Keep listening for a follow-up after each reply</label><input id="followUp" type="checkbox"></div>
-    <div class="row" id="webRow"><label for="webOn">Let Butet search the web (news, weather, facts)</label><input id="webOn" type="checkbox"></div>
+    <div class="row" id="webRow"><label for="webOn">Let Jarvis search the web (news, weather, facts)</label><input id="webOn" type="checkbox"></div>
     <div class="row"><label for="deep">Deep thinking (slower, smarter answers)</label><input id="deep" type="checkbox"></div>
-    <p class="note">WAKE mode listens for "Butet" while this app is open on screen. Phones don't let web apps listen in the background or with the screen locked. On iPhone, turn off silent mode to hear the voice.</p>
+    <p class="note">WAKE mode listens for "Jarvis" while this app is open on screen. Phones don't let web apps listen in the background or with the screen locked. On iPhone, turn off silent mode to hear the voice.</p>
     <div class="actions">
       <button class="btn" id="testVoice" type="button">Test voice</button>
       <button class="btn" id="clearChat" type="button">Clear chat</button>

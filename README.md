@@ -1,17 +1,17 @@
-# Butet (standalone app)
+# Jarvis (standalone app)
 
 A voice assistant with a talking holographic face, powered by the Claude API. It installs to a phone's home screen.
 
 ## What it does
 
-- Say "Butet" (WAKE mode) or tap the face, then talk. Butet answers out loud while its face lip-syncs.
+- Say "Jarvis" (WAKE mode) or tap the face, then talk. Jarvis answers out loud while its face lip-syncs.
 - Claude is the brain. By default it uses your own Claude API key (Claude Opus 5.5, with web search). A free backup mode runs Claude through a Puter account (no web search).
-- Butet can set timers, save notes, and read the time, battery and location.
+- Jarvis can set timers, save notes, and read the time, battery and location.
 - Settings, notes and chat history stay on the phone.
 
 ## Languages
 
-Butet only speaks Bahasa Indonesia, Bahasa Batak Toba and English. The ID/EN button sets which language the microphone listens for (ID covers Batak Toba too, since phones have no Batak speech recognition). Replies in Indonesian or Batak Toba are read with the phone's Indonesian voice; English replies use the English voice.
+Jarvis only speaks Bahasa Indonesia, Bahasa Batak Toba and English. The ID/EN button sets which language the microphone listens for (ID covers Batak Toba too, since phones have no Batak speech recognition). Replies in Indonesian or Batak Toba are read with the phone's Indonesian voice; English replies use the English voice.
 
 ## What you need
 

@@ -1,4 +1,4 @@
-// Butet: voice assistant with a talking avatar. Brain: Claude API with the user's own key (default), or free Claude through Puter as a backup.
+// Jarvis: voice assistant with a talking avatar. Brain: Claude API with the user's own key (default), or free Claude through Puter as a backup.
 import Anthropic from "https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk@0.131.0/+esm";
 import { startAvatar } from "./avatar.js";
 
@@ -12,7 +12,7 @@ const store = {
 };
 const settings = Object.assign({
   apiKey: "", name: "", voice: "", rate: 1.02, pitch: 0.92,
-  speak: true, followUp: false, web: true, deep: false, wake: false, brain: "key", idVoice: "", listenLang: "id-ID",
+  speak: true, followUp: false, web: true, deep: false, wake: false, brain: "key", voiceV: 0, idVoice: "", listenLang: "id-ID",
 }, store.get("settings", {}));
 const saveSettings = () => store.set("settings", settings);
 let notes = store.get("notes", []);
@@ -22,7 +22,7 @@ if (history.some(m => typeof m.content === "string" || m.role === "tool" || m.ro
 
 // ---------- shared state + UI ----------
 const S = { mode: "idle", speaking: false, wordPulse: 0 };
-const stateLabels = { idle: "Standing by", waiting: "Say “Butet”", listening: "Listening", thinking: "Thinking", speaking: "Speaking", error: "Problem" };
+const stateLabels = { idle: "Standing by", waiting: "Say “Jarvis”", listening: "Listening", thinking: "Thinking", speaking: "Speaking", error: "Problem" };
 function setMode(m) { S.mode = m; $("state").dataset.s = m; $("stateText").textContent = stateLabels[m]; }
 const logEl = $("log");
 function addMsg(kind, text) {
@@ -69,7 +69,9 @@ function fillVoices(selId, prefix, key, prefs) {
 function loadVoices() {
   if (!synth) return;
   voices = synth.getVoices();
-  fillVoices("voice", "en", "voice", [/daniel/i, /uk english male/i, /arthur/i, /oliver/i, /george/i, /en-GB/i]);
+  // Closest thing to the film's Jarvis: a calm British male voice.
+  if (settings.voiceV !== 2 && voices.length) { settings.voice = ""; settings.voiceV = 2; settings.pitch = 0.85; settings.rate = 1.05; saveSettings(); }
+  fillVoices("voice", "en", "voice", [/daniel/i, /uk english male/i, /en-gb-x-rjs/i, /en-gb-x-gbd/i, /arthur/i, /oliver/i, /george/i, /malcolm/i, /ryan/i, /thomas/i, /en-GB.*male/i, /en[-_]GB/i]);
   fillVoices("idVoice", "id", "idVoice", [/google/i, /damayanti/i, /ardi/i, /id-ID/i]);
 }
 // Which language is this sentence in? Indonesian and Batak Toba both use the Indonesian voice.
@@ -88,7 +90,7 @@ function cleanForSpeech(t) {
 function speak(text) {
   if (!synth || !settings.speak) return;
   const clean = cleanForSpeech(text); if (!clean) return;
-  stopListening(); // don't let the mic hear Butet talking
+  stopListening(); // don't let the mic hear Jarvis talking
   const u = new SpeechSynthesisUtterance(clean);
   const lang = langOf(clean);
   const vName = lang === "id" ? settings.idVoice : settings.voice;
@@ -108,7 +110,7 @@ function afterSpeech() { if (busy) return; setMode("idle"); resumeListening(true
 // ---------- speech input: wake word + one-shot commands ----------
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 let recog = null, listenKind = null, micOK = !!SR;
-const WAKE = /\b(?:hey |ok |okay |halo |hai |horas )?(butet|butte|butt?et|bootet|boot it|boo tet|bu tet|putet|butet\w*)\b[,.!?]?\s*/i;
+const WAKE = /\b(?:hey |ok |okay |halo |hai |horas )?(jarvis|jarvas|jervis|javis|jarvi|jarvies|travis|harvis)\b[,.!?]?\s*/i;
 
 function micBlocked(msg) {
   micOK = false; settings.wake = false; saveSettings(); syncWake();
@@ -172,7 +174,7 @@ function startRecognizer(kind, auto) {
   };
   try { r.start(); } catch { recog = null; listenKind = null; }
 }
-// After a reply: optionally listen for a follow-up, otherwise go back to waiting for "Butet".
+// After a reply: optionally listen for a follow-up, otherwise go back to waiting for "Jarvis".
 function resumeListening(allowFollowUp) {
   if (busy || S.speaking || document.hidden || !micOK) return;
   if (allowFollowUp && settings.followUp) startRecognizer("command", true);
@@ -216,7 +218,7 @@ setInterval(() => {
   if (timers.length || $("timers").childElementCount) renderTimers();
 }, 1000);
 
-// ---------- tools Butet can use on the phone ----------
+// ---------- tools Jarvis can use on the phone ----------
 const localTools = {
   get_current_time: {
     description: "Returns the user's current local date, time and time zone. Use for any question about the time, date or day.",
@@ -269,7 +271,7 @@ function getClient() {
   if (!client || clientKey !== settings.apiKey) { client = new Anthropic({ apiKey: settings.apiKey, dangerouslyAllowBrowser: true }); clientKey = settings.apiKey; }
   return client;
 }
-const persona = () => `You are Butet, a personal AI assistant in the spirit of J.A.R.V.I.S., Tony Stark's butler AI: calm, capable, quietly witty, with a dry British politeness. Address the user as "${callName()}". Your words are spoken aloud by a voice on the user's phone, so:
+const persona = () => `You are J.A.R.V.I.S. (Jarvis), a personal AI assistant modelled on Tony Stark's AI butler from Iron Man: calm, capable, quietly witty, with a dry British politeness. Address the user as "${callName()}". Your words are spoken aloud by a voice on the user's phone, so:
 - You speak only three languages: Bahasa Indonesia, Bahasa Batak Toba, and English. Reply in whichever of the three the user used. If the user writes in any other language, answer briefly in Bahasa Indonesia that you only speak Indonesian, Batak Toba and English.
 - Speech recognition may turn spoken Batak Toba into odd Indonesian-looking text; if a message reads like Batak Toba, treat it as Batak Toba and reply in Batak Toba.
 - Reply in plain spoken sentences. No markdown, no lists, no emoji, no URLs unless asked.
@@ -518,7 +520,7 @@ $("speakOn").onchange = (e) => { settings.speak = e.target.checked; saveSettings
 $("followUp").onchange = (e) => { settings.followUp = e.target.checked; saveSettings(); };
 $("webOn").onchange = (e) => { settings.web = e.target.checked; saveSettings(); };
 $("deep").onchange = (e) => { settings.deep = e.target.checked; saveSettings(); };
-$("testVoice").onclick = () => { unlockAudio(); stopSpeaking(); speak("At your service, " + callName() + ". All systems are online."); speak("Horas! Butet siap membantu kamu hari ini."); };
+$("testVoice").onclick = () => { unlockAudio(); stopSpeaking(); speak("At your service, " + callName() + ". All systems are online."); speak("Horas! Jarvis siap membantu kamu hari ini."); };
 $("clearChat").onclick = () => { history = []; store.set("history", history); freeHistory = []; store.set("freeHistory", freeHistory); logEl.innerHTML = ""; greet(); openSheet(false); };
 
 let wakeLock = null;
@@ -534,7 +536,7 @@ function syncWake() {
 $("wakeBtn").onclick = () => {
   unlockAudio();
   settings.wake = !settings.wake; saveSettings(); micOK = !!SR; syncWake();
-  if (settings.wake) { caption("Wake mode on. Say “Butet” followed by your question.", true); if (!busy && !S.speaking) startRecognizer("wake"); }
+  if (settings.wake) { caption("Wake mode on. Say “Jarvis” followed by your question.", true); if (!busy && !S.speaking) startRecognizer("wake"); }
   else { if (listenKind === "wake") stopListening(); setMode("idle"); caption("Wake mode off.", true); }
 };
 syncWake();
@@ -544,8 +546,8 @@ function greet() {
   const h = new Date().getHours();
   if (settings.listenLang.startsWith("en")) {
     const part = h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
-    addMsg("ai", part + ", " + callName() + ". Butet online. Ask me anything, set a timer, or have me take a note.");
-  } else addMsg("ai", "Horas, " + callName() + "! Butet siap membantu. Tanya apa saja, pasang timer, atau minta aku mencatat.");
+    addMsg("ai", part + ", " + callName() + ". Jarvis online. Ask me anything, set a timer, or have me take a note.");
+  } else addMsg("ai", "Horas, " + callName() + "! Jarvis siap membantu. Tanya apa saja, pasang timer, atau minta aku mencatat.");
 }
 function textOf(m) {
   if (typeof m.content === "string") return m.content;
@@ -557,7 +559,7 @@ else greet();
 if (settings.brain === "free") loadPuter().then(syncAccount);
 else if (!settings.apiKey) caption("Welcome. Open Settings (SET) and add your Claude API key to get started.", true);
 // Wake mode needs a tap after each fresh load (browsers require it before using the mic and speaker).
-if (settings.wake && settings.apiKey) caption("Tap WAKE to start listening for \u201cButet\u201d again.", true);
+if (settings.wake && settings.apiKey) caption("Tap WAKE to start listening for \u201cJarvis\u201d again.", true);
 settings.wake = false; syncWake();
 
 startAvatar($("face"), S);

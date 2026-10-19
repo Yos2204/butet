@@ -1,6 +1,6 @@
 {
-  "name": "Butet",
-  "short_name": "Butet",
+  "name": "Jarvis",
+  "short_name": "Jarvis",
   "description": "Voice assistant with a talking avatar, powered by Claude.",
   "start_url": "./",
   "scope": "./",
