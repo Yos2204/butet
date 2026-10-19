@@ -163,7 +163,7 @@ html, body { margin: 0; }
     <button class="iconbtn" id="openSettings" aria-label="Settings">SET</button>
   </header>
 
-  <div class="stage"><canvas id="face" aria-label="Jarvis avatar. Tap to talk." role="img"></canvas></div>
+  <div class="stage"><canvas id="face" aria-label="Jarvis. Tap to talk." role="img"></canvas></div>
   <div class="caption hint" id="caption" aria-live="polite">Tap the face or the mic and talk, or turn on WAKE and just say "Jarvis".</div>
   <div class="chips" id="timers"></div>
 
@@ -193,6 +193,7 @@ html, body { margin: 0; }
       <div class="row"><span id="acctStatus" class="note">Not signed in yet.</span><button class="btn primary" id="signInBtn" type="button">Sign in</button></div>
       <p class="note">Free mode runs Claude through your own Puter account. Every account gets a free monthly allowance. No web search in this mode.</p>
     </div>
+    <div class="field"><label for="avatarStyle">Look</label><select id="avatarStyle"><option value="rings">Jarvis rings</option><option value="face">Holographic face</option></select></div>
     <div class="field"><label for="userName">What should Jarvis call you?</label><input id="userName" type="text" placeholder="Sir"></div>
     <div class="field"><label for="voice">English voice</label><select id="voice"></select></div>
     <div class="field"><label for="idVoice">Indonesian voice (also reads Batak Toba)</label><select id="idVoice"></select></div>

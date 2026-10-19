@@ -12,7 +12,7 @@ const store = {
 };
 const settings = Object.assign({
   apiKey: "", name: "", voice: "", rate: 1.02, pitch: 0.92,
-  speak: true, followUp: false, web: true, deep: false, wake: false, brain: "key", voiceV: 0, idVoice: "", listenLang: "id-ID",
+  speak: true, followUp: false, web: true, deep: false, wake: false, brain: "key", voiceV: 0, avatar: "rings", idVoice: "", listenLang: "id-ID",
 }, store.get("settings", {}));
 const saveSettings = () => store.set("settings", settings);
 let notes = store.get("notes", []);
@@ -21,7 +21,7 @@ let history = store.get("history", []);
 if (history.some(m => typeof m.content === "string" || m.role === "tool" || m.role === "system")) history = [];
 
 // ---------- shared state + UI ----------
-const S = { mode: "idle", speaking: false, wordPulse: 0 };
+const S = { mode: "idle", speaking: false, wordPulse: 0, style: settings.avatar };
 const stateLabels = { idle: "Standing by", waiting: "Say “Jarvis”", listening: "Listening", thinking: "Thinking", speaking: "Speaking", error: "Problem" };
 function setMode(m) { S.mode = m; $("state").dataset.s = m; $("stateText").textContent = stateLabels[m]; }
 const logEl = $("log");
@@ -493,6 +493,7 @@ $("dock").addEventListener("submit", (e) => {
 // ---------- settings ----------
 function openSheet(open) { $("sheet").hidden = !open; $("scrim").hidden = !open; if (open) syncSettingsUI(); }
 function syncSettingsUI() {
+  $("avatarStyle").value = settings.avatar;
   $("brain").value = settings.brain; $("keyBox").hidden = settings.brain === "free"; $("freeBox").hidden = settings.brain !== "free"; $("webRow").hidden = settings.brain === "free";
   if (settings.brain === "free") syncAccount();
   $("apiKey").value = settings.apiKey; $("userName").value = settings.name; $("voice").value = settings.voice;
@@ -506,6 +507,7 @@ $("brain").onchange = async (e) => { settings.brain = e.target.value; saveSettin
 $("apiKey").oninput = $("apiKey").onchange = (e) => { settings.apiKey = e.target.value.replace(/\s+/g, ""); saveSettings(); };
 $("userName").oninput = (e) => { settings.name = e.target.value.slice(0, 40); saveSettings(); };
 $("voice").onchange = (e) => { settings.voice = e.target.value; saveSettings(); };
+$("avatarStyle").onchange = (e) => { settings.avatar = e.target.value; S.style = settings.avatar; saveSettings(); };
 $("idVoice").onchange = (e) => { settings.idVoice = e.target.value; saveSettings(); };
 function syncLang() { $("langBtn").textContent = settings.listenLang.startsWith("en") ? "EN" : "ID"; $("langBtn").setAttribute("aria-label", "Listening language: " + (settings.listenLang.startsWith("en") ? "English" : "Indonesian or Batak Toba")); }
 $("langBtn").onclick = () => {

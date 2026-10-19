@@ -42,5 +42,5 @@ Open the link, then use "Add to Home Screen" (Safari share menu on iPhone, or th
 
 - `index.html`: layout and styles
 - `app.js`: voice in/out, wake word, Claude API calls, tools
-- `avatar.js`: the animated face
+- `avatar.js`: the animated Jarvis rings (default) and the holographic face
 - `sw.js`, `manifest.webmanifest`, `icon*`: install-to-home-screen support

@@ -61,6 +61,7 @@ export function startAvatar(cv, S) {
       cx.stroke();
     }
 
+    if (S.style === "face") {
     // head
     const bob = reduce ? 0 : Math.sin(t * 1.4) * R * 0.015 + (talking ? Math.sin(t * 9) * R * 0.01 * mouth : 0);
     cx.translate(gx * R * 0.03, bob + gy * R * 0.02);
@@ -117,6 +118,56 @@ export function startAvatar(cv, S) {
     cx.fillStyle = `rgba(3,7,12,${0.4 + mouth * 0.5})`; cx.fill(); cx.stroke();
     if (mouth > 0.15) { cx.shadowBlur = 0; cx.fillStyle = `rgba(${col},${mouth * 0.35})`; cx.fillRect(mx - mw * 0.55, my + mh * 0.1, mw * 1.1, Math.max(1, mh * 0.12)); }
     cx.restore();
+    } else {
+      // Jarvis holographic rings: a glowing core that swells with the voice, layered rotating rings,
+      // and a ring of spectrum bars that dance while Jarvis talks.
+      const pulse = talking ? mouth : energy * 0.25;
+      const coreR = W * (0.085 + pulse * 0.035 + Math.sin(t * 2) * 0.004);
+      cx.shadowBlur = 0;
+      const glow = cx.createRadialGradient(0, 0, 0, 0, 0, coreR * 3.2);
+      glow.addColorStop(0, `rgba(${col},${0.55 + pulse * 0.4})`);
+      glow.addColorStop(0.35, `rgba(${col},${0.18 + pulse * 0.2})`);
+      glow.addColorStop(1, `rgba(${col},0)`);
+      cx.fillStyle = glow; cx.beginPath(); cx.arc(0, 0, coreR * 3.2, 0, Math.PI * 2); cx.fill();
+      const core = cx.createRadialGradient(0, 0, 0, 0, 0, coreR);
+      core.addColorStop(0, "rgba(235,252,255,0.95)"); core.addColorStop(0.6, `rgba(${col},0.85)`); core.addColorStop(1, `rgba(${col},0.15)`);
+      cx.fillStyle = core; cx.beginPath(); cx.arc(0, 0, coreR, 0, Math.PI * 2); cx.fill();
+      cx.shadowColor = `rgba(${col},0.9)`; cx.shadowBlur = 8;
+      // thin inner ring
+      cx.strokeStyle = `rgba(${col},0.7)`; cx.lineWidth = 1.5;
+      cx.beginPath(); cx.arc(0, 0, W * 0.15, 0, Math.PI * 2); cx.stroke();
+      // segmented ring, counter-rotating
+      const segs = 24;
+      for (let i = 0; i < segs; i++) {
+        const a = -ringA * 1.3 + i * (Math.PI * 2 / segs);
+        cx.strokeStyle = `rgba(${col},${0.25 + 0.5 * ((i % 3) === 0) + pulse * 0.2})`; cx.lineWidth = W * 0.012;
+        cx.beginPath(); cx.arc(0, 0, W * 0.19, a, a + (Math.PI * 2 / segs) * 0.62); cx.stroke();
+      }
+      // thick sweeping arcs
+      const arcs = [[0.0, 1.9, 1], [2.3, 0.9, 1], [3.6, 2.1, 1], [5.9, 0.25, 1]];
+      cx.lineWidth = W * 0.022;
+      for (const [off, len] of arcs) {
+        const a = ringA * 0.8 + off;
+        cx.strokeStyle = `rgba(${col},${0.35 + energy * 0.25})`;
+        cx.beginPath(); cx.arc(0, 0, W * 0.245, a, a + len); cx.stroke();
+      }
+      cx.lineWidth = 1; cx.strokeStyle = `rgba(${col},0.35)`;
+      cx.beginPath(); cx.arc(0, 0, W * 0.275, 0, Math.PI * 2); cx.stroke();
+      // spectrum ring
+      const bars = 96;
+      for (let i = 0; i < bars; i++) {
+        const a = i / bars * Math.PI * 2 + ringA * 0.15;
+        const wave = 0.5 + 0.5 * Math.sin(a * 7 + t * 9) * Math.sin(a * 3 - t * 4);
+        const len = W * (0.012 + (talking ? mouth * 0.05 * wave : energy * 0.012 * wave));
+        const r1 = W * 0.295;
+        cx.strokeStyle = `rgba(${col},${0.3 + wave * 0.5})`; cx.lineWidth = 2;
+        cx.beginPath(); cx.moveTo(Math.cos(a) * r1, Math.sin(a) * r1); cx.lineTo(Math.cos(a) * (r1 + len), Math.sin(a) * (r1 + len)); cx.stroke();
+      }
+      // faint crosshair
+      cx.shadowBlur = 0; cx.strokeStyle = `rgba(${col},0.12)`; cx.lineWidth = 1;
+      for (let i = 0; i < 4; i++) { const a = ringA * 0.3 + i * Math.PI / 2; cx.beginPath(); cx.moveTo(Math.cos(a) * W * 0.16, Math.sin(a) * W * 0.16); cx.lineTo(Math.cos(a) * W * 0.235, Math.sin(a) * W * 0.235); cx.stroke(); }
+      cx.restore();
+    }
 
     // thinking dots orbiting
     if (S.mode === "thinking") {
