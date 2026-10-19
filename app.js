@@ -12,7 +12,7 @@ const store = {
 };
 const settings = Object.assign({
   apiKey: "", name: "", voice: "", rate: 1.02, pitch: 0.92,
-  speak: true, followUp: false, web: true, deep: false, wake: false, brain: "key", voiceV: 0, avatar: "rings", idVoice: "", listenLang: "id-ID",
+  speak: true, followUp: false, web: true, deep: false, wake: false, brain: "key", voiceV: 0, avatar: "rings", needName: false, pause: 0.8, idVoice: "", listenLang: "id-ID",
 }, store.get("settings", {}));
 const saveSettings = () => store.set("settings", settings);
 let notes = store.get("notes", []);
@@ -22,7 +22,7 @@ if (history.some(m => typeof m.content === "string" || m.role === "tool" || m.ro
 
 // ---------- shared state + UI ----------
 const S = { mode: "idle", speaking: false, wordPulse: 0, style: settings.avatar };
-const stateLabels = { idle: "Standing by", waiting: "Say “Jarvis”", listening: "Listening", thinking: "Thinking", speaking: "Speaking", error: "Problem" };
+const stateLabels = { idle: "Standing by", waiting: "Waiting", listening: "Listening", thinking: "Thinking", speaking: "Speaking", error: "Problem" };
 function setMode(m) { S.mode = m; $("state").dataset.s = m; $("stateText").textContent = stateLabels[m]; }
 const logEl = $("log");
 function addMsg(kind, text) {
@@ -105,9 +105,11 @@ function speak(text) {
   synth.speak(u);
 }
 function stopSpeaking() { if (synth) synth.cancel(); speakQueue = 0; S.speaking = false; }
-function afterSpeech() { if (busy) return; setMode("idle"); resumeListening(true); }
+function afterSpeech() { if (busy) return; setMode("idle"); resumeListening(); }
 
-// ---------- speech input: wake word + one-shot commands ----------
+// ---------- speech input: always-on listening + one-shot commands ----------
+// WAKE turns the mic on right away and keeps it on. Whatever you say is answered as soon as you pause
+// (no wake word needed, unless "Only answer when I say Jarvis" is switched on in Settings).
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 let recog = null, listenKind = null, micOK = !!SR;
 const WAKE = /\b(?:hey |ok |okay |halo |hai |horas )?(jarvis|jarvas|jervis|javis|jarvi|jarvies|travis|harvis)\b[,.!?]?\s*/i;
@@ -121,77 +123,78 @@ function stopListening() {
   listenKind = null;
   if (recog) { const r = recog; recog = null; try { r.abort(); } catch {} }
 }
-function startRecognizer(kind, auto) {
+// What to do with a finished utterance.
+function handleHeard(text, auto) {
+  text = text.trim();
+  const m = text.match(WAKE);
+  if (auto && settings.needName && !m) { resumeListening(); return; } // not for Jarvis: keep listening
+  const cmd = m && m.index < 12 ? (text.slice(0, m.index) + " " + text.slice(m.index + m[0].length)).trim() : text;
+  if (cmd.replace(/[^\p{L}\p{N}]/gu, "").length < 2) { chime(); caption("Yes?", true); startRecognizer(auto); return; }
+  ask(cmd);
+}
+function startRecognizer(auto) {
   if (!SR) { micBlocked("Voice input isn't supported in this browser. Try Chrome on Android or Safari on iPhone, or type below."); return; }
   if (!micOK) return;
   stopListening();
   const r = new SR();
   r.lang = settings.listenLang;
   r.interimResults = true;
-  r.continuous = kind === "wake";
-  let heard = "";
-  recog = r; listenKind = kind;
+  r.continuous = true;
+  r.maxAlternatives = 1;
+  let heard = "", done = false, silence = null;
+  recog = r; listenKind = "command";
+  const finish = () => {
+    if (done || recog !== r) return;
+    done = true; clearTimeout(silence);
+    const text = heard; stopListening(); $("mic").classList.remove("live");
+    if (text.trim()) handleHeard(text, auto);
+  };
   r.onstart = () => {
     if (recog !== r) return;
-    if (kind === "command") { $("mic").classList.add("live"); setMode("listening"); caption("Listening…", true); }
-    else { setMode("waiting"); }
+    $("mic").classList.add("live"); setMode("listening");
+    caption(settings.needName && auto ? "Listening… say “Jarvis” and your question." : "Listening…", true);
   };
   r.onresult = (e) => {
-    if (recog !== r) return;
-    if (kind === "command") {
-      let txt = ""; for (let i = 0; i < e.results.length; i++) txt += e.results[i][0].transcript;
-      heard = txt; caption(txt || "Listening…", !txt);
-      return;
-    }
-    for (let i = e.resultIndex; i < e.results.length; i++) {
-      const res = e.results[i]; const txt = res[0].transcript;
-      const m = txt.match(WAKE);
-      if (!m) continue;
-      if (!res.isFinal) { caption(txt, true); continue; }
-      const cmd = txt.slice(m.index + m[0].length).trim();
-      stopListening();
-      chime();
-      if (cmd.length > 2) ask(cmd);
-      else startRecognizer("command");
-      return;
-    }
+    if (recog !== r || done) return;
+    let txt = ""; for (let i = 0; i < e.results.length; i++) txt += e.results[i][0].transcript;
+    heard = txt; if (txt.trim()) caption(txt);
+    // Answer as soon as you pause.
+    clearTimeout(silence);
+    silence = setTimeout(finish, Math.round(settings.pause * 1000));
   };
   r.onerror = (e) => {
     if (e.error === "not-allowed" || e.error === "service-not-allowed" || e.error === "audio-capture") { if (recog === r) recog = null; micBlocked(); }
   };
   r.onend = () => {
-    $("mic").classList.remove("live");
     if (recog !== r) return; // stopped on purpose
-    recog = null; listenKind = null;
-    if (kind === "command") {
-      if (heard.trim()) { ask(heard.trim()); return; }
+    if (heard.trim()) { finish(); return; }
+    recog = null; listenKind = null; $("mic").classList.remove("live");
+    if (settings.wake && !busy && !S.speaking && !document.hidden) {
+      setTimeout(() => { if (!recog && settings.wake && !busy && !S.speaking) startRecognizer(true); }, 120); // keep the mic on
+    } else {
       if (!auto) caption("I didn't catch that. Tap to try again.", true);
       setMode("idle");
-      resumeListening(false);
-    } else if (settings.wake && !busy && !S.speaking && !document.hidden) {
-      setTimeout(() => { if (!recog && settings.wake && !busy && !S.speaking) startRecognizer("wake"); }, 250);
-    } else setMode("idle");
+    }
   };
   try { r.start(); } catch { recog = null; listenKind = null; }
 }
-// After a reply: optionally listen for a follow-up, otherwise go back to waiting for "Jarvis".
-function resumeListening(allowFollowUp) {
-  if (busy || S.speaking || document.hidden || !micOK) return;
-  if (allowFollowUp && settings.followUp) startRecognizer("command", true);
-  else if (settings.wake) startRecognizer("wake");
+// After a reply: keep listening in WAKE mode, or once for a follow-up if that's switched on.
+function resumeListening() {
+  if (busy || S.speaking || document.hidden || !micOK || recog) return;
+  if (settings.wake || settings.followUp) startRecognizer(true);
 }
 function tapToTalk() {
   unlockAudio();
-  if (listenKind === "command") { const r = recog; if (r) try { r.stop(); } catch {} return; }
-  if (S.speaking) { stopSpeaking(); setMode("idle"); return; }
+  if (listenKind === "command" && !settings.wake) { const r = recog; if (r) try { r.stop(); } catch {} return; }
+  if (S.speaking) { stopSpeaking(); setMode("idle"); if (settings.wake) startRecognizer(true); return; }
   if (busy) abortTurn();
-  micOK = !!SR; startRecognizer("command");
+  micOK = !!SR; chime(); startRecognizer(settings.wake);
 }
 $("mic").addEventListener("click", tapToTalk);
 $("face").addEventListener("click", tapToTalk);
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) stopListening();
-  else { if (settings.wake) requestWakeLock(); resumeListening(false); }
+  else { if (settings.wake) requestWakeLock(); resumeListening(); }
 });
 
 // ---------- timers ----------
@@ -493,6 +496,7 @@ $("dock").addEventListener("submit", (e) => {
 // ---------- settings ----------
 function openSheet(open) { $("sheet").hidden = !open; $("scrim").hidden = !open; if (open) syncSettingsUI(); }
 function syncSettingsUI() {
+  $("needName").checked = settings.needName; $("pause").value = settings.pause; $("pauseVal").textContent = Number(settings.pause).toFixed(1) + " s";
   $("avatarStyle").value = settings.avatar;
   $("brain").value = settings.brain; $("keyBox").hidden = settings.brain === "free"; $("freeBox").hidden = settings.brain !== "free"; $("webRow").hidden = settings.brain === "free";
   if (settings.brain === "free") syncAccount();
@@ -519,6 +523,8 @@ syncLang();
 $("rate").oninput = (e) => { settings.rate = Number(e.target.value); saveSettings(); syncSettingsUI(); };
 $("pitch").oninput = (e) => { settings.pitch = Number(e.target.value); saveSettings(); syncSettingsUI(); };
 $("speakOn").onchange = (e) => { settings.speak = e.target.checked; saveSettings(); if (!settings.speak) stopSpeaking(); };
+$("needName").onchange = (e) => { settings.needName = e.target.checked; saveSettings(); };
+$("pause").oninput = (e) => { settings.pause = Number(e.target.value); saveSettings(); $("pauseVal").textContent = settings.pause.toFixed(1) + " s"; };
 $("followUp").onchange = (e) => { settings.followUp = e.target.checked; saveSettings(); };
 $("webOn").onchange = (e) => { settings.web = e.target.checked; saveSettings(); };
 $("deep").onchange = (e) => { settings.deep = e.target.checked; saveSettings(); };
@@ -538,8 +544,8 @@ function syncWake() {
 $("wakeBtn").onclick = () => {
   unlockAudio();
   settings.wake = !settings.wake; saveSettings(); micOK = !!SR; syncWake();
-  if (settings.wake) { caption("Wake mode on. Say “Jarvis” followed by your question.", true); if (!busy && !S.speaking) startRecognizer("wake"); }
-  else { if (listenKind === "wake") stopListening(); setMode("idle"); caption("Wake mode off.", true); }
+  if (settings.wake) { chime(); stopSpeaking(); if (busy) abortTurn(); startRecognizer(true); }
+  else { stopListening(); $("mic").classList.remove("live"); setMode("idle"); caption("Mic off. Tap WAKE to talk hands-free again.", true); }
 };
 syncWake();
 
@@ -561,7 +567,7 @@ else greet();
 if (settings.brain === "free") loadPuter().then(syncAccount);
 else if (!settings.apiKey) caption("Welcome. Open Settings (SET) and add your Claude API key to get started.", true);
 // Wake mode needs a tap after each fresh load (browsers require it before using the mic and speaker).
-if (settings.wake && settings.apiKey) caption("Tap WAKE to start listening for \u201cJarvis\u201d again.", true);
+if (settings.wake && settings.apiKey) caption("Tap WAKE to turn the mic on again.", true);
 settings.wake = false; syncWake();
 
 startAvatar($("face"), S);
