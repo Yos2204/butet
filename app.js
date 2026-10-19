@@ -1,5 +1,5 @@
 // Jarvis: voice assistant with a talking avatar. Brain: Claude API with the user's own key (default), or free Claude through Puter as a backup.
-import { startAvatar } from "./avatar.js?v=12";
+import { startAvatar } from "./avatar.js?v=13";
 // The Claude SDK loads on demand, so the app still starts if the CDN is slow or blocked.
 const SDK_URL = "https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk@0.131.0/+esm";
 let Anthropic = null;
@@ -93,6 +93,7 @@ if (synth) { loadVoices(); synth.addEventListener?.("voiceschanged", loadVoices)
 function cleanForSpeech(t) {
   return t.replace(/```[\s\S]*?```/g, " ").replace(/[*_#`>|~]/g, "").replace(/\[(.*?)\]\((.*?)\)/g, "$1").replace(/https?:\/\/\S+/g, "link").replace(/\s+/g, " ").trim();
 }
+const liveUtts = new Set();
 function speak(text) {
   if (!synth || !settings.speak) return;
   const clean = cleanForSpeech(text); if (!clean) return;
@@ -107,11 +108,12 @@ function speak(text) {
   u.onstart = () => { S.speaking = true; setMode("speaking"); };
   u.onboundary = () => { S.wordPulse = 1; };
   const end = () => { speakQueue = Math.max(0, speakQueue - 1); if (speakQueue === 0) { S.speaking = false; afterSpeech(); } };
-  u.onend = end; u.onerror = end;
+  u.onend = () => { liveUtts.delete(u); end(); }; u.onerror = u.onend;
+  liveUtts.add(u); // iPhone drops the 'end' event if the utterance is garbage-collected
   synth.speak(u);
 }
 function stopSpeaking() { if (synth) synth.cancel(); speakQueue = 0; S.speaking = false; }
-function afterSpeech() { if (busy) return; setMode("idle"); resumeListening(); }
+function afterSpeech() { if (busy) return; setMode("idle"); setTimeout(resumeListening, 250); } // short gap so the mic doesn't catch the voice's tail
 
 // ---------- speech input: always-on listening + one-shot commands ----------
 // WAKE turns the mic on right away and keeps it on. Whatever you say is answered as soon as you pause
@@ -165,7 +167,7 @@ function startRecognizer(auto) {
   r.continuous = true;
   r.maxAlternatives = 1;
   let heard = "", done = false, silence = null;
-  recog = r; listenKind = "command";
+  recog = r; listenKind = "command"; r._born = Date.now(); r._last = 0;
   const finish = () => {
     if (done || recog !== r) return;
     done = true; clearTimeout(silence);
@@ -174,6 +176,7 @@ function startRecognizer(auto) {
   };
   r.onstart = () => {
     if (recog !== r) return;
+    r._last = Date.now();
     const standby = auto && !inConvo;
     $("mic").classList.toggle("live", !standby); setMode(standby ? "waiting" : "listening");
     if (standby) caption("Standby. Say \u201cJarvis\u201d to start talking.", true);
@@ -182,6 +185,7 @@ function startRecognizer(auto) {
   r.onresult = (e) => {
     if (recog !== r || done) return;
     let txt = ""; for (let i = 0; i < e.results.length; i++) txt += e.results[i][0].transcript;
+    r._last = Date.now();
     heard = txt; if (txt.trim() && (inConvo || !auto || WAKE.test(txt))) caption(txt);
     // Answer as soon as you pause.
     clearTimeout(silence);
@@ -209,6 +213,29 @@ function resumeListening() {
   if (settings.wake) startRecognizer(true);
   else if (settings.followUp && inConvo) startRecognizer(false);
 }
+// Watchdog: phones (iPhone especially) sometimes drop speech events, which used to leave the mic off
+// after the first answer. Once a second, check that the mic is really listening and restart it if not.
+let quietSpeech = 0;
+setInterval(() => {
+  const wantMic = settings.wake || (settings.followUp && inConvo);
+  if (!wantMic || !micOK || document.hidden || busy) { quietSpeech = 0; return; }
+  if (S.speaking || speakQueue > 0) {
+    // The voice finished but the phone never said so.
+    if (synth && !synth.speaking && !synth.pending) { if (++quietSpeech >= 2) { quietSpeech = 0; speakQueue = 0; liveUtts.clear(); S.speaking = false; afterSpeech(); } }
+    else quietSpeech = 0;
+    return;
+  }
+  quietSpeech = 0;
+  const now = Date.now();
+  if (recog) {
+    const r = recog;
+    const stuck = (!r._last && now - r._born > 3000) // never started
+      || (r._last && now - r._last > 20000);          // started, but no sound events for a long time
+    if (stuck && listenKind === "command") { stopListening(); startRecognizer(settings.wake); }
+    return;
+  }
+  if (settings.wake) startRecognizer(true);
+}, 1000);
 function tapToTalk() {
   unlockAudio();
   if (listenKind === "command" && !settings.wake) { const r = recog; if (r) try { r.stop(); } catch {} return; }
