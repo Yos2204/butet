@@ -148,6 +148,7 @@ html, body { margin: 0; }
 .state[data-s="waiting"] i { background: var(--holo); opacity: .6; animation: blink 1.6s infinite alternate; }
 .field input[type="password"] { height: 40px; border-radius: 8px; border: 1px solid var(--line); background: var(--void); color: var(--text); padding: 0 10px; font: inherit; }
 .note a { color: var(--holo); }
+@media (max-width: 440px) { #stateText { display: none; } header { gap: 6px; } .iconbtn { padding: 0 8px; } .brand { letter-spacing: .22em; } }
 .keybox { border: 1px solid rgba(255,181,71,.4); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
 </style>
 </head>
@@ -157,6 +158,7 @@ html, body { margin: 0; }
     <span class="brand">B.U.T.E.T.</span>
     <span class="state" id="state" data-s="idle"><i></i><span id="stateText">Standing by</span></span>
     <span class="spacer"></span>
+    <button class="iconbtn" id="langBtn" title="Listening language">ID</button>
     <button class="iconbtn" id="wakeBtn" aria-pressed="false" title="Always listen for 'Butet'">WAKE</button>
     <button class="iconbtn" id="openSettings" aria-label="Settings">SET</button>
   </header>
@@ -192,7 +194,8 @@ html, body { margin: 0; }
       <p class="note">Free mode runs Claude through your own Puter account. Every account gets a free monthly allowance. No web search in this mode.</p>
     </div>
     <div class="field"><label for="userName">What should Butet call you?</label><input id="userName" type="text" placeholder="Sir"></div>
-    <div class="field"><label for="voice">Voice</label><select id="voice"></select></div>
+    <div class="field"><label for="voice">English voice</label><select id="voice"></select></div>
+    <div class="field"><label for="idVoice">Indonesian voice (also reads Batak Toba)</label><select id="idVoice"></select></div>
     <div class="field"><label for="rate">Speaking speed <span id="rateVal"></span></label><input id="rate" type="range" min="0.7" max="1.4" step="0.05"></div>
     <div class="field"><label for="pitch">Voice pitch <span id="pitchVal"></span></label><input id="pitch" type="range" min="0.6" max="1.4" step="0.05"></div>
     <div class="row"><label for="speakOn">Speak replies out loud</label><input id="speakOn" type="checkbox"></div>

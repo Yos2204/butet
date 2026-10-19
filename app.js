@@ -12,7 +12,7 @@ const store = {
 };
 const settings = Object.assign({
   apiKey: "", name: "", voice: "", rate: 1.02, pitch: 0.92,
-  speak: true, followUp: false, web: true, deep: false, wake: false, brain: "key",
+  speak: true, followUp: false, web: true, deep: false, wake: false, brain: "key", idVoice: "", listenLang: /^en/i.test(navigator.language || "") ? "en-US" : "id-ID",
 }, store.get("settings", {}));
 const saveSettings = () => store.set("settings", settings);
 let notes = store.get("notes", []);
@@ -53,20 +53,33 @@ function chime() {
 // ---------- speech output ----------
 const synth = window.speechSynthesis || null;
 let voices = [], speakQueue = 0;
+function fillVoices(selId, prefix, key, prefs) {
+  const sel = $(selId); sel.innerHTML = "";
+  const list = voices.filter(v => v.lang.toLowerCase().replace("_", "-").startsWith(prefix)).sort((a, b) => a.name.localeCompare(b.name));
+  if (!list.length) { const o = document.createElement("option"); o.value = ""; o.textContent = "Phone default (no " + (prefix === "id" ? "Indonesian" : "English") + " voice installed)"; sel.appendChild(o); }
+  for (const v of list) { const o = document.createElement("option"); o.value = v.name; o.textContent = v.name + " (" + v.lang + ")"; sel.appendChild(o); }
+  if (!settings[key] || !list.some(v => v.name === settings[key])) {
+    let pick = null;
+    for (const p of prefs) { pick = list.find(v => p.test(v.name) || p.test(v.lang)); if (pick) break; }
+    pick = pick || list[0];
+    settings[key] = pick ? pick.name : "";
+  }
+  sel.value = settings[key];
+}
 function loadVoices() {
   if (!synth) return;
   voices = synth.getVoices();
-  const sel = $("voice"); sel.innerHTML = "";
-  const sorted = voices.slice().sort((a, b) => (b.lang.startsWith("en") - a.lang.startsWith("en")) || a.name.localeCompare(b.name));
-  for (const v of sorted) { const o = document.createElement("option"); o.value = v.name; o.textContent = v.name + " (" + v.lang + ")"; sel.appendChild(o); }
-  if (!settings.voice || !voices.some(v => v.name === settings.voice)) {
-    const prefs = [/daniel/i, /uk english male/i, /arthur/i, /oliver/i, /george/i, /en-GB/i];
-    let pick = null;
-    for (const p of prefs) { pick = voices.find(v => p.test(v.name) || p.test(v.lang)); if (pick) break; }
-    pick = pick || voices.find(v => v.lang.startsWith("en")) || voices[0];
-    if (pick) settings.voice = pick.name;
-  }
-  sel.value = settings.voice;
+  fillVoices("voice", "en", "voice", [/daniel/i, /uk english male/i, /arthur/i, /oliver/i, /george/i, /en-GB/i]);
+  fillVoices("idVoice", "id", "idVoice", [/google/i, /damayanti/i, /ardi/i, /id-ID/i]);
+}
+// Which language is this sentence in? Indonesian and Batak Toba both use the Indonesian voice.
+const ID_WORDS = new Set("yang dan di ke dari tidak aku saya kamu anda ini itu dengan untuk ada bisa sudah akan sedang juga atau karena jadi apa siapa kapan bagaimana berapa sekarang hari jam menit detik baik terima kasih selamat pagi siang sore malam horas ahu ho hamu ndang dang do na ma ni tu molo boi songon jala alai nunga naeng aha ise sadia mauliate tabo ate da".split(" "));
+const EN_WORDS = new Set("the and you your is are was were to of it that this for will can have has with what when how sir done minutes seconds timer note today time good morning evening afternoon please".split(" "));
+function langOf(text) {
+  let id = 0, en = 0;
+  for (const w of text.toLowerCase().match(/[a-z]+/g) || []) { if (ID_WORDS.has(w)) id++; if (EN_WORDS.has(w)) en++; }
+  if (id === en) return settings.listenLang.startsWith("en") ? "en" : "id";
+  return id > en ? "id" : "en";
 }
 if (synth) { loadVoices(); synth.addEventListener?.("voiceschanged", loadVoices); }
 function cleanForSpeech(t) {
@@ -77,7 +90,10 @@ function speak(text) {
   const clean = cleanForSpeech(text); if (!clean) return;
   stopListening(); // don't let the mic hear Butet talking
   const u = new SpeechSynthesisUtterance(clean);
-  const v = voices.find(v => v.name === settings.voice); if (v) { u.voice = v; u.lang = v.lang; }
+  const lang = langOf(clean);
+  const vName = lang === "id" ? settings.idVoice : settings.voice;
+  const v = voices.find(v => v.name === vName);
+  if (v) { u.voice = v; u.lang = v.lang; } else u.lang = lang === "id" ? "id-ID" : "en-US";
   u.rate = settings.rate; u.pitch = settings.pitch;
   speakQueue++;
   u.onstart = () => { S.speaking = true; setMode("speaking"); };
@@ -92,7 +108,7 @@ function afterSpeech() { if (busy) return; setMode("idle"); resumeListening(true
 // ---------- speech input: wake word + one-shot commands ----------
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 let recog = null, listenKind = null, micOK = !!SR;
-const WAKE = /\b(?:hey |ok |okay |halo |hai )?(butet|butte|butt?et|bootet|boot it|boo tet|bu tet|putet|butet\w*)\b[,.!?]?\s*/i;
+const WAKE = /\b(?:hey |ok |okay |halo |hai |horas )?(butet|butte|butt?et|bootet|boot it|boo tet|bu tet|putet|butet\w*)\b[,.!?]?\s*/i;
 
 function micBlocked(msg) {
   micOK = false; settings.wake = false; saveSettings(); syncWake();
@@ -108,7 +124,7 @@ function startRecognizer(kind, auto) {
   if (!micOK) return;
   stopListening();
   const r = new SR();
-  r.lang = navigator.language || "en-US";
+  r.lang = settings.listenLang;
   r.interimResults = true;
   r.continuous = kind === "wake";
   let heard = "";
@@ -254,7 +270,8 @@ function getClient() {
   return client;
 }
 const persona = () => `You are Butet, a personal AI assistant in the spirit of J.A.R.V.I.S., Tony Stark's butler AI: calm, capable, quietly witty, with a dry British politeness. Address the user as "${callName()}". Your words are spoken aloud by a voice on the user's phone, so:
-- Reply in the language the user speaks to you in (for example English or Indonesian).
+- You speak only three languages: Bahasa Indonesia, Bahasa Batak Toba, and English. Reply in whichever of the three the user used. If the user writes in any other language, answer briefly in Bahasa Indonesia that you only speak Indonesian, Batak Toba and English.
+- Speech recognition may turn spoken Batak Toba into odd Indonesian-looking text; if a message reads like Batak Toba, treat it as Batak Toba and reply in Batak Toba.
 - Reply in plain spoken sentences. No markdown, no lists, no emoji, no URLs unless asked.
 - Keep it short: one to three sentences unless the user asks for detail.
 - Use your tools when they help: time, timers, notes, battery, location, and web search for current events, weather, scores and facts you aren't sure of. Never invent the time or date; call get_current_time.
@@ -487,13 +504,21 @@ $("brain").onchange = async (e) => { settings.brain = e.target.value; saveSettin
 $("apiKey").oninput = $("apiKey").onchange = (e) => { settings.apiKey = e.target.value.replace(/\s+/g, ""); saveSettings(); };
 $("userName").oninput = (e) => { settings.name = e.target.value.slice(0, 40); saveSettings(); };
 $("voice").onchange = (e) => { settings.voice = e.target.value; saveSettings(); };
+$("idVoice").onchange = (e) => { settings.idVoice = e.target.value; saveSettings(); };
+function syncLang() { $("langBtn").textContent = settings.listenLang.startsWith("en") ? "EN" : "ID"; $("langBtn").setAttribute("aria-label", "Listening language: " + (settings.listenLang.startsWith("en") ? "English" : "Indonesian or Batak Toba")); }
+$("langBtn").onclick = () => {
+  settings.listenLang = settings.listenLang.startsWith("en") ? "id-ID" : "en-US"; saveSettings(); syncLang();
+  caption(settings.listenLang.startsWith("en") ? "Listening in English." : "Mendengarkan dalam Bahasa Indonesia / Batak Toba.", true);
+  if (listenKind) { const k = listenKind; stopListening(); startRecognizer(k); }
+};
+syncLang();
 $("rate").oninput = (e) => { settings.rate = Number(e.target.value); saveSettings(); syncSettingsUI(); };
 $("pitch").oninput = (e) => { settings.pitch = Number(e.target.value); saveSettings(); syncSettingsUI(); };
 $("speakOn").onchange = (e) => { settings.speak = e.target.checked; saveSettings(); if (!settings.speak) stopSpeaking(); };
 $("followUp").onchange = (e) => { settings.followUp = e.target.checked; saveSettings(); };
 $("webOn").onchange = (e) => { settings.web = e.target.checked; saveSettings(); };
 $("deep").onchange = (e) => { settings.deep = e.target.checked; saveSettings(); };
-$("testVoice").onclick = () => { unlockAudio(); stopSpeaking(); speak("At your service, " + callName() + ". All systems are online."); };
+$("testVoice").onclick = () => { unlockAudio(); stopSpeaking(); speak("At your service, " + callName() + ". All systems are online."); speak("Horas! Butet siap membantu kamu hari ini."); };
 $("clearChat").onclick = () => { history = []; store.set("history", history); freeHistory = []; store.set("freeHistory", freeHistory); logEl.innerHTML = ""; greet(); openSheet(false); };
 
 let wakeLock = null;
@@ -517,8 +542,10 @@ syncWake();
 // ---------- start ----------
 function greet() {
   const h = new Date().getHours();
-  const part = h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
-  addMsg("ai", part + ", " + callName() + ". Butet online. Ask me anything, set a timer, or have me take a note.");
+  if (settings.listenLang.startsWith("en")) {
+    const part = h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
+    addMsg("ai", part + ", " + callName() + ". Butet online. Ask me anything, set a timer, or have me take a note.");
+  } else addMsg("ai", "Horas, " + callName() + "! Butet siap membantu. Tanya apa saja, pasang timer, atau minta aku mencatat.");
 }
 function textOf(m) {
   if (typeof m.content === "string") return m.content;

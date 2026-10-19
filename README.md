@@ -9,6 +9,10 @@ A voice assistant with a talking holographic face, powered by the Claude API. It
 - Butet can set timers, save notes, and read the time, battery and location.
 - Settings, notes and chat history stay on the phone.
 
+## Languages
+
+Butet only speaks Bahasa Indonesia, Bahasa Batak Toba and English. The ID/EN button sets which language the microphone listens for (ID covers Batak Toba too, since phones have no Batak speech recognition). Replies in Indonesian or Batak Toba are read with the phone's Indonesian voice; English replies use the English voice.
+
 ## What you need
 
 - A Claude API key from https://console.anthropic.com/settings/keys with some credit. Paste it in Settings. Each question costs about 1 to 2 cents; web searches add a little.
