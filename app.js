@@ -484,7 +484,7 @@ function syncSettingsUI() {
 $("openSettings").onclick = () => openSheet(true);
 $("closeSettings").onclick = $("scrim").onclick = () => openSheet(false);
 $("brain").onchange = async (e) => { settings.brain = e.target.value; saveSettings(); syncSettingsUI(); if (settings.brain === "free" && await loadPuter()) syncAccount(); };
-$("apiKey").onchange = (e) => { settings.apiKey = e.target.value.trim(); saveSettings(); };
+$("apiKey").oninput = $("apiKey").onchange = (e) => { settings.apiKey = e.target.value.replace(/\s+/g, ""); saveSettings(); };
 $("userName").oninput = (e) => { settings.name = e.target.value.slice(0, 40); saveSettings(); };
 $("voice").onchange = (e) => { settings.voice = e.target.value; saveSettings(); };
 $("rate").oninput = (e) => { settings.rate = Number(e.target.value); saveSettings(); syncSettingsUI(); };
