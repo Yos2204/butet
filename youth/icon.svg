@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="112" fill="#140c10"/>
+  <rect x="0" y="420" width="512" height="26" fill="#b3261e"/>
+  <rect x="0" y="446" width="512" height="7" fill="#f3e6d0"/>
+  <rect x="0" y="453" width="512" height="11" fill="#c9932b"/>
+  <path d="M136 92 h240 a40 40 0 0 1 40 40 v130 a40 40 0 0 1 -40 40 h-150 l-62 48 v-48 h-28 a40 40 0 0 1 -40 -40 v-130 a40 40 0 0 1 40 -40z" fill="#ff4d6d"/>
+  <path d="M276 112 l-86 108 h58 l-24 82 92 -116 h-60z" fill="#ffd23f"/>
+  <text x="256" y="400" text-anchor="middle" font-family="Arial Black, Arial, sans-serif" font-weight="900" font-size="70" fill="#fff7ef">GUGAH!</text>
+</svg>

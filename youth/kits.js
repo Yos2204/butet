@@ -1,0 +1,51 @@
+// Ready-made sessions teachers can start from. Edit freely after adding.
+window.KITS = [
+{
+  title: "Anak yang Hilang: Pulang Itu Selalu Boleh", verse: "Lukas 15:11-32", langName: "Bahasa Indonesia",
+  acts: [
+    { type: "tap", q: "Lomba bangun! Ketuk untuk timmu!" },
+    { type: "poll", q: "Minggu ini kamu seperti cuaca apa?", options: ["☀️ Cerah", "⛅ Berawan", "🌧️ Hujan deras", "⛈️ Badai"] },
+    { type: "words", q: "Satu kata: apa yang paling bikin kamu capek minggu ini?" },
+    { type: "scale", q: "Kalau aku buat salah besar, orang tuaku tetap menerima aku.", left: "Ragu", right: "Yakin sekali" },
+    { type: "slide", title: "1. Dia minta warisan duluan", text: "Si bungsu minta bagiannya saat ayahnya masih hidup.\nArtinya: “Aku mau hartamu, bukan kamu.”" },
+    { type: "quiz", q: "Si bungsu akhirnya bekerja menjaga apa?", options: ["Domba", "Babi", "Kambing", "Unta"], correct: 1, time: 20 },
+    { type: "slide", title: "2. Dia sadar, lalu pulang", text: "Di titik paling rendah, dia ingat rumah.\nDia pulang dengan pidato: “Jadikan aku orang upahan.”" },
+    { type: "quiz", q: "Apa yang ayah lakukan saat melihat anaknya dari jauh?", options: ["Menunggu di rumah", "Berlari memeluknya", "Menyuruh pelayan mengusir", "Marah dulu"], correct: 1, time: 20 },
+    { type: "slide", title: "3. Ayah berlari duluan", text: "Belum selesai minta maaf, dia sudah dipeluk, diberi jubah, cincin, dan pesta.\nBegitulah Allah menyambut kita." },
+    { type: "poll", q: "Kamu paling mirip siapa minggu ini?", options: ["Si bungsu yang pergi", "Si sulung yang kesal", "Ayah yang menunggu", "Belum tahu"] },
+    { type: "verse", ref: "Lukas 15:24", text: "Sebab anakku ini telah mati dan menjadi hidup kembali, ia telah hilang dan didapat kembali." },
+    { type: "open", q: "Hal kecil apa yang bisa kamu lakukan untuk “pulang” minggu ini?" },
+    { type: "qa", q: "Tanya apa saja tentang Tuhan, iman, atau hidup. Tanpa nama!" },
+    { type: "prayer", q: "Apa yang bisa kami doakan untukmu minggu ini?" },
+    { type: "board" },
+  ],
+},
+{
+  title: "Be Strong and Courageous", verse: "Joshua 1:1-9", langName: "English",
+  acts: [
+    { type: "tap", q: "Wake-up race! Tap for your team!" },
+    { type: "poll", q: "Which scares you most?", options: ["📝 Exams", "🎤 Speaking in front of people", "📱 Being left out of the group chat", "🕷️ Spiders"] },
+    { type: "scale", q: "I feel brave enough to say I'm a Christian at school.", left: "Not at all", right: "Totally" },
+    { type: "slide", title: "Joshua had huge shoes to fill", text: "Moses was gone.\nJoshua had to lead a whole nation into a land full of giants." },
+    { type: "quiz", q: "Who led Israel before Joshua?", options: ["Abraham", "Moses", "David", "Elijah"], correct: 1, time: 15 },
+    { type: "slide", title: "God didn't say “you're strong”", text: "He said “I will be with you.”\nCourage isn't feeling no fear. It's knowing who walks with you." },
+    { type: "quiz", q: "How many times does God say “be strong and courageous” in Joshua 1?", options: ["Once", "Twice", "Three times", "Seven times"], correct: 2, time: 20 },
+    { type: "words", q: "One word: where do you need courage this week?" },
+    { type: "verse", ref: "Joshua 1:9", text: "Be strong and courageous. Do not be afraid; do not be discouraged, for the LORD your God will be with you wherever you go." },
+    { type: "open", q: "What would you do this week if you weren't afraid?" },
+    { type: "qa", q: "Ask anything, no names!" },
+    { type: "prayer", q: "What can we pray for you this week?" },
+    { type: "board" },
+  ],
+},
+{
+  title: "Pemanasan 10 Menit (bisa dipakai tiap minggu)", verse: "", langName: "Bahasa Indonesia + Batak",
+  acts: [
+    { type: "tap", q: "Lomba bangun! Ketuk untuk timmu!" },
+    { type: "poll", q: "Tadi pagi kamu bangun jam berapa?", options: ["Sebelum jam 7", "Jam 7–8", "Jam 8–9", "Barusan 😴"] },
+    { type: "quiz", q: "“Mauliate” dalam bahasa Batak artinya…", options: ["Selamat pagi", "Terima kasih", "Sampai jumpa", "Ayo makan"], correct: 1, time: 15 },
+    { type: "words", q: "Satu kata untuk minggumu" },
+    { type: "board" },
+  ],
+},
+];
