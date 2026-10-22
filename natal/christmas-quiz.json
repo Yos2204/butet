@@ -1,0 +1,23 @@
+{
+  "title": "Kuis Natal Naposo / Christmas Quiz",
+  "verse": "Lukas 2:10-11",
+  "date": "2026-12-19",
+  "acts": [
+    { "type": "slide", "title": "Horas! Selamat Natal!", "text": "Kuis Natal Naposo 2026. Pindai kode QR dan tulis nama timmu. / Scan the QR code and enter your team name." },
+    { "type": "poll", "q": "Bagian Natal favoritmu? / Your favourite part of Christmas?", "options": ["Ibadah malam Natal / Christmas Eve", "Makan bersama / The food", "Kado / Gifts", "Kumpul keluarga / Family", "Lagu Natal / Carols"] },
+    { "type": "quiz", "q": "Di kota mana Yesus lahir? / Where was Jesus born?", "options": ["Nazaret", "Betlehem", "Yerusalem", "Kapernaum"], "correct": 1, "time": 20 },
+    { "type": "quiz", "q": "Malaikat yang datang kepada Maria? / The angel who visited Mary?", "options": ["Mikhael", "Rafael", "Gabriel", "Uriel"], "correct": 2, "time": 20 },
+    { "type": "quiz", "q": "Siapa yang pertama mendengar kabar dari malaikat? / Who heard the angels first?", "options": ["Raja Herodes", "Para gembala / Shepherds", "Para imam / Priests", "Nelayan / Fishermen"], "correct": 1, "time": 20 },
+    { "type": "quiz", "q": "\"Imanuel\" artinya... / means...", "options": ["Raja damai / Prince of peace", "Allah menyertai kita / God with us", "Terang dunia / Light of the world", "Anak Daud / Son of David"], "correct": 1, "time": 20 },
+    { "type": "quiz", "q": "Emas, kemenyan, dan... / Gold, frankincense and...", "options": ["Perak / Silver", "Mur / Myrrh", "Minyak / Oil", "Roti / Bread"], "correct": 1, "time": 20 },
+    { "type": "board" },
+    { "type": "quiz", "q": "\"Malam Kudus\" pertama dinyanyikan di (1818)... / \"Silent Night\" was first sung in...", "options": ["Jerman / Germany", "Inggris / England", "Austria", "Belanda / Netherlands"], "correct": 2, "time": 30 },
+    { "type": "quiz", "q": "Misionaris \"Rasul Batak\"? / The \"Apostle to the Batak\"?", "options": ["Nommensen", "Hudson Taylor", "William Carey", "Luther"], "correct": 0, "time": 20 },
+    { "type": "quiz", "q": "Bahasa Batak: \"las ni roha\" artinya... / means...", "options": ["Sukacita / Joy", "Damai / Peace", "Kasih / Love", "Doa / Prayer"], "correct": 0, "time": 20 },
+    { "type": "tap", "q": "Tap race! Tim mana paling cepat? / Which team taps fastest?" },
+    { "type": "verse", "ref": "Lukas 2:11", "text": "Hari ini telah lahir bagimu Juruselamat, yaitu Kristus, Tuhan, di kota Daud." },
+    { "type": "words", "q": "Satu kata untuk Natal tahun ini / One word for Christmas this year" },
+    { "type": "board" },
+    { "type": "prayer", "q": "Tulis satu doa Natal untuk keluargamu (rahasia) / A Christmas prayer for your family (private)" }
+  ]
+}
