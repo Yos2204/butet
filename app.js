@@ -292,6 +292,10 @@ const APPS = [
   // The HTML workbench is served next to Jarvis, so it opens for anyone using Jarvis on any device.
   { name: "Tata Ibadah Workbench", url: new URL("workbench/", location.href).href, alias: "tata ibadah|workbench|church workbench|liturgi|tata ibadah workbench" },
   // The owner's own copy inside Claude (only opens for the owner's Claude account).
+  // Gugah! youth sermon games (teacher screen + phones join by QR code), also served next to Jarvis.
+  { name: "Gugah Youth", url: new URL("youth/", location.href).href, alias: "gugah|youth|youth app|youth sermon|pemuda|naposo|remaja|sekolah minggu remaja|kuis pemuda|youth quiz" },
+  // Christmas (Natal) app for the youth, also served next to Jarvis.
+  { name: "Natal", url: new URL("natal/", location.href).href, alias: "natal|christmas|christmas app|natal naposo|buka natal|advent" },
   { name: "Tata Ibadah Workbench in Claude", url: "https://claude.ai/artifact/85CBgHbEwL7LBAJ8eKR2iH", alias: "workbench in claude|claude workbench|tata ibadah in claude" },
   { name: "WhatsApp", url: "whatsapp://", alias: "wa|whatsapp|watsap" },
   { name: "Telegram", url: "tg://", alias: "telegram" },
@@ -474,7 +478,7 @@ const localTools = {
     run: (i) => sendToClaude(i.prompt),
   },
   open_app: {
-    description: "Opens an app on the user's phone by name, e.g. WhatsApp, YouTube, Spotify, Maps, Phone, Messages, Camera roll (Photos), Gojek, or the Tata Ibadah Workbench (the church order-of-service app; use 'Tata Ibadah Workbench in Claude' only if they ask for the Claude version). Also opens any app the user added in Settings. Returns the list of known apps if the name isn't found.",
+    description: "Opens an app on the user's phone by name, e.g. WhatsApp, YouTube, Spotify, Maps, Phone, Messages, Camera roll (Photos), Gojek, the Natal app (Christmas countdown and programme; aliases: christmas, natal), the Gugah Youth app (live polls, quizzes and games for the youth sermon; aliases: youth, naposo, pemuda, remaja), or the Tata Ibadah Workbench (the church order-of-service app; use 'Tata Ibadah Workbench in Claude' only if they ask for the Claude version). Also opens any app the user added in Settings. Returns the list of known apps if the name isn't found.",
     schema: { properties: { app: { type: "string", description: "The app's name as the user said it" } }, required: ["app"] },
     run: (i) => openApp(i.app),
   },
