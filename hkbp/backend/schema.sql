@@ -174,7 +174,8 @@ declare m hk_members; tok text;
 begin
   perform pg_sleep(0.3); -- slows down password guessing
   select * into m from hk_members where phone = hk__phone(p_phone) and removed_at is null;
-  if m.id is null or m.pass_hash is null or m.pass_hash <> crypt(coalesce(p_password, ''), m.pass_hash) then
+  if m.id is not null and m.pass_hash is null then raise exception 'needs_password'; end if; -- the app then asks them to create one
+  if m.id is null or m.pass_hash <> crypt(coalesce(p_password, ''), m.pass_hash) then
     raise exception 'bad_login';
   end if;
   tok := encode(gen_random_bytes(24), 'hex');
@@ -183,29 +184,19 @@ begin
 end $$;
 
 -- First sign-in with a one-time setup code (given by the admin): sets the member's own password.
-create or replace function hk_claim(p_phone text, p_code text, p_password text) returns jsonb language plpgsql security definer set search_path = public, extensions as $$
+-- First sign-in: a member on the list who has no password yet creates their own (no code needed).
+create or replace function hk_first_password(p_phone text, p_password text) returns jsonb language plpgsql security definer set search_path = public, extensions as $$
 declare m hk_members; tok text;
 begin
   perform pg_sleep(0.5);
   select * into m from hk_members where phone = hk__phone(p_phone) and removed_at is null;
-  if m.id is null or m.setup_code_hash is null or m.setup_code_hash <> crypt(upper(trim(coalesce(p_code, ''))), m.setup_code_hash) then
-    raise exception 'bad_code';
-  end if;
+  if m.id is null or m.pass_hash is not null then raise exception 'bad_login'; end if;
   if length(coalesce(p_password, '')) < 6 then raise exception 'short_password'; end if;
-  update hk_members set pass_hash = crypt(p_password, gen_salt('bf')), setup_code_hash = null where id = m.id;
+  update hk_members set pass_hash = crypt(p_password, gen_salt('bf')), setup_code_hash = null where id = m.id and pass_hash is null;
+  if not found then raise exception 'bad_login'; end if;
   tok := encode(gen_random_bytes(24), 'hex');
   insert into hk_sessions values (tok, m.id, now() + interval '180 days');
   return jsonb_build_object('token', tok);
-end $$;
-
--- Admin (SQL Editor or Claude) gives a member a one-time setup code.
-create or replace function hk_make_setup_code(p_name text, p_phone text, p_code text, p_admin boolean default false) returns text language plpgsql security definer set search_path = public, extensions as $$
-begin
-  if hk__phone(p_phone) !~ '^[3689][0-9]{7}$' then raise exception 'Use an 8-digit Singapore phone number'; end if;
-  insert into hk_members (name, phone, setup_code_hash, is_admin, groups)
-  values (p_name, hk__phone(p_phone), crypt(upper(trim(p_code)), gen_salt('bf')), p_admin, case when p_admin then '{"parhalado":"chair"}'::jsonb else '{}'::jsonb end)
-  on conflict (phone) do update set setup_code_hash = excluded.setup_code_hash, is_admin = hk_members.is_admin or excluded.is_admin, removed_at = null;
-  return 'Setup code ready for ' || hk__phone(p_phone);
 end $$;
 
 create or replace function hk_logout(p_token text) returns void language sql security definer set search_path = public as $$
@@ -215,7 +206,7 @@ $$;
 create or replace function hk_set_password(p_token text, p_old text, p_new text) returns void language plpgsql security definer set search_path = public, extensions as $$
 declare m hk_members := hk__me(p_token);
 begin
-  if length(coalesce(p_new, '')) < 4 then raise exception 'short_password'; end if;
+  if length(coalesce(p_new, '')) < 6 then raise exception 'short_password'; end if;
   if m.pass_hash <> crypt(coalesce(p_old, ''), m.pass_hash) then raise exception 'bad_login'; end if;
   update hk_members set pass_hash = crypt(p_new, gen_salt('bf')) where id = m.id;
 end $$;
@@ -377,6 +368,6 @@ end $$;
 
 -- Only these functions are open to the app's public key.
 revoke execute on all functions in schema public from public, anon, authenticated;
-grant execute on function hk_login(text, text), hk_claim(text, text, text), hk_logout(text), hk_set_password(text, text, text), hk_data(text),
+grant execute on function hk_login(text, text), hk_first_password(text, text), hk_logout(text), hk_set_password(text, text, text), hk_data(text),
   hk_roster_file(text, uuid), hk_save(text, text, jsonb), hk_remove(text, text, text), hk_members_upsert(text, jsonb),
   hk_push_save(text, jsonb), hk_push_remove(text, text) to anon;
