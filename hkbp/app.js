@@ -233,21 +233,31 @@ async function enableNotifications(btn) {
   const perm = await Notification.requestPermission();
   if (perm !== "granted") { toast(t("notifyDenied"), true); return; }
   const reg = await swReg();
-  if (api.mode === "remote" && vapid() && reg && reg.pushManager && !isGuest()) {
-    try {
-      let sub = await reg.pushManager.getSubscription();
-      // Re-subscribe if the phone is still registered with an older server key.
-      if (sub && sub.options && sub.options.applicationServerKey && btoa(String.fromCharCode(...new Uint8Array(sub.options.applicationServerKey))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "") !== vapid()) { await sub.unsubscribe(); sub = null; }
-      if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64urlToU8(vapid()) });
-      await api.pushSave(sub.toJSON()); LS.set("pushOn", true);
-    } catch (e) { console.warn(e); toast(t("pushFailed"), true); }
-  }
+  if (!(await ensurePush(reg)) && api.mode === "remote" && !isGuest()) toast(t("pushFailed"), true);
   LS.set("notifyOn", true);
   if (reg) reg.showNotification("Sada HKBPS", { body: t("notifyOk"), icon: "icon-192.png", badge: "icon-192.png", tag: "hkbp-test" });
   render();
 }
+// Notifications stay on: once the phone has allowed them, every open and every sign-in quietly renews this phone's
+// push sign-up for the signed-in member (new sign-in, new server key, or a sign-up the phone dropped).
+async function ensurePush(reg) {
+  if (!("Notification" in window) || Notification.permission !== "granted") return false;
+  LS.set("notifyOn", true);
+  reg = reg || await swReg();
+  if (!(api.mode === "remote" && vapid() && reg && reg.pushManager && !isGuest())) return true;
+  try {
+    let sub = await reg.pushManager.getSubscription();
+    // Re-subscribe if the phone is still registered with an older server key.
+    if (sub && sub.options && sub.options.applicationServerKey && btoa(String.fromCharCode(...new Uint8Array(sub.options.applicationServerKey))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "") !== vapid()) { await sub.unsubscribe(); sub = null; }
+    if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64urlToU8(vapid()) });
+    const key = D.me.id + "|" + sub.endpoint;
+    if (LS.get("pushKey") !== key || !LS.get("pushOn")) { await api.pushSave(sub.toJSON()); LS.set("pushKey", key); LS.set("pushOn", true); }
+    return true;
+  } catch (e) { console.warn(e); return false; }
+}
 // Without the server job (demo mode, or before push is set up) the app shows today's reminders when it is opened.
 async function localReminders() {
+  if (D && !isGuest()) await ensurePush();
   if (!D || !LS.get("notifyOn") || !("Notification" in window) || Notification.permission !== "granted") return;
   if (api.mode === "remote" && LS.get("pushOn") && vapid()) return; // the server sends these
   const reg = await swReg(); if (!reg) return;
@@ -1318,7 +1328,12 @@ F.login = async (f) => {
   try { await api.login(f.phone.value, f.pw.value); }
   catch (e) { if (e.code !== "needs_password") throw e; return firstPwSheet(f.phone.value); }
   D = null; await refresh(); afterSignIn(); backAfterLogin(); localReminders(); };
-function afterSignIn() { if (viewMode() === "admin" && D && !hasRights()) { LS.set("view", "member"); toast(t("notAdmin")); } }
+function afterSignIn() {
+  if (viewMode() === "admin" && D && !hasRights()) { LS.set("view", "member"); toast(t("notAdmin")); }
+  // Right after signing in, ask once for notifications (the phone only allows this after a tap).
+  if ("Notification" in window && Notification.permission === "default") setTimeout(() => sheet(t("notifyAskTitle"), `<p class="muted">${esc(t("notifyAskBody"))}</p><button class="btn primary block" data-act="notifyNow">${ic("bell")} ${esc(t("notifyAskTitle"))}</button>`), 600);
+}
+A.notifyNow = async (d, btn) => { closeSheet(); await enableNotifications(btn); };
 F.firstpw = async (f) => {
   if ((f.pw.value || "").length < 6) throw new S.AppError("short_password");
   if (f.pw.value !== f.pw2.value) throw new S.AppError("pw_mismatch");
