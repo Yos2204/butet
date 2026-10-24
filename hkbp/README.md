@@ -32,7 +32,7 @@ Until step 2 is done the app runs in demo mode, with data only on each phone.
    Use a new, empty Supabase project: the script locks all functions in it except the app's own.
 2. **Connect the app:** Supabase, Project Settings, API. Put the Project URL and the `anon public` key into `config.js` (both are public by design). Never put the `service_role` key in the app.
 3. **Phone notifications:** create a VAPID key pair (`npx web-push generate-vapid-keys`). Public key into `config.js` (`vapidPublicKey`).
-4. **Server job:** in GitHub, repo Settings, Secrets and variables, Actions, add `SUPABASE_URL`, `SUPABASE_SERVICE_KEY` (the service_role key), `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, and optionally `ANTHROPIC_API_KEY` (drafts the daily bread at 06:00 when no elder wrote one). The workflow `.github/workflows/hkbp-notify.yml` runs every 15 minutes and does nothing until these exist.
+4. **Notifications:** the Supabase Edge Function `hkbp-notify` (backend/edge/hkbp-notify/index.ts) runs every 15 minutes from the database (pg_cron). Its push keys and cron key are created on the server; the admin saves the Claude API key in the app's daily bread setup. Nothing to set up in GitHub.
 5. Sign in as the admin, upload the member list, and share the link. Members install it to the home screen and tap "Turn on notifications".
 
 ## Notifications and WhatsApp
@@ -51,3 +51,9 @@ After changes, bump `?v=` in `index.html` and `CACHE` in `sw.js`.
 - The app uses the official HKBP logo (`logo.png`, from YB). Home-screen icons are the logo on white (`icon-192.png`, `icon-512.png`, `apple-touch-icon.png`).
 - Personal data (birthdays, phone numbers) lives only in the church's Supabase database, never in this public repository. Members should agree to their data being used (PDPA).
 - Batak Toba texts in `i18n.js` should be checked by a fluent elder; missing Batak texts fall back to English.
+
+## Secretary, Treasurer and Chairman
+
+Private categories: only the office holders (added by the admin by phone number in the app) and the admin see them, enforced in the database (`hk__office`, `hk__sees`). Opening one asks for the phone number once per session. Holders upload files (up to 10 MB, `hk_files`) and share them to WhatsApp through a pop-up.
+
+The Treasurer writes the weekly Warta Keuangan. The Secretary's Warta Jemaat builder (`#/warta`) fills in birthdays, finance, the Tata Ibadah theme, the service team (last week's next-Sunday column plus rosters), elders' updates and calendar events, carries the organisation list and offering info from the previous Warta, and makes a 2-page A4 landscape PDF (html2canvas + jsPDF, loaded on demand) that is saved in the Secretary files and shared to WhatsApp.

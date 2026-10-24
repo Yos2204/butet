@@ -56,6 +56,8 @@ const IC = {
   upload: '<path d="M12 16V4M7 9l5-5 5 5M4 21h16"/>',
   edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>',
   trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
+  coins: '<ellipse cx="9" cy="6" rx="6" ry="2.5"/><path d="M3 6v4c0 1.4 2.7 2.5 6 2.5s6-1.1 6-2.5V6"/><path d="M3 10v4c0 1.4 2.7 2.5 6 2.5"/><ellipse cx="15" cy="14" rx="6" ry="2.5"/><path d="M9 14v4c0 1.4 2.7 2.5 6 2.5s6-1.1 6-2.5v-4"/>',
+  gavel: '<path d="M14 4l6 6M11 7l6 6M12.5 5.5l-5 5 4 4 5-5zM9.5 12.5L3 19l2 2 6.5-6.5M13 21h8"/>',
   file: '<path d="M14 3H6v18h12V7z"/><path d="M14 3v4h4M9 13h6M9 17h6"/>',
   link: '<path d="M10 14a4 4 0 005.7 0l3-3a4 4 0 00-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 00-5.7 0l-3 3a4 4 0 005.7 5.7l1-1"/>',
   back: '<path d="M15 5l-7 7 7 7"/>',
@@ -78,11 +80,20 @@ const ic = (n, cls = "") => `<svg class="ic ${cls}" viewBox="0 0 24 24" fill="no
 
 // ---------- roles ----------
 const me = () => D.me;
-const isAdmin = () => !!(D && D.me.is_admin);
-const isElder = () => isAdmin() || "parhalado" in (D.me.groups || {});
+// Two layouts: "admin" (chairs, elders and admins maintain content) and "member" (congregation sees the results).
+// The choice only hides or shows tools; what a person may change is still decided by their real role on the server.
+const viewMode = () => LS.get("view", null);
+const hasRights = () => !!(D && (D.me.is_admin || "parhalado" in (D.me.groups || {}) || Object.values(D.me.groups || {}).some((r) => r === "chair" || r === "maker")));
+// Multimedia: only people on the maker list (or its chair) may open the Tata Ibadah workbench; checkers and everyone else read.
+const isMMMaker = () => !!(D && ["maker", "chair"].includes((D.me.groups || {}).multimedia));
+const mmRole = () => { try { return sessionStorage.getItem("hkbp.mm") || ""; } catch { return ""; } };
+const setMMRole = (v) => { try { v ? sessionStorage.setItem("hkbp.mm", v) : sessionStorage.removeItem("hkbp.mm"); } catch {} };
+const manage = () => viewMode() === "admin" && hasRights();
+const isAdmin = () => !!(D && D.me.is_admin) && manage();
+const isElder = () => manage() && (D.me.is_admin || "parhalado" in (D.me.groups || {}));
 const roleIn = (gid) => (D.me.groups || {})[gid] || null;
-const canEdit = (gid) => isAdmin() || roleIn(gid) === "chair";
-const canSee = (g) => g.kind === "service" || isElder() || !!roleIn(g.id);
+const canEdit = (gid) => manage() && (D.me.is_admin || roleIn(gid) === "chair");
+const canSee = (g) => (g.kind === "office" ? isOffice() : g.kind === "service" || isElder() || !!roleIn(g.id));
 const G = (id) => D.groups.find((g) => g.id === id);
 const gname = (g) => (g ? g["name_" + lang] || g.name_en || g.id : t("wholeChurch"));
 const firstName = (n) => String(n || "").replace(/^(Pdt|St|Sintua|Bapak|Ibu|Kak|Bang|Ev|Dr)\.?\s+/i, "").split(/\s+/)[0];
@@ -122,6 +133,16 @@ function ics(events) {
     lines.push(`DESCRIPTION:${c([gname(e.group_id ? G(e.group_id) : null), e.notes].filter(Boolean).join("\n"))}`);
     if (e.remind_min > 0) lines.push("BEGIN:VALARM", "ACTION:DISPLAY", `DESCRIPTION:${c(e.title)}`, `TRIGGER:-PT${e.remind_min}M`, "END:VALARM");
     lines.push("END:VEVENT");
+  });
+  lines.push("END:VCALENDAR");
+  return lines.join("\r\n");
+}
+function icsBirthdays(list) {
+  const c = (s) => String(s || "").replace(/([,;\\])/g, "\\$1"); const y = +today().slice(0, 4); const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+  const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//HKBP Singapore//App//EN", "CALSCALE:GREGORIAN"];
+  list.forEach((b) => {
+    const md = b.bday === "02-29" ? "02-28" : b.bday; const d = `${y}${md.replace("-", "")}`;
+    lines.push("BEGIN:VEVENT", `UID:bday-${norm(b.name).replace(/ /g, "-")}-${b.bday}@hkbp-singapore`, `DTSTAMP:${stamp}`, `DTSTART;VALUE=DATE:${d}`, "RRULE:FREQ=YEARLY", `SUMMARY:${c("🎂 " + b.name)}`, "TRANSP:TRANSPARENT", "END:VEVENT");
   });
   lines.push("END:VCALENDAR");
   return lines.join("\r\n");
@@ -175,16 +196,23 @@ function duties(person = D.me) {
 }
 
 // ---------- birthdays ----------
+// Members' birthdays plus the imported birthday list (people not in the member list), without doubles.
+function allBdays() {
+  const seen = new Set(); const out = [];
+  D.people.filter((p) => p.bday).forEach((p) => { seen.add(norm(p.name) + p.bday); out.push({ ...p, kind: "member" }); });
+  (D.birthdays || []).forEach((b) => { if (!seen.has(norm(b.name) + b.bday)) out.push({ ...b, kind: "list" }); });
+  return out;
+}
 function birthdaysBetween(fromIso, days) {
-  const out = [];
-  for (let i = 0; i <= days; i++) { const d = addDays(fromIso, i); const md = d.slice(5); D.people.filter((p) => p.bday === md).forEach((p) => out.push({ p, day: d, inDays: i })); }
+  const out = []; const all = allBdays();
+  for (let i = 0; i <= days; i++) { const d = addDays(fromIso, i); const md = d.slice(5); all.filter((p) => p.bday === md).forEach((p) => out.push({ p, day: d, inDays: i })); }
   return out;
 }
 
 // ---------- notifications ----------
 async function swReg() { if (!("serviceWorker" in navigator)) return null; try { return await navigator.serviceWorker.ready; } catch { return null; } }
 function b64urlToU8(s) { const p = "=".repeat((4 - (s.length % 4)) % 4); const b = atob((s + p).replace(/-/g, "+").replace(/_/g, "/")); return Uint8Array.from(b, (c) => c.charCodeAt(0)); }
-const vapid = () => (api.cfg && api.cfg.vapidPublicKey) || "";
+const vapid = () => (D && D.settings && D.settings.vapid_public) || (api.cfg && api.cfg.vapidPublicKey) || "";
 async function enableNotifications(btn) {
   if (!("Notification" in window)) { toast(/iP(hone|ad)/.test(navigator.userAgent) && !standalone() ? t("iosInstallFirst") : t("noNotify"), true); return; }
   const perm = await Notification.requestPermission();
@@ -193,6 +221,8 @@ async function enableNotifications(btn) {
   if (api.mode === "remote" && vapid() && reg && reg.pushManager) {
     try {
       let sub = await reg.pushManager.getSubscription();
+      // Re-subscribe if the phone is still registered with an older server key.
+      if (sub && sub.options && sub.options.applicationServerKey && btoa(String.fromCharCode(...new Uint8Array(sub.options.applicationServerKey))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "") !== vapid()) { await sub.unsubscribe(); sub = null; }
       if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64urlToU8(vapid()) });
       await api.pushSave(sub.toJSON()); LS.set("pushOn", true);
     } catch (e) { console.warn(e); toast(t("pushFailed"), true); }
@@ -258,13 +288,13 @@ function shell(active, inner, opts = {}) {
   </header>
   ${D && D.offline ? `<div class="banner">${esc(t("offline"))}</div>` : ""}
   ${api.mode === "local" ? `<div class="banner soft">${ic("phone")} ${esc(t("demoBanner"))}</div>` : ""}
-  <main>${inner}</main>
+  <main${opts.cols ? ' class="cols"' : ""}>${inner}</main>
   <nav class="tabs"><div class="in">${nav}</div></nav>`;
 }
 const langSwitch = () => `<div class="langs" role="group" aria-label="Language">${["id", "bt", "en"].map((l) => `<button data-act="lang" data-l="${l}" aria-pressed="${lang === l}">${l.toUpperCase()}</button>`).join("")}</div>`;
 const empty = (msg, icon = "star") => `<div class="empty">${ic(icon)}<p>${esc(msg)}</p></div>`;
 const roleBadge = (gid) => { const r = isAdmin() && !roleIn(gid) ? "admin" : roleIn(gid); return r ? `<span class="badge ${r}">${esc(t("role_" + r))}</span>` : ""; };
-const groupTile = (g, extra = "") => `<a class="gtile" href="#/${g.kind === "sermon" ? "g" : "s"}/${g.id}" style="--gc:${g.color}">
+const groupTile = (g, extra = "") => `<a class="gtile" href="#/${({ sermon: "g", office: "o" })[g.kind] || "s"}/${g.id}" style="--gc:${g.color}">
     <span class="gicon">${ic(g.icon)}</span><span class="gname"><b>${esc(gname(g))}</b><small>${extra}</small></span>${roleBadge(g.id)}${ic("chev", "chev")}</a>`;
 
 // ---------- screens ----------
@@ -288,12 +318,16 @@ R.login = async () => {
         <button class="btn primary block">${esc(t("setupBtn"))}</button>
       </form>
       <button class="btn block ghost" data-act="seedDemo">${ic("spark")} ${esc(t("demoBtn"))}</button>` : `
+      ${!viewMode() ? `<div class="card role-pick"><h3>${esc(t("whoAreYou"))}</h3><p class="small muted">${esc(t("whoLead"))}</p>
+        <button class="opt-card" data-act="pickView" data-v="member">${ic("people")}<span><b>${esc(t("viewMember"))}</b><small>${esc(t("viewMemberSub"))}</small></span>${ic("chev", "chev")}</button>
+        <button class="opt-card" data-act="pickView" data-v="admin">${ic("gear")}<span><b>${esc(t("viewAdmin"))}</b><small>${esc(t("viewAdminSub"))}</small></span>${ic("chev", "chev")}</button></div>` : `
+      <p class="small center">${esc(t("signingInAs"))} <b>${esc(t(viewMode() === "admin" ? "viewAdmin" : "viewMember"))}</b> · <button class="link" data-act="pickView" data-v="">${esc(t("change"))}</button></p>
       <form class="card form" data-form="login">
         <label>${esc(t("f_phone"))}<div class="phone-in"><span>+65</span><input name="phone" inputmode="numeric" required placeholder="8123 4567" autocomplete="username"></div></label>
         <label>${esc(t("f_password"))}<input name="pw" type="password" autocomplete="current-password"></label>
         <button class="btn primary block">${ic("lock")} ${esc(t("signIn"))}</button>
         <p class="small muted center">${esc(t("forgot"))}</p>
-      </form>
+      </form>`}
       ${demo ? `<p class="small muted center">${esc(t("demoLogins"))}</p>` : ""}`}
     ${demo ? `<p class="small muted center">${ic("phone")} ${esc(t("demoBanner"))}</p>` : ""}
     <p class="small muted center">${esc(t("installHint"))}</p>
@@ -308,7 +342,7 @@ R.home = () => {
   const myDuties = duties().filter((d) => !d.date || d.date >= day).slice(0, 4);
   const evs = D.events.filter((e) => new Date(e.starts_at) > Date.now() - 3 * 3600e3).slice(0, 3);
   const ups = D.updates.slice(0, 2);
-  const myGroups = D.groups.filter((g) => roleIn(g.id));
+  const myGroups = D.groups.filter((g) => roleIn(g.id) && g.kind !== "office");
   const hour = +new Intl.DateTimeFormat("en-GB", { timeZone: TZ, hour: "numeric", hour12: false }).format(new Date());
   const notifyAsk = "Notification" in window ? Notification.permission === "default" || !LS.get("notifyOn") : /iP(hone|ad)/.test(navigator.userAgent) && !standalone();
   return shell("#/home", `
@@ -319,6 +353,7 @@ R.home = () => {
     ${mine ? `<div class="card hbd">${ic("cake")}<div><h2>${esc(t("hbdTitle", firstName(m.name)))}</h2><p>${esc(t("hbdBody"))}</p></div></div>` : ""}
     ${notifyAsk ? `<button class="card notify-ask" data-act="notify">${ic("bell")}<span><b>${esc(t("notifyAskTitle"))}</b><small>${esc(standalone() || !/iP(hone|ad)/.test(navigator.userAgent) ? t("notifyAskBody") : t("iosInstallFirst"))}</small></span>${ic("chev", "chev")}</button>` : ""}
 
+    ${(D.services || []).length ? `<a class="card li tata-home" href="#/tata/${D.services[0].id}">${ic("book")}<span class="grow"><b>${esc(t("tataTitle"))}</b><small>${esc(D.services[0].title || "")}${D.services[0].service_date ? " · " + esc(fmtDay(D.services[0].service_date)) : ""}</small></span>${ic("chev", "chev")}</a>` : ""}
     <article class="card bread-card">
       <div class="kicker">${ic("bread")} ${esc(t("breadTitle"))}</div>
       ${b ? `
@@ -352,8 +387,9 @@ R.home = () => {
     </article>
 
     ${myGroups.length ? `<h3 class="sec-h">${esc(t("myGroups"))}</h3><div class="glist">${myGroups.map((g) => groupTile(g, esc(t(g.kind === "sermon" ? "kindSermon" : "kindService")))).join("")}</div>` : ""}
+    ${officeHome()}
     ${!standalone() ? `<p class="small muted center pad">${esc(t("installHint"))}</p>` : ""}
-  `);
+  `, { cols: true });
 };
 const initials = (n) => String(n || "?").replace(/^(Pdt|St|Bapak|Ibu|Kak|Bang|Ev|Dr)\.?\s+/i, "").split(/\s+/).slice(0, 2).map((x) => x[0] || "").join("").toUpperCase();
 function dutyRow(d) {
@@ -458,6 +494,7 @@ R.section = (gid) => {
       <span class="gicon xl">${ic(g.icon)}</span>
       <div><h2>${esc(gname(g))}</h2><p>${esc(t("kindService"))}</p>${roleBadge(gid) ? `<div class="hero-role">${roleBadge(gid)} <small>${esc(edit ? t("canUpdate") : t("readOnly"))}</small></div>` : ""}</div>
     </section>
+    ${gid === "multimedia" ? tataBlock() : ""}
     ${gid === "parhalado" ? `<div class="row two"><a class="btn" href="#/elders">${ic("book")} ${esc(t("eldersUpdates"))}</a><a class="btn" href="#/bread">${ic("bread")} ${esc(t("breadTitle"))}</a></div>` : ""}
     <div class="monthbar" style="--gc:${g.color}">
       <a class="icon-btn" href="#/s/${gid}?m=${shiftMonth(ym, -1)}" aria-label="${esc(t("prevMonth"))}">${ic("back")}</a>
@@ -485,18 +522,33 @@ function rosterCard(r, edit) {
 }
 
 R.calendar = () => {
-  const now = Date.now();
+  const now = Date.now(); const day = today();
   const show = LS.get("calPast", false);
   const evs = D.events.filter((e) => show || new Date(e.starts_at) > now - 3 * 3600e3);
   const canAdd = isElder() || D.groups.some((g) => canEdit(g.id));
-  const byMonth = {}; evs.forEach((e) => { const k = monthKey(sgParts(e.starts_at).date); (byMonth[k] = byMonth[k] || []).push(e); });
+  const byMonth = {}; const add = (k, item) => (byMonth[k] = byMonth[k] || []).push(item);
+  evs.forEach((e) => { const p = sgParts(e.starts_at); add(monthKey(p.date), { k: p.date + " " + p.time, html: eventRow(e) }); });
+  // Birthdays fill this month and the next two.
+  const all = allBdays(); let [y, mo] = day.split("-").map(Number);
+  for (let i = 0; i < 3; i++) {
+    const ym = `${y}-${String(mo).padStart(2, "0")}`;
+    all.filter((b) => b.bday.slice(0, 2) === ym.slice(5)).forEach((b) => { const d = `${ym}-${b.bday.slice(3)}`; if (show || d >= day) add(ym, { k: d + " 00:00", html: bdayRow(b, d) }); });
+    if (++mo > 12) { mo = 1; y++; }
+  }
+  const months = Object.keys(byMonth).sort();
   return shell("#/calendar", `
     <h2 class="page-h">${esc(t("calendarTitle"))}</h2>
     <p class="lead">${esc(t("calendarLead"))}</p>
     <div class="row two">${canAdd ? `<button class="btn primary" data-act="newEvent">${ic("plus")} ${esc(t("newEvent"))}</button>` : ""}<button class="btn" data-act="icsAll" ${evs.length ? "" : "disabled"}>${ic("download")} ${esc(t("addAllCal"))}</button></div>
-    ${Object.keys(byMonth).length ? Object.entries(byMonth).map(([k, list]) => `<h3 class="sec-h">${esc(monthName(k))}</h3><div class="card">${list.map(eventRow).join("")}</div>`).join("") : empty(t("noEvents"), "calendar")}
+    <div class="row two">${isElder() ? `<button class="btn" data-act="addBday">${ic("cake")} ${esc(t("addBday"))}</button><button class="btn" data-act="importBdays">${ic("upload")} ${esc(t("importBdays"))}</button>` : ""}<button class="btn ghost" data-act="icsBdays" ${all.length ? "" : "disabled"}>${ic("cake")} ${esc(t("bdaysToCal"))}</button></div>
+    ${months.length ? months.map((k) => `<h3 class="sec-h">${esc(monthName(k))}</h3><div class="card">${byMonth[k].sort((a, c) => a.k.localeCompare(c.k)).map((x) => x.html).join("")}</div>`).join("") : empty(t("noEvents"), "calendar")}
     <p class="center"><button class="btn sm ghost" data-act="calPast">${esc(t(show ? "hidePast" : "showPast"))}</button></p>`);
 };
+function bdayRow(b, d) {
+  const age = b.year ? +d.slice(0, 4) - b.year : null; const inner = `<span class="date-chip bday"><b>${esc(fmt(d, { day: "numeric" }))}</b><small>${esc(fmt(d, { month: "short" }))}</small></span>
+    <span class="grow"><b>🎂 ${esc(b.name)}</b><small>${esc(t("bdayOf"))}${age && age > 0 && age < 120 ? " · " + esc(t("turns", age)) : ""}</small></span>`;
+  return isElder() ? `<button class="li" data-act="bdayMenu" data-kind="${b.kind}" data-id="${b.id}" data-name="${esc(b.name)}" data-bday="${b.bday}">${inner}${ic("chev", "chev")}</button>` : `<div class="li">${inner}</div>`;
+}
 
 R.bread = (arg) => {
   const day = today();
@@ -511,9 +563,12 @@ R.bread = (arg) => {
       <p class="verse-ref big">${esc(b.verse || "")}</p>
       <div class="pre body">${esc(b.body || "")}</div>
       <p class="small muted">${esc(b.author_name || "")}</p>
+      ${/[?&]wa=1/.test(location.hash) ? `<div class="card wa-send"><b>${ic("wa")} ${esc(t("waSendTitle"))}</b><p class="small">${esc(t("waSendSteps"))}</p><a class="btn wa block" href="${wa(breadText(b))}" target="_blank" rel="noopener">${ic("wa")} ${esc(t("waSendBtn"))}</a></div>` : ""}
       <div class="row two"><a class="btn wa" href="${wa(breadText(b))}" target="_blank" rel="noopener">${ic("wa")} ${esc(t("shareWa"))}</a><button class="btn" data-act="copyBread" data-day="${b.day}">${ic("share")} ${esc(t("copy"))}</button></div>
       ${isElder() ? `<div class="row two"><a class="btn" href="#/bread/edit-${b.day}">${ic("edit")} ${esc(t("edit"))}</a><button class="btn danger" data-act="del" data-kind="bread" data-id="${b.day}">${ic("trash")} ${esc(t("delete"))}</button></div>` : ""}
     </article>` : empty(t("noBread"), "bread")}
+    ${(D.settings || {}).wa_group_link ? `<a class="btn wa block" href="${esc(D.settings.wa_group_link)}" target="_blank" rel="noopener">${ic("wa")} ${esc(t("joinWaGroup"))}</a>` : ""}
+    ${isAdmin() ? `<button class="card li" data-act="breadSetup">${ic("gear")}<span class="grow"><b>${esc(t("bs_title"))}</b><small>${esc(t("src_" + ((D.settings || {}).bread_source || "elders")))} · ${String((D.settings || {}).bread_hour ?? 6).padStart(2, "0")}:00</small></span>${ic("chev", "chev")}</button>` : ""}
     ${isElder() ? `<div class="card"><h3>${ic("edit")} ${esc(t("breadPlan"))}</h3><p class="small muted">${esc(t("breadPlanLead"))}</p>
       <div class="row two"><a class="btn primary" href="#/bread/new">${ic("plus")} ${esc(t("writeBread"))}</a><button class="btn" data-act="genWeek">${ic("ai")} ${esc(t("genWeek"))}</button></div>
       ${future.length ? `<div class="chips">${future.map((x) => `<a class="chip" href="#/bread/${x.day}">${esc(fmtShort(x.day))}</a>`).join("")}</div>` : ""}</div>` : ""}
@@ -547,11 +602,12 @@ R.elders = () => shell("#/more", `
 R.people = () => {
   const day = today();
   const soon = birthdaysBetween(day, 30);
-  const month = D.people.filter((p) => p.bday && p.bday.slice(0, 2) === day.slice(5, 7)).sort((a, b) => a.bday.localeCompare(b.bday));
+  const month = allBdays().filter((p) => p.bday.slice(0, 2) === day.slice(5, 7)).sort((a, b) => a.bday.localeCompare(b.bday));
   return shell("#/more", `
     ${isAdmin() ? `<div class="card admin-card"><h3>${ic("upload")} ${esc(t("memberUpload"))}</h3><p class="small muted">${esc(t("memberUploadLead"))}</p>
       <div class="row two"><button class="btn primary" data-act="uploadMembers">${ic("upload")} ${esc(t("chooseFile"))}</button><button class="btn" data-act="template">${ic("download")} ${esc(t("template"))}</button></div>
       <button class="btn block ghost" data-act="editMember">${ic("plus")} ${esc(t("addMember"))}</button></div>` : ""}
+    ${isElder() ? `<div class="row two"><button class="btn" data-act="addBday">${ic("cake")} ${esc(t("addBday"))}</button><button class="btn" data-act="importBdays">${ic("upload")} ${esc(t("importBdays"))}</button></div>` : ""}
     <h3 class="sec-h">${ic("cake")} ${esc(t("bdaySoon"))}</h3>
     <div class="card">${soon.length ? soon.map(({ p, day: d, inDays }) => `<div class="li"><span class="date-chip"><b>${esc(fmt(d, { day: "numeric" }))}</b><small>${esc(fmt(d, { month: "short" }))}</small></span><span class="grow"><b>${esc(p.name)}</b><small>${esc(inDays === 0 ? t("today") : t("inDays", inDays))}</small></span>${p.phone && p.id !== me().id ? `<a class="icon-btn wa" href="${wa(t("hbdWish", firstName(p.name)), p.phone)}" target="_blank" rel="noopener" aria-label="WhatsApp">${ic("wa")}</a>` : ""}</div>`).join("") : `<p class="muted small">${esc(t("noBdays"))}</p>`}</div>
     <h3 class="sec-h">${esc(t("bdayMonth", monthName(monthKey(day))))}</h3>
@@ -574,8 +630,11 @@ R.more = () => {
     <div class="menu card">
       <a class="li" href="#/elders">${ic("book")}<span class="grow"><b>${esc(t("eldersUpdates"))}</b></span>${ic("chev", "chev")}</a>
       <a class="li" href="#/bread">${ic("bread")}<span class="grow"><b>${esc(t("breadTitle"))}</b></span>${ic("chev", "chev")}</a>
+      ${isOffice() ? `<a class="li" href="#/o/secretary">${ic("lock")}<span class="grow"><b>${esc(t("officeTitle"))}</b><small>${esc(officeGroups().map(gname).join(" · "))}</small></span>${ic("chev", "chev")}</a>` : ""}
       <a class="li" href="#/people">${ic("cake")}<span class="grow"><b>${esc(t("people"))}</b><small>${esc(isAdmin() ? t("peopleAdmin") : t("peopleSub"))}</small></span>${ic("chev", "chev")}</a>
       <button class="li" data-act="notify">${ic("bell")}<span class="grow"><b>${esc(t("notifications"))}</b><small>${esc(perm === "granted" ? t("notifyOnTxt") : perm === "denied" ? t("notifyDenied") : t("notifyAskBody"))}</small></span>${ic("chev", "chev")}</button>
+      ${hasRights() ? `<button class="li" data-act="toggleView">${ic("people")}<span class="grow"><b>${esc(t("layout"))}: ${esc(t(manage() ? "viewAdmin" : "viewMember"))}</b><small>${esc(t(manage() ? "toMember" : "toAdmin"))}</small></span>${ic("chev", "chev")}</button>` : ""}
+      ${isAdmin() ? `<button class="li" data-act="breadSetup">${ic("bread")}<span class="grow"><b>${esc(t("bs_title"))}</b><small>${esc(t("src_" + ((D.settings || {}).bread_source || "elders")))}</small></span>${ic("chev", "chev")}</button>` : ""}
       <button class="li" data-act="password">${ic("key")}<span class="grow"><b>${esc(t("changePw"))}</b></span>${ic("chev", "chev")}</button>
       <button class="li" data-act="install">${ic("phone")}<span class="grow"><b>${esc(t("installTitle"))}</b><small>${esc(standalone() ? t("installed") : t("installHint"))}</small></span>${ic("chev", "chev")}</button>
       ${isElder() ? `<button class="li" data-act="settings">${ic("gear")}<span class="grow"><b>${esc(t("settings"))}</b><small>${esc(api.mode === "remote" ? t("modeRemote") : t("modeLocal"))}</small></span>${ic("chev", "chev")}</button>` : ""}
@@ -596,7 +655,7 @@ async function render() {
     if (!D) await refresh();
     if (!D) { await R.login(); return; }
     if (r === "login" || !r) { location.replace("#/home"); return; }
-    const map = { home: R.home, groups: R.groups, g: R.group, serve: R.serve, s: R.section, calendar: R.calendar, bread: R.bread, elders: R.elders, people: R.people, more: R.more };
+    const map = { tata: R.tata, home: R.home, groups: R.groups, g: R.group, serve: R.serve, s: R.section, calendar: R.calendar, bread: R.bread, elders: R.elders, people: R.people, more: R.more, o: R.office, warta: R.warta };
     const html = (map[r] || R.notFound)(arg);
     if (typeof html === "string") view().innerHTML = html;
     document.title = r === "home" ? "HKBP Singapore" : `${$(".brand b") ? $(".brand b").textContent : ""} · HKBP Singapore`;
@@ -605,14 +664,247 @@ async function render() {
   finally { rendering = false; }
 }
 function hydrate() {
+  if (D && api.hasSession() && $("#sheet").hidden) {
+    if (viewMode() === null) { if (hasRights()) setTimeout(rolePrompt, 300); else LS.set("view", "member"); }
+    else if (D.me.is_admin && manage() && !(D.settings || {}).setup_done && !hydrate.asked && /^#\/home/.test(location.hash)) { hydrate.asked = true; setTimeout(A.breadSetup, 500); }
+  }
+  if (D && /^#\/s\/multimedia/.test(location.hash) && $("#sheet").hidden && viewMode() !== null) {
+    if (!mmRole()) setTimeout(mmPrompt, 250);
+    else if (D.me.is_admin && manage() && !makers().length && !hydrate.mkAsked) { hydrate.mkAsked = true; setTimeout(A.addMaker, 400); }
+  }
+  if (D && /^#\/o\//.test(location.hash) && $("#sheet").hidden && viewMode() !== null && isOffice()) {
+    if (!offOk()) setTimeout(officePrompt, 250);
+    else if (D.me.is_admin && manage() && !officeGroups().some((g) => holders(g.id).length) && !hydrate.offAsked) { hydrate.offAsked = true; setTimeout(() => A.addHolder({ g: location.hash.split("/")[2] }), 400); }
+  }
   document.documentElement.lang = lang === "en" ? "en" : lang === "bt" ? "bbc" : "id";
+  document.querySelectorAll("[data-tata]").forEach(async (el) => { try { const h = await tataHtml(el.dataset.tata); if (h) { el.innerHTML = ""; el.appendChild(tataIframe(h)); } } catch (e) { el.innerHTML = `<p class="muted small">${esc(errMsg(e))}</p>`; } });
   document.querySelectorAll("[data-img]").forEach(async (el) => { try { const f = await api.rosterFile(el.dataset.img); if (f && f.file_b64) el.innerHTML = `<img src="data:${esc(f.mime)};base64,${f.file_b64}" alt="Roster">`; } catch {} });
 }
 window.addEventListener("hashchange", () => { window.scrollTo(0, 0); render(); });
 
 // ---------- actions ----------
 const A = {};
+const F = {};
 A.lang = (d) => { lang = d.l; LS.set("lang", lang); render(); };
+A.pickView = (d) => { LS.set("view", d.v || null); closeSheet(); render(); };
+A.toggleView = () => { LS.set("view", manage() ? "member" : "admin"); toast(t(manage() ? "nowAdmin" : "nowMember")); render(); };
+function rolePrompt() {
+  if (!$("#sheet").hidden) return;
+  sheet(t("whoAreYou"), `<p class="muted">${esc(t("whoLead"))}</p><div class="stack">
+    <button class="opt-card" data-act="pickView" data-v="member">${ic("people")}<span><b>${esc(t("viewMember"))}</b><small>${esc(t("viewMemberSub"))}</small></span>${ic("chev", "chev")}</button>
+    <button class="opt-card" data-act="pickView" data-v="admin">${ic("gear")}<span><b>${esc(t("viewAdmin"))}</b><small>${esc(t("viewAdminSub"))}</small></span>${ic("chev", "chev")}</button></div>`);
+}
+
+// ---------- Tata Ibadah (Multimedia workbench) ----------
+const makers = () => D.people.filter((p) => ["maker", "chair"].includes((p.groups || {}).multimedia));
+function tataBlock() {
+  const role = mmRole(); const list = (D.services || []).slice(0, 6); const mk = makers();
+  return `<div class="card tata">
+    <div class="card-h"><h3>${ic("book")} ${esc(t("tataTitle"))}</h3>${role ? `<button class="badge ${role === "maker" ? "chair" : "member"}" data-act="mmSwitch">${esc(t("role_" + role))} · ${esc(t("change"))}</button>` : ""}</div>
+    <p class="small muted">${esc(t(role === "maker" ? "tataMakerLead" : "tataReadLead"))}</p>
+    ${role === "maker" ? `<button class="btn primary block" data-act="openWorkbench">${ic("edit")} ${esc(t("openWorkbench"))}</button>` : ""}
+    ${list.length ? list.map((v) => `<a class="li" href="#/tata/${v.id}"><span class="date-chip"><b>${esc(v.service_date ? fmt(v.service_date, { day: "numeric" }) : "•")}</b><small>${esc(v.service_date ? fmt(v.service_date, { month: "short" }) : "")}</small></span><span class="grow"><b>${esc(v.title || t("tataTitle"))}</b><small>${esc(v.author_name || "")}</small></span>${ic("chev", "chev")}</a>`).join("") : `<p class="muted small">${esc(t("noTata"))}</p>`}
+    ${(D.services || []).length > 6 ? `<a class="btn sm ghost" href="#/tata">${esc(t("seeAll"))}</a>` : ""}
+  </div>
+  ${D.me.is_admin && manage() ? `<div class="card"><div class="card-h"><h3>${ic("people")} ${esc(t("makerList"))}</h3><button class="btn sm" data-act="addMaker">${ic("plus")} ${esc(t("addMaker"))}</button></div>
+    ${mk.length ? mk.map((p) => `<div class="li"><span class="avatar">${esc(initials(p.name))}</span><span class="grow"><b>${esc(p.name)}</b><small>${esc(fmtPhone(p.phone))} · ${esc(t("role_" + p.groups.multimedia))}</small></span>${p.groups.multimedia === "maker" ? `<button class="icon-btn" data-act="rmMaker" data-phone="${esc(p.phone || "")}" aria-label="${esc(t("delete"))}">${ic("trash")}</button>` : ""}</div>`).join("") : `<p class="muted small">${esc(t("noMakers"))}</p>`}</div>` : ""}`;
+}
+function mmPrompt() {
+  if (!$("#sheet").hidden) return;
+  sheet(t("mmWho"), `<p class="muted">${esc(t("mmWhoLead"))}</p><div class="stack">
+    <button class="opt-card" data-act="mmPick" data-v="checker">${ic("check")}<span><b>${esc(t("role_checker"))}</b><small>${esc(t("checkerSub"))}</small></span>${ic("chev", "chev")}</button>
+    <button class="opt-card" data-act="mmPick" data-v="maker">${ic("edit")}<span><b>${esc(t("role_maker"))}</b><small>${esc(t("makerSub"))}</small></span>${ic("chev", "chev")}</button></div>`);
+}
+A.mmSwitch = () => { setMMRole(""); mmPrompt(); };
+A.mmPick = (d) => {
+  if (d.v === "checker") { setMMRole("checker"); closeSheet(); render(); return; }
+  sheet(t("role_maker"), `<form class="form" data-form="mmmaker"><p class="muted">${esc(t("makerPhoneLead"))}</p>
+    <label>${esc(t("f_phone"))}<div class="phone-in"><span>+65</span><input name="phone" inputmode="numeric" required placeholder="8123 4567" autocomplete="tel"></div></label>
+    <button class="btn primary block">${esc(t("verify"))}</button></form>`, (el) => el.querySelector("input").focus());
+};
+F.mmmaker = async (f) => {
+  // The number must be the signed-in member's own number and be on the Multimedia maker list. The server checks again on publish.
+  if (S.phone8(f.phone.value) !== D.me.phone || !isMMMaker()) { setMMRole("checker"); closeSheet(); toast(t("notMaker"), true); return; }
+  setMMRole("maker"); closeSheet(); toast(t("makerOk"));
+};
+A.addMaker = () => sheet(t("addMaker"), `<form class="form" data-form="maker"><p class="muted">${esc(t("addMakerLead"))}</p>
+  <label>${esc(t("f_phone"))}<div class="phone-in"><span>+65</span><input name="phone" inputmode="numeric" required placeholder="8123 4567"></div></label>
+  <label>${esc(t("f_nameIfNew"))}<input name="name" autocomplete="off"></label>
+  <label class="check"><input type="checkbox" name="more" checked> ${esc(t("addAnother"))}</label>
+  <button class="btn primary block">${ic("plus")} ${esc(t("addMaker"))}</button></form>`, (el) => el.querySelector("input").focus());
+F.maker = async (f) => {
+  const r = await api.setRole(f.phone.value, "multimedia", "maker", f.name.value.trim());
+  const more = f.more.checked; await refresh(); toast(t("makerAdded", r.name));
+  if (more) { closeSheet(); setTimeout(A.addMaker, 220); } else closeSheet();
+};
+A.rmMaker = async (d, btn) => {
+  if (btn.dataset.sure !== "1") { btn.dataset.sure = "1"; toast(t("tapAgain")); return; }
+  await api.setRole(d.phone, "multimedia", "member"); await refresh(); toast(t("saved")); render();
+};
+R.tata = (id) => {
+  if (!id) return shell("#/serve", `<div class="card">${(D.services || []).map((v) => `<a class="li" href="#/tata/${v.id}"><span class="grow"><b>${esc(v.title || t("tataTitle"))}</b><small>${esc(v.service_date ? fmtDay(v.service_date) : "")} · ${esc(v.author_name || "")}</small></span>${ic("chev", "chev")}</a>`).join("") || `<p class="muted small">${esc(t("noTata"))}</p>`}</div>`, { back: "#/s/multimedia", title: t("tataTitle"), sub: "HKBP Singapore" });
+  const v = (D.services || []).find((x) => x.id === id); if (!v) return R.notFound();
+  const canRm = mmRole() === "maker" && isMMMaker();
+  return shell("#/serve", `
+    <div class="tata-view"><div class="tata-frame" data-tata="${v.id}"><span class="spin"></span></div></div>
+    <p class="small muted center">${esc(t("tataRotate"))}</p>
+    <div class="row two"><button class="btn" data-act="tataFull" data-id="${v.id}">${ic("screen")} ${esc(t("fullScreen"))}</button>${canRm ? `<button class="btn danger" data-act="del" data-kind="service" data-id="${v.id}">${ic("trash")} ${esc(t("delete"))}</button>` : ""}</div>`,
+    { back: "#/s/multimedia", title: v.title || t("tataTitle"), sub: v.service_date ? fmtDay(v.service_date) : t("tataTitle") });
+};
+const tataCache = {};
+async function tataHtml(id) { if (!tataCache[id]) tataCache[id] = await api.serviceHtml(id); return tataCache[id]; }
+function tataIframe(html) { const f = document.createElement("iframe"); f.setAttribute("sandbox", "allow-scripts"); f.title = t("tataTitle"); f.src = URL.createObjectURL(new Blob([html], { type: "text/html" })); return f; }
+A.tataFull = async (d) => { const html = await tataHtml(d.id); const el = $(".tata-frame"); if (el && el.requestFullscreen) el.requestFullscreen().catch(() => {}); else window.open(URL.createObjectURL(new Blob([html], { type: "text/html" })), "_blank"); };
+A.openWorkbench = () => {
+  if (!(mmRole() === "maker" && isMMMaker())) { toast(t("notMaker"), true); return; }
+  const el = document.createElement("div"); el.id = "wb";
+  el.innerHTML = `<div class="wb-bar"><button class="icon-btn" data-act="closeWb" aria-label="${esc(t("close"))}">${ic("x")}</button><b>${esc(t("tataTitle"))} · Workbench</b><button class="btn primary sm" data-act="publishWb">${ic("upload")} ${esc(t("publish"))}</button></div><iframe src="../workbench/index.html" title="Workbench"></iframe>`;
+  document.body.appendChild(el); document.body.classList.add("noscroll");
+};
+A.closeWb = () => { const el = $("#wb"); if (el) el.remove(); document.body.classList.remove("noscroll"); };
+A.publishWb = () => {
+  const w = $("#wb iframe") && $("#wb iframe").contentWindow;
+  if (!w || typeof w.buildStandalone !== "function") { toast(t("wbNotReady"), true); return; }
+  const html = w.buildStandalone(); const meta = (w.state && w.state.meta) || {};
+  let day = ""; try { const dt = w.serviceDate(); day = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`; } catch {}
+  A.publishWb._html = html;
+  sheet(t("publish"), `<form class="form" data-form="publish">
+    <label>${esc(t("f_title"))}<input name="title" required value="${esc([t("tataTitle"), meta.sunday || meta.theme].filter(Boolean).join(" · "))}"></label>
+    <label>${esc(t("f_date"))}<input type="date" name="day" value="${day}"></label>
+    <label class="check"><input type="checkbox" name="notify" checked> ${esc(t("evNotifyAll"))}</label>
+    <p class="small muted">${esc(t("publishNote", Math.round(html.length / 1024)))}</p>
+    <button class="btn primary block">${ic("upload")} ${esc(t("publish"))}</button></form>`);
+};
+F.publish = async (f) => {
+  const html = A.publishWb._html; if (!html) throw new S.AppError("server");
+  if (html.length > 9000000) throw new S.AppError("file_too_big");
+  const res = await api.save("service", { title: f.title.value.trim(), service_date: f.day.value || null, html, notify: f.notify.checked });
+  closeSheet(); A.closeWb(); await refresh(); toast(t("published")); location.hash = "#/tata/" + res.id;
+};
+
+// ---------- daily bread setup (admin, first time and later) ----------
+A.breadSetup = () => {
+  if (!$("#sheet").hidden && $("#sheet [data-form=breadsetup]")) return;
+  const st = D.settings || {}; const cur = st.bread_source || "claude_daily"; const hr = +(st.bread_hour ?? 6); const bl = st.bread_lang || lang;
+  const senders = Array.isArray(st.wa_senders) ? st.wa_senders : [me().id];
+  const elders = D.people.filter((p) => p.is_admin || "parhalado" in (p.groups || {}) || p.id === me().id);
+  sheet(t("bs_title"), `<form class="form" data-form="breadsetup">
+    <p class="muted">${esc(t("bs_lead"))}</p>
+    <fieldset class="opts"><legend>${esc(t("bs_source"))}</legend>
+      ${["claude_daily", "claude_week", "elders"].map((v) => `<label class="opt"><input type="radio" name="source" value="${v}" ${cur === v ? "checked" : ""}><span><b>${esc(t("src_" + v))}</b><small>${esc(t("src_" + v + "_sub"))}</small></span></label>`).join("")}
+    </fieldset>
+    <div class="row two"><label>${esc(t("bs_lang"))}<select name="blang">${["id", "bt", "en"].map((l) => `<option value="${l}" ${l === bl ? "selected" : ""}>${esc(t("lang_" + l))}</option>`).join("")}</select></label>
+      <label>${esc(t("bs_time"))}<select name="bhour">${[4, 5, 6, 7, 8, 9].map((h) => `<option value="${h}" ${h === hr ? "selected" : ""}>${String(h).padStart(2, "0")}:00</option>`).join("")}</select></label></div>
+    <label>${esc(t("f_claudeKeyServer"))}<input name="ckey" type="password" autocomplete="off" placeholder="${esc(st.claude_key_set ? t("keySaved") : "sk-ant-…")}"></label>
+    <p class="small muted">${esc(t("claudeKeyServerNote"))}</p>
+    <h4>${ic("wa")} ${esc(t("bs_wa"))}</h4>
+    <p class="small muted">${esc(t("bs_waLead"))}</p>
+    <label>${esc(t("f_waLink"))}<input name="walink" type="url" inputmode="url" value="${esc(st.wa_group_link || "")}" placeholder="https://chat.whatsapp.com/…"></label>
+    <fieldset class="opts"><legend>${esc(t("bs_senders"))}</legend>
+      ${elders.map((p) => `<label class="opt check"><input type="checkbox" name="sender" value="${p.id}" ${senders.includes(p.id) ? "checked" : ""}><span><b>${esc(p.name)}</b></span></label>`).join("")}
+    </fieldset>
+    <button class="btn primary block">${ic("check")} ${esc(t("bs_save"))}</button>
+  </form>`);
+};
+F.breadsetup = async (f) => {
+  const source = (f.querySelector("[name=source]:checked") || {}).value || "elders";
+  const key = f.ckey.value.trim(); const st = D.settings || {};
+  if (source !== "elders" && !key && !st.claude_key_set && api.mode === "remote") throw new S.AppError("need_claude_key");
+  const link = f.walink.value.trim();
+  if (link && !/^https:\/\/(chat\.whatsapp\.com|wa\.me|whatsapp\.com)\//.test(link)) throw new S.AppError("bad_wa_link");
+  await api.settingsSave({ bread_source: source, bread_lang: f.blang.value, bread_hour: +f.bhour.value, wa_group_link: link, wa_senders: [...f.querySelectorAll("[name=sender]:checked")].map((x) => x.value), setup_done: true, claude_key: key });
+  if (key) LS.set("claudeKey", key);
+  closeSheet(); D = null; await refresh(); toast(t("bs_done"));
+};
+
+// ---------- birthdays ----------
+A.icsBdays = () => download("hkbp-birthdays.ics", icsBirthdays(allBdays()), "text/calendar");
+A.addBday = (d) => {
+  const b = d.id ? (D.birthdays || []).find((x) => x.id === d.id) : null;
+  const md = b ? b.bday.split("-") : ["", ""];
+  sheet(t(b ? "editBday" : "addBday"), `<form class="form" data-form="bday" data-id="${b ? b.id : ""}">
+    <label>${esc(t("f_name"))}<input name="name" required value="${esc(b ? b.name : "")}" autocomplete="off"></label>
+    <div class="row three"><label>${esc(t("f_day"))}<select name="dd" required><option value=""></option>${Array.from({ length: 31 }, (_, i) => i + 1).map((n) => `<option ${+md[1] === n ? "selected" : ""}>${n}</option>`).join("")}</select></label>
+      <label>${esc(t("f_month"))}<select name="mm" required><option value=""></option>${Array.from({ length: 12 }, (_, i) => i + 1).map((n) => `<option value="${n}" ${+md[0] === n ? "selected" : ""}>${esc(fmt(`2024-${String(n).padStart(2, "0")}-15`, { month: "long" }))}</option>`).join("")}</select></label>
+      <label>${esc(t("f_yearOpt"))}<input name="yy" inputmode="numeric" maxlength="4" value="${b && b.year ? b.year : ""}" placeholder="1980"></label></div>
+    <button class="btn primary block">${esc(t("save"))}</button></form>`, (el) => el.querySelector("input").focus());
+};
+A.bdayMenu = (d) => {
+  if (d.kind === "list") {
+    const b = (D.birthdays || []).find((x) => x.id === d.id); if (!b) return;
+    return sheet("🎂 " + b.name, `<p class="muted">${esc(fmt("2024-" + b.bday, { day: "numeric", month: "long" }))}${b.year ? " " + b.year : ""}</p>
+      <div class="row two"><button class="btn" data-act="addBday" data-id="${b.id}">${ic("edit")} ${esc(t("edit"))}</button><button class="btn danger" data-act="del" data-kind="birthday" data-id="${b.id}">${ic("trash")} ${esc(t("delete"))}</button></div>`);
+  }
+  sheet("🎂 " + d.name, `<p class="muted">${esc(fmt("2024-" + d.bday, { day: "numeric", month: "long" }))}</p><p class="small muted">${esc(t("bdayFromMembers"))}</p>`);
+};
+F.bday = async (f) => {
+  const y = f.yy.value.trim(); if (y && !/^(19|20)\d\d$/.test(y)) throw new S.AppError("bad_year");
+  const dob = `${y || "1904"}-${String(f.mm.value).padStart(2, "0")}-${String(f.dd.value).padStart(2, "0")}`;
+  if (isNaN(new Date(dob + "T12:00:00Z")) || new Date(dob + "T12:00:00Z").toISOString().slice(0, 10) !== dob) throw new S.AppError("bad_date");
+  await api.save("birthday", { id: f.dataset.id || undefined, name: f.name.value.trim(), dob, year_known: !!y });
+  closeSheet(); await refresh(); toast(t("saved"));
+};
+A.importBdays = () => sheet(t("importBdays"), `<p class="muted">${esc(t("importBdaysLead"))}</p>
+  <button class="btn primary block" data-act="pickBdayFile">${ic("upload")} ${esc(t("chooseFile"))}</button>
+  <form class="form" data-form="bdaylink"><label>${esc(t("f_link"))}<input name="link" type="url" inputmode="url" placeholder="https://docs.google.com/spreadsheets/…" required></label><button class="btn block">${esc(t("readLink"))}</button></form>`);
+A.pickBdayFile = () => {
+  const inp = document.createElement("input"); inp.type = "file"; inp.accept = ".xlsx,.xls,.csv,.ods,.docx,.doc,.pdf";
+  inp.onchange = async () => { const f = inp.files[0]; if (!f) return; toast(t("reading")); try { bdayPreview(bdayRows(await P.file(f)), f.name); } catch (e) { console.warn(e); toast(t(e.message === "unsupported" ? "err_unsupported" : "err_read"), true); } };
+  inp.click();
+};
+F.bdaylink = async (f) => { const r = await P.link(f.link.value.trim()); if (!r.tables.length) throw new S.AppError(r.note === "link_private" ? "link_private" : "read"); bdayPreview(bdayRows(r), "Online sheet"); };
+// "12/03/1980", "1980-03-12", "12 Maret 1980" (year known) or "12/03", "12 Maret" (no year).
+function parseBday(s) {
+  s = String(s || "").trim().replace(/\s+/g, " "); if (!s || s.length > 40) return null;
+  const full = parseDob(s); if (full) { const y = +full.slice(0, 4); return y >= 1900 && y <= +today().slice(0, 4) ? { dob: full, year_known: true } : null; }
+  let x, d, m;
+  if ((x = s.match(/^(\d{1,2})[\/.\-](\d{1,2})$/))) [d, m] = [+x[1], +x[2]];
+  else if ((x = s.match(/^(\d{1,2})[\s-]+([a-z]+)\.?$/i)) && MON[x[2].slice(0, 3).toLowerCase()]) [d, m] = [+x[1], MON[x[2].slice(0, 3).toLowerCase()]];
+  else if ((x = s.match(/^([a-z]+)\.?\s+(\d{1,2})$/i)) && MON[x[1].slice(0, 3).toLowerCase()]) [m, d] = [MON[x[1].slice(0, 3).toLowerCase()], +x[2]];
+  else return null;
+  if (!(m >= 1 && m <= 12 && d >= 1 && d <= 31)) return null;
+  return { dob: `1904-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`, year_known: false };
+}
+const DATE_IN_TEXT = /(\d{4}[-\/.]\d{1,2}[-\/.]\d{1,2}|\d{1,2}[-\/.]\d{1,2}(?:[-\/.]\d{2,4})?|\d{1,2}\s+[a-z]{3,9}\.?(?:\s+\d{4})?)/i;
+function bdayRows(res) {
+  const out = []; const seen = new Set();
+  const push = (name, raw, phone) => {
+    name = String(name || "").replace(/^[\s\d.)\-:•]+/, "").replace(/[\s,:;\-–]+$/, "").replace(/\s+/g, " ").trim();
+    const b = parseBday(raw); if (!name || !/[a-z]{2}/i.test(name) || !b) return;
+    const k = norm(name) + b.dob.slice(5); if (seen.has(k)) return; seen.add(k);
+    out.push({ name, ...b, phone: phone ? S.phone8(phone) : "" });
+  };
+  for (const tb of res.tables || []) {
+    const hi = tb.rows.findIndex((r) => r.some((c) => /^(nama|name|goar)/i.test(String(c).trim())) && r.some((c) => /lahir|birth|dob|tgl|tanggal|ulang|date|hari/i.test(c)));
+    if (hi >= 0) {
+      const h = tb.rows[hi]; const ni = h.findIndex((c) => /^(nama|name|goar)/i.test(String(c).trim())); const di = h.findIndex((c) => /lahir|birth|dob|tgl|tanggal|ulang|date|hari/i.test(c)); const pi = h.findIndex((c) => /hp|phone|telp|telepon|mobile|wa\b|whatsapp|kontak/i.test(c));
+      tb.rows.slice(hi + 1).forEach((r) => push(r[ni], r[di], pi >= 0 ? r[pi] : ""));
+      continue;
+    }
+    tb.rows.forEach((r) => {
+      const cells = r.map((c) => String(c || "").trim()).filter(Boolean);
+      if (cells.length === 1) { const m = cells[0].match(DATE_IN_TEXT); if (m) push(cells[0].replace(m[0], " "), m[0]); return; }
+      const di = cells.findIndex((c) => parseBday(c)); if (di < 0) return;
+      const phone = cells.find((c) => /^(\+?65)?\s?[3689]\d{3}\s?\d{4}$/.test(c));
+      const name = cells.filter((c, i) => i !== di && c !== phone && /[a-z]{2}/i.test(c)).sort((a, b) => b.length - a.length)[0];
+      push(name, cells[di], phone);
+    });
+  }
+  return out;
+}
+function bdayPreview(rows, fname) {
+  if (!rows.length) { toast(t("noBdayRows"), true); return; }
+  sheet(t("importBdays"), `<p class="small muted">${esc(fname)} · ${esc(t("rowsFound", rows.length))}</p>
+    <div class="tbl-wrap"><table class="tbl"><tr><th>${esc(t("f_name"))}</th><th>${esc(t("f_dob"))}</th></tr>
+    ${rows.map((r) => `<tr><td>${esc(r.name)}</td><td>${esc(fmt(r.dob, { day: "numeric", month: "long" }))}${r.year_known ? " " + r.dob.slice(0, 4) : ""}</td></tr>`).join("")}</table></div>
+    <p class="small muted">${esc(t("importBdaysNote"))}</p>
+    <button class="btn primary block" data-act="saveBdays">${esc(t("saveBdays", rows.length))}</button>`, () => { A.saveBdays._rows = rows; });
+}
+A.saveBdays = async (d, btn) => {
+  await busy(btn, async () => {
+    try { const r = await api.birthdaysImport(A.saveBdays._rows); closeSheet(); await refresh(); toast(t("bdaysSaved", r.members + r.added, r.skipped)); render(); } catch (e) { toast(errMsg(e), true); }
+  });
+};
 A.closeSheet = closeSheet;
 A.retry = () => { D = null; render(); };
 A.seedDemo = async (d, btn) => { await busy(btn, () => seedDemo()); toast(t("demoReady")); render(); };
@@ -633,20 +925,37 @@ A.evMenu = (d) => {
 A.icsOne = (d) => { const e = D.events.find((x) => x.id === d.id); download(`${e.title.replace(/[^\w]+/g, "-").slice(0, 40)}.ics`, ics([e]), "text/calendar"); };
 const REMINDS = [0, 60, 180, 1440, 2880, 10080];
 const remindLabel = (m) => t("rem_" + m) !== "rem_" + m ? t("rem_" + m) : `${m} min`;
+// New event: first ask who it is for (whole church or one category), then the details.
 A.newEvent = (d) => {
-  const e = d.id ? D.events.find((x) => x.id === d.id) : null; const p = e ? sgParts(e.starts_at) : { date: addDays(today(), 7), time: "10:00" };
-  const opts = [...(isElder() ? [["", t("wholeChurch")]] : []), ...D.groups.filter((g) => canEdit(g.id) || isElder()).map((g) => [g.id, gname(g)])];
-  const gsel = e ? e.group_id || "" : d.g || (isElder() ? "" : opts[0][0]);
-  sheet(t(e ? "editEvent" : "newEvent"), `<form class="form" data-form="event" data-id="${e ? e.id : ""}">
-    <label>${esc(t("f_title"))}<input name="title" required value="${esc(e ? e.title : "")}"></label>
-    <label>${esc(t("f_for"))}<select name="group_id">${opts.map(([v, l]) => `<option value="${v}" ${v === gsel ? "selected" : ""}>${esc(l)}</option>`).join("")}</select></label>
-    <div class="row two"><label>${esc(t("f_date"))}<input type="date" name="date" required value="${p.date}"></label><label>${esc(t("f_time"))}<input type="time" name="time" required value="${p.time}"></label></div>
-    <label>${esc(t("f_end"))}<input type="time" name="end" value="${e && e.ends_at ? sgParts(e.ends_at).time : ""}"></label>
-    <label>${esc(t("f_place"))}<input name="place" value="${esc(e ? e.place || "" : "")}"></label>
-    <label>${esc(t("f_remind"))}<select name="remind_min">${REMINDS.map((m) => `<option value="${m}" ${(e ? e.remind_min : 1440) === m ? "selected" : ""}>${esc(remindLabel(m))}</option>`).join("")}</select></label>
-    <label>${esc(t("f_notes"))}<textarea name="notes" rows="3">${esc(e ? e.notes || "" : "")}</textarea></label>
-    <button class="btn primary block">${esc(t("save"))}</button></form>`);
+  if (d.id) return eventForm(D.events.find((x) => x.id === d.id));
+  if (d.g) return eventForm({ group_id: d.g });
+  const cats = D.groups.filter((g) => isElder() || canEdit(g.id));
+  if (!isElder() && cats.length === 1) return eventForm({ group_id: cats[0].id });
+  sheet(t("newEvent"), `<p class="muted">${esc(t("evWho"))}</p><div class="stack">
+    ${isElder() ? `<button class="opt-card" data-act="evPick" data-g="">${ic("people")}<span><b>${esc(t("evGeneral"))}</b><small>${esc(t("evGeneralSub"))}</small></span>${ic("chev", "chev")}</button>` : ""}
+    <button class="opt-card" data-act="evSpecific">${ic("groups")}<span><b>${esc(t("evSpecific"))}</b><small>${esc(t("evSpecificSub"))}</small></span>${ic("chev", "chev")}</button></div>`);
 };
+A.evSpecific = () => {
+  const cats = D.groups.filter((g) => isElder() || canEdit(g.id));
+  const list = (kind) => cats.filter((g) => g.kind === kind).map((g) => `<button class="gtile" data-act="evPick" data-g="${g.id}" style="--gc:${g.color}"><span class="gicon">${ic(g.icon)}</span><span class="gname"><b>${esc(gname(g))}</b></span>${ic("chev", "chev")}</button>`).join("");
+  sheet(t("evPickCat"), `${list("sermon") ? `<h4>${esc(t("kindSermon"))}</h4><div class="glist">${list("sermon")}</div>` : ""}${list("service") ? `<h4>${esc(t("kindService"))}</h4><div class="glist">${list("service")}</div>` : ""}`);
+};
+A.evPick = (d) => eventForm({ group_id: d.g || null });
+function eventForm(e) {
+  const isNew = !e.id; const p = !isNew ? sgParts(e.starts_at) : { date: addDays(today(), 7), time: "10:00" };
+  const g = e.group_id ? G(e.group_id) : null;
+  sheet(t(isNew ? "newEvent" : "editEvent"), `<form class="form" data-form="event" data-id="${isNew ? "" : e.id}">
+    <input type="hidden" name="group_id" value="${esc(e.group_id || "")}">
+    <div class="for-chip" style="--gc:${g ? g.color : "var(--brand)"}">${ic(g ? g.icon : "people")}<span class="grow"><small>${esc(t("f_for"))}</small><b>${esc(g ? gname(g) : t("evGeneral"))}</b></span>${isNew ? `<button type="button" class="link" data-act="newEvent">${esc(t("change"))}</button>` : ""}</div>
+    <label>${esc(t("f_title"))}<input name="title" required value="${esc(e.title || "")}"></label>
+    <div class="row two"><label>${esc(t("f_date"))}<input type="date" name="date" required value="${p.date}"></label><label>${esc(t("f_time"))}<input type="time" name="time" required value="${p.time}"></label></div>
+    <label>${esc(t("f_end"))}<input type="time" name="end" value="${e.ends_at ? sgParts(e.ends_at).time : ""}"></label>
+    <label>${esc(t("f_place"))}<input name="place" value="${esc(e.place || "")}"></label>
+    <label>${esc(t("f_remind"))}<select name="remind_min">${REMINDS.map((m) => `<option value="${m}" ${(e.remind_min ?? 1440) === m ? "selected" : ""}>${esc(remindLabel(m))}</option>`).join("")}</select></label>
+    <label>${esc(t("f_notes"))}<textarea name="notes" rows="3">${esc(e.notes || "")}</textarea></label>
+    <label class="check"><input type="checkbox" name="notify" ${isNew ? "checked" : ""}> ${esc(t(g ? "evNotifyGroup" : "evNotifyAll"))}</label>
+    <button class="btn primary block">${esc(t("save"))}</button></form>`);
+}
 A.newPost = (d) => postForm({ group_id: d.g, kind: d.kind });
 A.editPost = (d) => postForm(D.posts.find((p) => p.id === d.id));
 function postForm(p) {
@@ -775,7 +1084,7 @@ A.editMember = (d) => {
     <label>${esc(t("f_dob"))}<input type="date" name="dob" value="${esc(p.dob || "")}"></label>
     <label>${esc(t(d.id ? "f_pwKeep" : "f_password"))}<input name="password" ${d.id ? "" : "required"} autocomplete="off"></label>
     <h4>${esc(t("groupsRoles"))}</h4>
-    <div class="roles">${D.groups.map((g) => `<label class="role-row" style="--gc:${g.color}"><span>${ic(g.icon)} ${esc(gname(g))}</span><select name="g_${g.id}"><option value="">—</option><option value="member" ${p.groups[g.id] === "member" ? "selected" : ""}>${esc(t("role_member"))}</option><option value="chair" ${p.groups[g.id] === "chair" ? "selected" : ""}>${esc(t("role_chair"))}</option></select></label>`).join("")}</div>
+    <div class="roles">${D.groups.map((g) => `<label class="role-row" style="--gc:${g.color}"><span>${ic(g.icon)} ${esc(gname(g))}</span><select name="g_${g.id}"><option value="">—</option><option value="member" ${p.groups[g.id] === "member" ? "selected" : ""}>${esc(t("role_member"))}</option><option value="chair" ${p.groups[g.id] === "chair" ? "selected" : ""}>${esc(t("role_chair"))}</option>${g.id === "multimedia" ? ["maker", "checker"].map((r) => `<option value="${r}" ${p.groups[g.id] === r ? "selected" : ""}>${esc(t("role_" + r))}</option>`).join("") : ""}</select></label>`).join("")}</div>
     <label class="check"><input type="checkbox" name="is_admin" ${p.is_admin ? "checked" : ""}> ${esc(t("isAdmin"))}</label>
     <label class="check"><input type="checkbox" name="wa_optin" ${p.wa_optin ? "checked" : ""}> ${esc(t("waOptin"))}</label>
     <button class="btn primary block">${esc(t("save"))}</button>
@@ -806,7 +1115,7 @@ function parseDob(s) {
 }
 const yes = (v) => /^(y|yes|ya|iya|olo|1|true|x|✓|v)$/i.test(String(v || "").trim());
 function matchGroup(tok) {
-  const n = norm(tok).replace(/\b(chair|ketua|member|anggota)\b/g, "").trim(); if (!n) return null;
+  const n = norm(tok).replace(/\b(chair|ketua|member|anggota|maker|pembuat|checker|pemeriksa)\b/g, "").trim(); if (!n) return null;
   return D.groups.find((g) => [g.id, g.name_id, g.name_bt, g.name_en].some((x) => { const v = norm(x); return v && (v === n || v.startsWith(n) || n.startsWith(v) || v.split(" ").includes(n) || v.replace(/[()]/g, "").includes(n)); })) || null;
 }
 function memberRows(tables) {
@@ -818,7 +1127,7 @@ function memberRows(tables) {
     return tb.rows.slice(hi + 1).map((r) => {
       const get = (k) => (k in idx ? String(r[idx[k]] || "").trim() : "");
       const groups = {}; const unknown = [];
-      get("groups").split(/[;,\/\n]+/).forEach((tok) => { if (!tok.trim()) return; const g = matchGroup(tok); if (g) groups[g.id] = /chair|ketua/i.test(tok) ? "chair" : groups[g.id] || "member"; else unknown.push(tok.trim()); });
+      get("groups").split(/[;,\/\n]+/).forEach((tok) => { if (!tok.trim()) return; const g = matchGroup(tok); if (g) groups[g.id] = /chair|ketua/i.test(tok) ? "chair" : /maker|pembuat/i.test(tok) ? "maker" : /checker|pemeriksa/i.test(tok) ? "checker" : groups[g.id] || "member"; else unknown.push(tok.trim()); });
       get("chair").split(/[;,\/\n]+/).forEach((tok) => { if (!tok.trim() || /^(no|tidak|-)$/i.test(tok.trim())) return; const g = matchGroup(tok); if (g) groups[g.id] = "chair"; else unknown.push(tok.trim()); });
       const rawDob = get("dob"); const dob = parseDob(rawDob);
       const row = { name: get("name"), alias: get("alias"), phone: S.phone8(get("phone")), dob, password: get("password"), groups, is_admin: yes(get("is_admin")), wa_optin: yes(get("wa_optin")) };
@@ -855,15 +1164,15 @@ document.addEventListener("input", (e) => {
 document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("#sheet").hidden) closeSheet(); });
 
 // ---------- forms ----------
-const F = {};
 F.login = async (f) => {
   try { await api.login(f.phone.value, f.pw.value); }
   catch (e) { if (e.code !== "needs_password") throw e; return firstPwSheet(f.phone.value); }
-  D = null; await refresh(); location.hash = "#/home"; localReminders(); };
+  D = null; await refresh(); afterSignIn(); location.hash = "#/home"; localReminders(); };
+function afterSignIn() { if (viewMode() === "admin" && D && !hasRights()) { LS.set("view", "member"); toast(t("notAdmin")); } }
 F.firstpw = async (f) => {
   if ((f.pw.value || "").length < 6) throw new S.AppError("short_password");
   if (f.pw.value !== f.pw2.value) throw new S.AppError("pw_mismatch");
-  await api.firstPassword(f.dataset.phone, f.pw.value); closeSheet(); D = null; await refresh(); location.hash = "#/home"; toast(t("firstPwDone")); localReminders();
+  await api.firstPassword(f.dataset.phone, f.pw.value); closeSheet(); D = null; await refresh(); afterSignIn(); location.hash = "#/home"; toast(t("firstPwDone")); localReminders();
 };
 F.setup = async (f) => { if (!validPhone(f.phone.value)) throw new S.AppError("bad_phone"); await api.setupAdmin(f.name.value.trim(), f.phone.value, f.pw.value); await api.login(f.phone.value, f.pw.value); D = null; await refresh(); location.hash = "#/people"; };
 F.bread = async (f) => { await api.save("bread", { day: f.day.value, verse: f.verse.value.trim(), title: f.title.value.trim(), body: f.body.value.trim() }); await refresh(); toast(t("saved")); location.hash = "#/bread/" + f.day.value; };
@@ -876,8 +1185,18 @@ F.update = async (f) => { await api.save("update", { id: f.dataset.id || undefin
 F.event = async (f) => {
   const st = new Date(`${f.date.value}T${f.time.value}:00+08:00`).toISOString();
   const en = f.end.value ? new Date(`${f.date.value}T${f.end.value}:00+08:00`).toISOString() : null;
-  await api.save("event", { id: f.dataset.id || undefined, group_id: f.group_id.value || null, title: f.title.value.trim(), starts_at: st, ends_at: en, place: f.place.value.trim(), notes: f.notes.value.trim(), remind_min: +f.remind_min.value });
-  closeSheet(); await refresh(); toast(t("saved"));
+  const notify = f.notify.checked; const gid = f.group_id.value || null; const rem = +f.remind_min.value;
+  const res = await api.save("event", { id: f.dataset.id || undefined, group_id: gid, title: f.title.value.trim(), starts_at: st, ends_at: en, place: f.place.value.trim(), notes: f.notes.value.trim(), remind_min: rem, notify });
+  await refresh();
+  const e = D.events.find((x) => x.id === (res && res.id)) || { id: res && res.id, title: f.title.value.trim(), starts_at: st, ends_at: en, remind_min: rem, group_id: gid };
+  const who = gid ? gname(G(gid)) : t("wholeChurch");
+  sheet(t("evSaved"), `<div class="done-ic">${ic("check")}</div>
+    <p>${esc(t("evSavedCal", who))}</p>
+    ${notify ? `<p class="small muted">${esc(t("evSavedPush", who))}</p>` : ""}
+    ${rem > 0 ? `<p class="small muted">${esc(t("evSavedRemind", remindLabel(rem)))}</p>` : ""}
+    <div class="stack"><button class="btn primary block" data-act="icsOne" data-id="${e.id}">${ic("calendar")} ${esc(t("addPhoneCal"))}</button>
+    <a class="btn block" href="${gcal(e)}" target="_blank" rel="noopener">${ic("globe")} Google Calendar</a>
+    <button class="btn block ghost" data-act="closeSheet">${esc(t("close"))}</button></div>`);
 };
 F.roster = async (f) => {
   const res = f._parsed && f._parsed(); if (!res) return;
@@ -954,6 +1273,405 @@ async function seedDemo() {
   await api.save("roster", { group_id: "multimedia", month: ym, title: `Roster Multimedia ${monthName(ym)}`, file_name: "roster-multimedia.xlsx", mime: "", table_json: [{ name: "Sheet1", rows: [["Tanggal", "Operator Slide", "Live Stream", "Sound"], ...sundays.map((d, i) => [nm(d), ["Rina", "Josua", "Rina", "Josua", "Rina"][i], ["Josua", "Daniel", "Josua", "Rina", "Daniel"][i], ["Daniel", "Rina", "Daniel", "Daniel", "Josua"][i]])] }] });
   await api.save("roster", { group_id: "song-leader", month: ym, title: `Song Leader ${monthName(ym)}`, file_name: "song-leader.docx", mime: "", table_json: [{ name: "Table 1", rows: [["Minggu", "Song Leader", "Pemandu Koor"], ...sundays.map((d, i) => [nm(d), ["Inang Ruth", "Amang Bonar", "Inang Ruth", "Amang Bonar", "Inang Ruth"][i], ["Grace", "Maria", "Grace", "Maria", "Grace"][i]])] }] });
   D = null; await refresh();
+}
+
+// ---------- Secretary, Treasurer, Chairman (office categories) ----------
+// Only the office holders (added by the admin by phone number) and the admin see these; the server hides them from everyone else.
+// Opening one asks for the phone number again (once per session), and a number that is not an office holder is turned away.
+const isOffice = () => !!(D && (D.me.is_admin || D.groups.some((g) => g.kind === "office" && g.id in (D.me.groups || {}))));
+const officeGroups = () => D.groups.filter((g) => g.kind === "office");
+const holders = (gid) => D.people.filter((p) => gid in (p.groups || {}));
+const offOk = () => { try { return !!D && sessionStorage.getItem("hkbp.off") === D.me.phone; } catch { return false; } };
+const setOffOk = (v) => { try { v ? sessionStorage.setItem("hkbp.off", v) : sessionStorage.removeItem("hkbp.off"); } catch {} };
+const canUpload = (gid) => manage() && (D.me.is_admin || !!roleIn(gid));
+const fmtSize = (n) => (n > 1048576 ? (n / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round((n || 0) / 1024)) + " KB");
+const fmtID = (iso) => new Intl.DateTimeFormat("id-ID", { timeZone: TZ, day: "numeric", month: "long", year: "numeric" }).format(new Date(iso + "T12:00:00+08:00"));
+const dmy = (iso) => `${iso.slice(8)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
+const lastPost = (gid, kind) => D.posts.filter((p) => p.group_id === gid && p.kind === kind).sort((a, b) => (b.day || b.created_at).localeCompare(a.day || a.created_at))[0];
+
+function officeHome() {
+  if (!isOffice()) return "";
+  return `<h3 class="sec-h">${ic("lock")} ${esc(t("officeTitle"))}</h3><div class="glist">${officeGroups().map((g) => groupTile(g, esc(t("officeSub")))).join("")}</div>`;
+}
+
+R.office = (gid) => {
+  const g = G(gid);
+  if (!g || g.kind !== "office" || !isOffice()) return shell("#/home", empty(t("officeOnly"), "lock"), { back: "#/home" });
+  if (!offOk()) return shell("#/home", `<div class="card center pad">${ic("lock")}<p>${esc(t("officeVerifyLead"))}</p><button class="btn primary" data-act="officePrompt">${esc(t("verify"))}</button></div>`, { back: "#/home", title: gname(g), sub: t("officeTitle") });
+  const files = (D.files || []).filter((f) => f.group_id === gid);
+  const hs = holders(gid);
+  return shell("#/home", `
+    <section class="ghero slim" style="--gc:${g.color}"><span class="gicon xl">${ic(g.icon)}</span>
+      <div><h2>${esc(gname(g))}</h2><p>${esc(t("officeLead"))}</p></div></section>
+    <div class="chips office-tabs">${officeGroups().map((o) => `<a class="chip ${o.id === gid ? "on" : ""}" href="#/o/${o.id}" style="--gc:${o.color}">${esc(gname(o))}</a>`).join("")}</div>
+    ${gid === "secretary" ? wartaBlock() : ""}
+    ${gid === "treasurer" ? financeBlock() : ""}
+    <div class="card"><div class="card-h"><h3>${ic("file")} ${esc(t("officeFiles"))}</h3>${canUpload(gid) ? `<button class="btn sm primary" data-act="uploadFile" data-g="${gid}">${ic("upload")} ${esc(t("uploadFile"))}</button>` : ""}</div>
+      ${files.length ? files.map(fileRow).join("") : `<p class="muted small">${esc(t("noFiles"))}</p>`}</div>
+    <div class="card"><div class="card-h"><h3>${ic("people")} ${esc(t("officeHolders"))}</h3>${isAdmin() ? `<button class="btn sm" data-act="addHolder" data-g="${gid}">${ic("plus")} ${esc(t("addHolder"))}</button>` : ""}</div>
+      ${hs.length ? hs.map((p) => `<div class="li"><span class="avatar">${esc(initials(p.name))}</span><span class="grow"><b>${esc(p.name)}</b><small>${esc(fmtPhone(p.phone))}</small></span>
+        ${p.phone ? `<a class="icon-btn wa" href="https://wa.me/65${p.phone}" target="_blank" rel="noopener" aria-label="WhatsApp">${ic("wa")}</a>` : ""}
+        ${isAdmin() ? `<button class="icon-btn" data-act="rmHolder" data-g="${gid}" data-phone="${esc(p.phone || "")}" aria-label="${esc(t("delete"))}">${ic("trash")}</button>` : ""}</div>`).join("") : `<p class="muted small">${esc(t("noHolders"))}</p>`}</div>`,
+    { back: "#/home", title: gname(g), sub: t("officeTitle") });
+};
+function fileRow(f) {
+  return `<div class="li"><span class="ftype ${fileKind(f)}">${esc(fileKind(f).toUpperCase())}</span>
+    <span class="grow"><b>${esc(f.title || f.file_name)}</b><small>${esc(fmt(f.created_at, { day: "numeric", month: "short" }))} · ${esc(f.author_name || "")} · ${esc(fmtSize(f.size))}${f.note ? " · " + esc(f.note) : ""}</small></span>
+    <button class="icon-btn" data-act="openOffFile" data-id="${f.id}" aria-label="${esc(t("openOriginal"))}">${ic("file")}</button>
+    <button class="icon-btn wa" data-act="shareFile" data-id="${f.id}" aria-label="WhatsApp">${ic("wa")}</button>
+    ${canUpload(f.group_id) ? `<button class="icon-btn" data-act="del" data-kind="file" data-id="${f.id}" aria-label="${esc(t("delete"))}">${ic("trash")}</button>` : ""}</div>`;
+}
+
+// Phone check when opening an office category.
+function officePrompt() {
+  if (!$("#sheet").hidden) return;
+  sheet(t("officeVerify"), `<form class="form" data-form="offcheck"><p class="muted">${esc(t("officeVerifyLead"))}</p>
+    <label>${esc(t("f_phone"))}<div class="phone-in"><span>+65</span><input name="phone" inputmode="numeric" required placeholder="8123 4567" autocomplete="tel"></div></label>
+    <button class="btn primary block">${esc(t("verify"))}</button></form>`, (el) => el.querySelector("input").focus());
+}
+A.officePrompt = officePrompt;
+F.offcheck = async (f) => {
+  // Must be the signed-in member's own number, and that number must be an office holder (or the admin). The server checks every read again.
+  if (S.phone8(f.phone.value) !== D.me.phone || !isOffice()) { setOffOk(""); closeSheet(); toast(t("officeReject"), true); location.hash = "#/home"; return; }
+  setOffOk(D.me.phone); closeSheet(); toast(t("officeOk"));
+  if (D.me.is_admin && manage() && !officeGroups().some((g) => holders(g.id).length)) { hydrate.offAsked = true; setTimeout(() => A.addHolder({ g: location.hash.split("/")[2] }), 450); }
+};
+
+// Admin: who holds each office, by phone number.
+A.addHolder = (d = {}) => sheet(t("addHolder"), `<form class="form" data-form="holder"><p class="muted">${esc(t("addHolderLead"))}</p>
+  <label>${esc(t("officeRole"))}<select name="g">${officeGroups().map((o) => `<option value="${o.id}" ${o.id === d.g ? "selected" : ""}>${esc(gname(o))}</option>`).join("")}</select></label>
+  <label>${esc(t("f_phone"))}<div class="phone-in"><span>+65</span><input name="phone" inputmode="numeric" required placeholder="8123 4567"></div></label>
+  <label>${esc(t("f_nameIfNew"))}<input name="name" autocomplete="off"></label>
+  <label class="check"><input type="checkbox" name="more" checked> ${esc(t("addAnother"))}</label>
+  <button class="btn primary block">${ic("plus")} ${esc(t("addHolder"))}</button></form>`, (el) => el.querySelector("input[name=phone]").focus());
+F.holder = async (f) => {
+  const g = f.g.value; const r = await api.setRole(f.phone.value, g, "chair", f.name.value.trim());
+  const more = f.more.checked; await refresh(); toast(t("holderAdded", r.name, gname(G(g))));
+  closeSheet(); if (more) setTimeout(() => A.addHolder({ g }), 220);
+};
+A.rmHolder = async (d, btn) => {
+  if (btn.dataset.sure !== "1") { btn.dataset.sure = "1"; toast(t("tapAgain")); return; }
+  await api.setRole(d.phone, d.g, ""); await refresh(); toast(t("saved")); render();
+};
+
+// Files: upload, open, and share to WhatsApp with a pop-up.
+const offCache = {};
+const toB64 = (blob) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(",")[1] || ""); r.onerror = () => rej(r.error); r.readAsDataURL(blob); });
+async function offFile(id) {
+  if (!offCache[id]) {
+    const r = await api.file(id); if (!r || !r.file_b64) throw new S.AppError("server");
+    const bin = atob(r.file_b64); const u8 = Uint8Array.from(bin, (c) => c.charCodeAt(0));
+    offCache[id] = new File([u8], r.file_name || "file", { type: r.mime || "application/octet-stream" });
+  }
+  return offCache[id];
+}
+async function saveOfficeFile(gid, file, title, note, notify) {
+  if (file.size > 10 * 1048576) throw new S.AppError("file_too_big");
+  const res = await api.save("file", { group_id: gid, title: title || file.name.replace(/\.[^.]+$/, ""), note: note || null, file_name: file.name, mime: file.type || "application/octet-stream", file_b64: await toB64(file), size: file.size, notify: !!notify });
+  offCache[res.id] = file; await refresh(); return res;
+}
+A.uploadFile = (d) => sheet(t("uploadFile"), `<form class="form" data-form="offfile" data-g="${d.g}">
+  <label>${esc(t("f_file"))}<input type="file" name="file" required></label>
+  <label>${esc(t("f_title"))}<input name="title" placeholder="${esc(t("fileTitlePh"))}"></label>
+  <label>${esc(t("f_note"))}<input name="note"></label>
+  <label class="check"><input type="checkbox" name="notify" checked> ${esc(t("notifyOffice"))}</label>
+  <p class="small muted">${esc(t("fileLimit"))}</p>
+  <button class="btn primary block">${ic("upload")} ${esc(t("uploadFile"))}</button></form>`);
+F.offfile = async (f) => {
+  const file = f.file.files[0]; if (!file) return;
+  const res = await saveOfficeFile(f.dataset.g, file, f.title.value.trim(), f.note.value.trim(), f.notify.checked);
+  toast(t("saved")); setTimeout(() => shareSheet(file, res.title, res.group_id), 50);
+};
+A.openOffFile = (d, btn) => busy(btn, async () => {
+  try { const f = await offFile(d.id); if (/pdf|image/.test(f.type)) window.open(URL.createObjectURL(f), "_blank"); else download(f.name, f); }
+  catch (e) { toast(errMsg(e), true); }
+});
+A.shareFile = async (d, btn) => {
+  const meta = (D.files || []).find((x) => x.id === d.id); if (!meta) return;
+  try { const f = await busy(btn, () => offFile(d.id)); shareSheet(f, meta.title || meta.file_name, meta.group_id); } catch (e) { toast(errMsg(e), true); }
+};
+function shareSheet(file, title, gid) {
+  Object.assign(shareSheet, { file, title, gid });
+  const canFiles = !!(navigator.canShare && navigator.canShare({ files: [file] }));
+  sheet(t("waShareTitle"), `<p class="muted">${esc(t("waShareLead", title))}</p><div class="stack">
+    <button class="opt-card" data-act="waSendFile">${ic("wa")}<span><b>${esc(t("waSendFile"))}</b><small>${esc(t(canFiles ? "waSendFileSub" : "waSendFileDl"))}</small></span>${ic("chev", "chev")}</button>
+    <a class="opt-card" href="${wa(`📎 *${title}*\n${gname(G(gid))} · HKBP Singapore\n${appUrl()}#/o/${gid}`)}" target="_blank" rel="noopener">${ic("link")}<span><b>${esc(t("waSendLink"))}</b><small>${esc(t("waSendLinkSub"))}</small></span>${ic("chev", "chev")}</a>
+    <button class="btn ghost block" data-act="closeSheet">${esc(t("notNow"))}</button></div>`);
+}
+A.waSendFile = async () => {
+  const f = shareSheet.file; if (!f) return; const text = `${shareSheet.title} · HKBP Singapore`;
+  if (navigator.canShare && navigator.canShare({ files: [f] })) {
+    // The phone's share sheet: pick WhatsApp, then the group or person. The file itself is sent.
+    try { await navigator.share({ files: [f], title: shareSheet.title, text }); closeSheet(); } catch (e) { if (e.name !== "AbortError") toast(t("err_server"), true); }
+    return;
+  }
+  download(f.name, f); window.open(wa(`${text}\n${t("waAttachHint")}`), "_blank");
+};
+
+// ---------- Treasurer: Warta Keuangan (used by the Secretary's Warta Jemaat) ----------
+function financeBlock() {
+  const p = lastPost("treasurer", "finance");
+  return `<div class="card"><div class="card-h"><h3>${ic("coins")} ${esc(t("financeTitle"))}</h3>${canUpload("treasurer") ? `<button class="btn sm primary" data-act="financeForm">${ic("edit")} ${esc(t("financeNew"))}</button>` : ""}</div>
+    <p class="small muted">${esc(t("financeLead"))}</p>
+    ${p ? `<p class="small"><b>Warta ${esc(fmtID(p.day))}</b> · ${esc(p.author_name || "")}</p><p class="pre small">${esc(p.body)}</p>` : `<p class="muted small">${esc(t("noFinance"))}</p>`}</div>`;
+}
+const finTemplate = (sun) => `A. PERSEMBAHAN ${fmtID(addDays(sun, -7))}\n1. Persembahan Ibadah Umum: SGD 0.00\n2. Sekolah Minggu: SGD 0.00\n3. Remaja: SGD 0.00\n\nB. PERSEMBAHAN BULANAN\n1. \n\nC. DANA PEMBANGUNAN GEREJA\n1. `;
+A.financeForm = () => {
+  const sun = nextSunday(); const p = lastPost("treasurer", "finance"); const same = p && p.day === sun;
+  sheet(t("financeTitle"), `<form class="form" data-form="finance" data-id="${same ? p.id : ""}">
+    <label>${esc(t("financeFor"))}<input type="date" name="day" value="${esc(sun)}" required></label>
+    <label>${esc(t("financeBody"))}<textarea name="body" rows="14" required>${esc(same ? p.body : finTemplate(sun))}</textarea></label>
+    <p class="small muted">${esc(t("financeHint"))}</p>
+    <button class="btn primary block">${esc(t("save"))}</button></form>`);
+};
+F.finance = async (f) => {
+  await api.save("post", { id: f.dataset.id || undefined, group_id: "treasurer", kind: "finance", title: "Warta Keuangan " + f.day.value, body: f.body.value.trim(), day: f.day.value });
+  closeSheet(); await refresh(); toast(t("saved"));
+};
+
+// ---------- Secretary: Warta Jemaat (weekly bulletin, 2 pages A4 landscape, folded) ----------
+// Everything the app already has is filled in automatically; the Secretary checks it, adds the rest, and makes the PDF.
+//  - Minggu name and theme: the Tata Ibadah published by Multimedia for that Sunday
+//  - birthdays this week: members and the imported birthday list
+//  - Warta Keuangan: the Treasurer's latest entry
+//  - Pelayan Ibadah: last week's "next Sunday" column, plus Multimedia / Song Leader / Musicians from their rosters
+//  - Berita Pelayanan: elders' updates from the last 10 days; Jadwal: church calendar for the coming weeks
+//  - Badan Organisasi, Pokok Doa, offering info, address: carried over from the previous Warta
+const TEAM_ROLES = ["Bahasa", "Pengkhotbah", "Liturgist", "St. Sekolah Minggu", "Pembaca Warta", "Tally Counter", "Penerima Tamu", "Pemain Musik", "Song Leader", "Sekolah Minggu", "Remaja", "Multimedia"];
+const TEAM_ROSTER = { "Pemain Musik": "musik", "Song Leader": "song-leader", "Multimedia": "multimedia" };
+const WARTA_BASE = {
+  resort: "Resort Singapore - Distrik XX Kepulauan Riau", address: "8 Short Street Singapore 188214", email: "hkbpsingapura@gmail.com",
+  timeThis: "13.30 - 15.00", timeNext: "13.30 - 15.00", minggu: "", theme: "", verse: "", renungan: "", renunganBy: "",
+  bdays: "", anniv: "", bdayVerse: "Mazmur 22: 11: “Kepada-Mu aku diserahkan sejak aku lahir, sejak dalam kandungan ibuku Engkaulah Allahku.”",
+  annivVerse: "Mazmur 128: 1: “Berbahagialah setiap orang yang takut akan TUHAN, yang hidup menurut jalan yang ditunjukkan-Nya!”",
+  finance: "", org: "BADAN ORGANISASI\nHKBP SINGAPORE\n", doa: "1. Pelayanan gereja sesuai dengan warta jemaat & yang berulang tahun.\n2. Kesehatan seluruh jemaat HKBP Singapore dan se-Resort Singapore, termasuk para siswa, mahasiswa, Pekerja dan Pelaut di Singapore dan keluarga.\n3. Pemulihan jemaat yang sakit.",
+  info: "1. PERSEMBAHAN\nSelain dari Persembahan dalam Ibadah minggu, segala bentuk persembahan lainnya dapat disampaikan melalui rekening gereja.",
+  jadwalTitle: "", jadwal: "", berita: "", attDate: "", att: ["", "", "", "", ""],
+  closing: "Selalu hidup beriman, penuh Kasih dan Berpengharapan.", team: TEAM_ROLES.map((r) => [r, "", ""]),
+};
+const CARRY = ["resort", "address", "email", "timeThis", "timeNext", "bdayVerse", "annivVerse", "org", "doa", "info", "closing", "renunganBy"];
+const wartaPosts = () => D.posts.filter((p) => p.group_id === "secretary" && p.kind === "warta").sort((a, b) => (b.day || "").localeCompare(a.day || ""));
+const parseJSON = (s) => { try { return JSON.parse(s) || {}; } catch { return {}; } };
+function rosterNames(gid, iso) {
+  const out = [];
+  D.rosters.filter((r) => r.group_id === gid && r.month === iso.slice(0, 7)).forEach((r) => (r.table_json || []).forEach((tb) => tb.rows.forEach((row) => {
+    if (rowDate(row, r.month) !== iso) return;
+    const names = row.filter((c) => c && !DATE_RE.test(c) && !/^\d{4}-\d{2}-\d{2}$/.test(c) && !/^(minggu|sunday|sabtu|saturday)$/i.test(String(c).trim()));
+    if (names.length) out.push(names.join(", "));
+  })));
+  return out.join("; ");
+}
+// The parts that come from the app's data (recomputed with "Fill in again from the app").
+function wartaAutoParts(day, team) {
+  const next = addDays(day, 7);
+  const seen = new Set(); const bdays = birthdaysBetween(day, 6).map((x) => x.p.name).filter((n) => !seen.has(n) && seen.add(n));
+  const fins = D.posts.filter((p) => p.group_id === "treasurer" && p.kind === "finance" && (p.day || "") <= day).sort((a, b) => (b.day || "").localeCompare(a.day || ""));
+  const ups = D.updates.filter((u) => u.audience === "all" && u.created_at.slice(0, 10) >= addDays(day, -10) && u.created_at.slice(0, 10) <= day);
+  const until = addDays(day, 35);
+  const evs = D.events.filter((e) => !(e.group_id && (G(e.group_id) || {}).kind === "office")).map((e) => ({ e, d: sgParts(e.starts_at).date })).filter((x) => x.d >= day && x.d <= until);
+  return {
+    bdays: bdays.join("\n"),
+    finance: fins[0] ? fins[0].body : "",
+    berita: ups.map((u, i) => `${i + 1}. ${String(u.title || "").toUpperCase()}\n${u.body || ""}`).join("\n\n"),
+    jadwalTitle: "JADWAL PELAYANAN BULAN " + new Intl.DateTimeFormat("id-ID", { month: "long" }).format(new Date(day + "T12:00:00+08:00")).toUpperCase(),
+    jadwal: evs.map((x, i) => `${"abcdefghijklmnopqrstuvwxyz"[i] || i + 1}. ${x.e.title} (${+x.d.slice(8)}/${+x.d.slice(5, 7)})`).join("\n"),
+    team: team.map(([r, a, b]) => { const g = TEAM_ROSTER[r]; return g ? [r, rosterNames(g, day) || a, rosterNames(g, next) || b] : [r, a, b]; }),
+  };
+}
+function wartaLoad(day) {
+  const saved = wartaPosts().find((p) => p.day === day);
+  if (saved) return { ...WARTA_BASE, ...parseJSON(saved.body), day, _id: saved.id };
+  const prev = wartaPosts().find((p) => p.day < day); const P0 = prev ? parseJSON(prev.body) : {};
+  const W = { ...WARTA_BASE, day }; CARRY.forEach((k) => { if (P0[k] != null) W[k] = P0[k]; });
+  // Last week's "next Sunday" column becomes this week's.
+  const prevTeam = Array.isArray(P0.team) ? P0.team : null; const lastWeek = prev && prev.day === addDays(day, -7);
+  W.team = TEAM_ROLES.concat(prevTeam ? prevTeam.map((r) => r[0]).filter((r) => !TEAM_ROLES.includes(r)) : []).map((r) => {
+    const old = prevTeam && prevTeam.find((x) => x[0] === r); return [r, old && lastWeek ? old[2] || "" : "", ""]; });
+  if (lastWeek && P0.timeNext) W.timeThis = P0.timeNext;
+  if (lastWeek && P0.minggu && !W.minggu) W.attDate = "";
+  return Object.assign(W, wartaAutoParts(day, W.team));
+}
+async function tataMeta(day) {
+  const v = (D.services || []).find((x) => x.service_date === day); if (!v) return null;
+  try { const m = (await tataHtml(v.id) || "").match(/<script type="application\/json" id="tata-data">([\s\S]*?)<\/script>/); return m ? JSON.parse(m[1]).meta || null : null; } catch { return null; }
+}
+function wartaBlock() {
+  const ws = wartaPosts().slice(0, 5); const sun = nextSunday();
+  return `<div class="card"><div class="card-h"><h3>${ic("book")} Warta Jemaat</h3></div>
+    <p class="small muted">${esc(t("wartaLead"))}</p>
+    ${canUpload("secretary") ? `<a class="btn primary block" href="#/warta/${sun}">${ic("edit")} ${esc(t("wartaMake", fmtID(sun)))}</a>` : ""}
+    ${ws.map((p) => `<a class="li" href="#/warta/${p.day}"><span class="date-chip"><b>${esc(fmt(p.day, { day: "numeric" }))}</b><small>${esc(fmt(p.day, { month: "short" }))}</small></span><span class="grow"><b>${esc(p.title || "Warta Jemaat")}</b><small>${esc(p.author_name || "")}</small></span>${ic("chev", "chev")}</a>`).join("")}</div>`;
+}
+const wTa = (name, label, val, rows = 4, src = "") => `<label>${esc(label)}${src ? ` <span class="src-tag">${esc(src)}</span>` : ""}<textarea name="${name}" rows="${rows}">${esc(val || "")}</textarea></label>`;
+const wIn = (name, label, val, src = "") => `<label>${esc(label)}${src ? ` <span class="src-tag">${esc(src)}</span>` : ""}<input name="${name}" value="${esc(val || "")}"></label>`;
+R.warta = (day) => {
+  if (!isOffice() || !offOk()) { location.replace("#/o/secretary"); return ""; }
+  day = /^\d{4}-\d{2}-\d{2}$/.test(day || "") ? day : nextSunday();
+  const W = wartaLoad(day); const can = canUpload("secretary"); R.warta._W = W;
+  if (!W._id && (!W.minggu || !W.theme)) tataMeta(day).then((m) => {
+    const f = $("#warta-form"); if (!m || !f || f.dataset.day !== day) return;
+    const th = String(m.theme || "").match(/^(.*?)\s*\(([^)]+)\)\s*$/);
+    if (m.sunday && !f.minggu.value) f.minggu.value = m.sunday;
+    if (m.theme && !f.theme.value) { f.theme.value = (th ? th[1] : m.theme).replace(/^["“]|["”]$/g, ""); if (th && !f.verse.value) f.verse.value = th[2]; }
+  });
+  const sec = (title, inner, open) => `<details class="card wsec"${open ? " open" : ""}><summary><b>${esc(title)}</b></summary>${inner}</details>`;
+  return shell("#/home", `
+    <div class="card"><p class="small muted">${esc(t("wartaFormLead"))}</p>
+      <div class="row two"><button class="btn" data-act="wartaPreview">${ic("screen")} ${esc(t("preview"))}</button><button class="btn" data-act="wartaRefill">${ic("check")} ${esc(t("wartaRefill"))}</button></div></div>
+    <form class="form" id="warta-form" data-form="warta" data-day="${day}">
+      ${sec(t("w_head"), `${wIn("minggu", "Minggu", W.minggu, "Tata Ibadah")}${wIn("theme", t("w_theme"), W.theme, "Tata Ibadah")}${wIn("verse", t("f_verse"), W.verse, "Tata Ibadah")}
+        <div class="row two">${wIn("timeThis", t("w_timeThis"), W.timeThis)}${wIn("timeNext", t("w_timeNext"), W.timeNext)}</div>`, true)}
+      ${sec(t("w_renungan"), `${wTa("renungan", t("w_renunganBody"), W.renungan, 12)}${wIn("renunganBy", t("w_by"), W.renunganBy)}`, !W.renungan)}
+      ${sec(t("birthdays"), `${wTa("bdays", t("w_bdays"), W.bdays, 4, t("src_bdays"))}${wTa("bdayVerse", t("w_verseGift"), W.bdayVerse, 2)}${wTa("anniv", t("w_anniv"), W.anniv, 3)}${wTa("annivVerse", t("w_verseGift"), W.annivVerse, 2)}`)}
+      ${sec("Warta Keuangan", wTa("finance", t("financeBody"), W.finance, 10, t("src_treasurer")))}
+      ${sec(t("w_team"), `<div class="tbl-wrap"><table class="tbl wteam"><tr><th></th><th>${esc(fmtID(day))}</th><th>${esc(fmtID(addDays(day, 7)))}</th></tr>
+        ${W.team.map(([r, a, b], i) => `<tr><th><input name="tr${i}" value="${esc(r)}"></th><td><input name="ta${i}" value="${esc(a)}"></td><td><input name="tb${i}" value="${esc(b)}"></td></tr>`).join("")}</table></div>
+        <p class="small muted">${esc(t("w_teamHint"))}</p>`)}
+      ${sec(t("w_news"), `${wTa("berita", "Berita Pelayanan", W.berita, 10, t("src_updates"))}${wIn("jadwalTitle", t("w_jadwalTitle"), W.jadwalTitle)}${wTa("jadwal", t("w_jadwal"), W.jadwal, 5, t("src_calendar"))}`)}
+      ${sec(t("w_more"), `${wTa("doa", "Pokok Doa", W.doa, 4)}${wTa("info", t("w_info"), W.info, 6)}
+        ${wIn("attDate", t("w_attDate"), W.attDate || fmtID(addDays(day, -7)))}
+        <div class="row three att">${["Bapak", "Ibu", "Naposo", "Remaja", "Sekolah Minggu"].map((l, i) => `<label>${l}<input name="att${i}" inputmode="numeric" value="${esc((W.att || [])[i] || "")}"></label>`).join("")}</div>`)}
+      ${sec(t("w_org"), wTa("org", t("w_org"), W.org, 16))}
+      ${sec(t("w_kop"), `${wIn("resort", "Resort", W.resort)}${wIn("address", t("w_address"), W.address)}${wIn("email", "Email", W.email)}${wTa("closing", t("w_closing"), W.closing, 2)}`)}
+      ${can ? `<div class="row two sticky-actions"><button type="button" class="btn" data-act="wartaSave">${esc(t("w_saveDraft"))}</button><button class="btn primary">${ic("file")} ${esc(t("w_makePdf"))}</button></div>` : ""}
+    </form>`, { back: "#/o/secretary", title: "Warta Jemaat", sub: fmtID(day) });
+};
+function wartaCollect(f) {
+  const W = { ...R.warta._W }; delete W._id;
+  ["minggu", "theme", "verse", "timeThis", "timeNext", "renungan", "renunganBy", "bdays", "bdayVerse", "anniv", "annivVerse", "finance", "berita", "jadwalTitle", "jadwal", "doa", "info", "attDate", "org", "resort", "address", "email", "closing"].forEach((k) => { if (f[k]) W[k] = f[k].value.trim(); });
+  W.att = [0, 1, 2, 3, 4].map((i) => (f["att" + i] ? f["att" + i].value.trim() : ""));
+  W.team = []; for (let i = 0; f["tr" + i]; i++) if (f["tr" + i].value.trim()) W.team.push([f["tr" + i].value.trim(), f["ta" + i].value.trim(), f["tb" + i].value.trim()]);
+  W.day = f.dataset.day; return W;
+}
+async function wartaSaveDraft(W) {
+  const res = await api.save("post", { id: R.warta._W._id || undefined, group_id: "secretary", kind: "warta", title: "Warta Jemaat " + fmtID(W.day), body: JSON.stringify(W), day: W.day });
+  R.warta._W = { ...W, _id: res.id }; return res;
+}
+A.wartaSave = (d, btn) => busy(btn, async () => { try { await wartaSaveDraft(wartaCollect($("#warta-form"))); await refresh(); toast(t("saved")); } catch (e) { toast(errMsg(e), true); } });
+A.wartaRefill = () => {
+  const f = $("#warta-form"); const W = wartaCollect(f); const a = wartaAutoParts(W.day, W.team);
+  ["bdays", "finance", "berita", "jadwalTitle", "jadwal"].forEach((k) => { if (a[k]) f[k].value = a[k]; });
+  a.team.forEach(([, x, y], i) => { if (f["ta" + i] && x) f["ta" + i].value = x; if (f["tb" + i] && y) f["tb" + i].value = y; });
+  toast(t("wartaRefilled"));
+};
+A.wartaPreview = () => {
+  const W = wartaCollect($("#warta-form"));
+  const el = document.createElement("div"); el.id = "wb"; el.className = "warta-prev";
+  el.innerHTML = `<div class="wb-bar"><button class="icon-btn" data-act="closeWb" aria-label="${esc(t("close"))}">${ic("x")}</button><b>Warta Jemaat · ${esc(fmtID(W.day))}</b><span></span></div><div class="wp-scroll"><div class="wp-zoom">${wartaHtml(W)}</div></div>`;
+  document.body.appendChild(el); document.body.classList.add("noscroll");
+  const z = el.querySelector(".wp-zoom"); const fit = () => { const s = Math.min(1, (el.clientWidth - 16) / 1123); z.style.transform = `scale(${s})`; z.style.height = 794 * 2 * s + 40 + "px"; };
+  fitWarta(z); fit();
+};
+F.warta = async (f) => {
+  const W = wartaCollect(f); await wartaSaveDraft(W);
+  const file = await wartaPdf(W);
+  const res = await saveOfficeFile("secretary", file, "Warta Jemaat " + fmtID(W.day), "", false);
+  toast(t("w_pdfReady")); setTimeout(() => shareSheet(file, res.title, "secretary"), 50);
+};
+
+// Bulletin layout. Two A4 landscape pages (1123 x 794 px), each split in two halves, like the printed Warta.
+function wText(s) {
+  return String(s || "").split(/\n/).map((line) => {
+    const l = line.trim(); if (!l) return `<div class="gap"></div>`;
+    const caps = l.length > 3 && l === l.toUpperCase() && /[A-Z]/.test(l);
+    const m = l.match(/^((?:\d+|[a-zA-Z])[.)])\s+(.*)$/);
+    if (m) return `<div class="li-n${/^[A-Z][.)]$/.test(m[1]) ? " top" : ""}"><span>${esc(m[1])}</span><span>${caps || /^[A-Z][.)]$/.test(m[1]) ? `<b>${esc(m[2])}</b>` : esc(m[2])}</span></div>`;
+    return caps ? `<div><b>${esc(l)}</b></div>` : `<div>${esc(l)}</div>`;
+  }).join("");
+}
+const wList = (s) => { const xs = String(s || "").split(/\n/).map((x) => x.trim()).filter(Boolean); return xs.length ? `<ol class="names">${xs.map((x) => `<li><b>${esc(x)}</b></li>`).join("")}</ol>` : `<p class="muted-p">-</p>`; };
+function wartaHtml(W) {
+  const next = addDays(W.day, 7); const ver = (s) => { const i = String(s || "").indexOf(":", String(s || "").indexOf(":") + 1); return i > 0 ? [s.slice(0, i), s.slice(i + 1).trim()] : [s, ""]; };
+  const [bv1, bv2] = ver(W.bdayVerse); const [av1, av2] = ver(W.annivVerse);
+  const theme = esc(W.theme || "").toUpperCase(); const verse = esc(W.verse || "").toUpperCase();
+  return `<style>
+  .wp{width:1123px;height:794px;background:#fff;color:#111;display:flex;font:10.5px/1.32 Arial,Helvetica,sans-serif;box-sizing:border-box;margin:0 0 20px;overflow:hidden}
+  .wp *{box-sizing:border-box}.wp .half{width:50%;height:100%;padding:26px 30px;overflow:hidden}
+  .wp h4{font-size:1.15em;margin:.9em 0 .3em}.wp p{margin:.3em 0}.wp .gap{height:.45em}.wp .li-n{display:flex;gap:.5em;padding-left:.6em}.wp .li-n.top{padding-left:0;margin-top:.3em}
+  .wp ol.names{margin:.4em 0 .6em 1.6em;padding:0}.wp .box{border:1px solid #111;padding:10px 14px;text-align:center;margin-top:16px}
+  .wp .mast{display:flex;align-items:center;gap:12px;border-bottom:2px solid #111;padding-bottom:8px;margin-bottom:8px}.wp .mast img{width:70px;height:70px;object-fit:contain}
+  .wp .mast .t{flex:1;text-align:center}.wp .mast .big{font:900 28px/1 "Arial Black",Arial,sans-serif;letter-spacing:1px;color:#1e3a8a;text-shadow:1px 1px 0 #93c5fd}
+  .wp .mast .sub{font-weight:700;font-size:1.15em}.wp .mast .min{font-weight:700;background:#1e3a8a;color:#fff;padding:2px 8px;display:inline-block;margin:3px 0}
+  .wp .cols{display:flex;gap:12px;height:calc(100% - 128px)}.wp .org{width:34%;font-size:.86em;line-height:1.25;border-right:1px solid #999;padding-right:8px;overflow:hidden}
+  .wp .ren{flex:1;font-size:.9em;text-align:justify;overflow:hidden}.wp .ren h5{text-align:center;font-size:1.1em;margin:0 0 .4em}
+  .wp .sam{border:1.5px solid #111;padding:10px 14px;text-align:center;font-weight:700}.wp .sam .tt{letter-spacing:4px;font-size:1.25em;margin-bottom:4px}
+  .wp .bar{background:#dc2626;color:#fff;font-weight:700;padding:3px 8px;margin:12px 0 6px}
+  .wp table{border-collapse:collapse;width:100%}.wp td,.wp th{border:1px solid #333;padding:2px 5px;vertical-align:top;text-align:left}
+  .wp .team th{background:#1e3a8a;color:#fff;text-align:center}.wp .team td:first-child{font-weight:700;width:24%;background:#eef2ff}
+  .wp .att td,.wp .att th{text-align:center}.wp .wj{font:900 34px/1 "Arial Black",Arial,sans-serif;letter-spacing:12px;color:#1e3a8a;text-align:right;margin-bottom:8px}
+  .wp .muted-p{color:#555}.wp .cover-foot{text-align:right;font-weight:700;margin-top:6px}
+  </style>
+  <div class="wp">
+    <div class="half">
+      <h4>Ulang Tahun Kelahiran</h4>
+      <p>Majelis &amp; Warga Jemaat mengucapkan Selamat Ulang Tahun bagi Bpk/Ibu/Sdr/i terkasih yang berulang tahun dalam satu minggu ini:</p>
+      ${wList(W.bdays)}
+      <p>Sebagai kado ulang tahun, terimalah Firman Tuhan yang tertulis dalam <b>${esc(bv1)}</b>${bv2 ? `: <b>${esc(bv2)}</b>` : ""}</p>
+      <h4>Ulang Tahun Pernikahan</h4>
+      <p>Majelis &amp; Warga Jemaat mengucapkan Selamat Ulang Tahun Pernikahan bagi Bpk/Ibu terkasih yang merayakan ulang tahun pernikahan dalam satu minggu ini:</p>
+      ${wList(W.anniv)}
+      <p>Sebagai kado ulang tahun pernikahan, terimalah Firman Tuhan yang tertulis dalam <b>${esc(av1)}</b>${av2 ? `: <b>${esc(av2)}</b>` : ""}</p>
+      <h4>WARTA KEUANGAN</h4>
+      <div class="fin">${wText(W.finance) || `<p class="muted-p">-</p>`}</div>
+      <div class="box">Majelis Gereja HKBP Singapore mengucapkan :<br><i><b>“Selamat Hari Minggu”</b></i><br>${esc(W.closing)}<br><b>TUHAN MEMBERKATI</b></div>
+    </div>
+    <div class="half">
+      <div class="mast"><img src="logo.png" alt=""><div class="t"><div class="big">HKBP SINGAPORE</div><div class="sub">${esc(W.resort)}</div>
+        <div class="min">${esc(W.minggu || "").toUpperCase()}</div><div class="sub">${esc(fmtID(W.day))}</div><div class="sub">${esc(W.address)}</div><div class="sub">Email Address: ${esc(W.email)}</div></div></div>
+      <div class="cols"><div class="org">${wText(W.org)}</div>
+        <div class="ren"><h5>“${theme}”${verse ? `<br>(${verse})` : ""}</h5>${wText(W.renungan)}${W.renunganBy ? `<p style="text-align:right"><b>(${esc(W.renunganBy)})</b></p>` : ""}
+          <div class="cover-foot">Selamat Hari Minggu<br>Tuhan Yesus Memberkati</div></div></div>
+    </div>
+  </div>
+  <div class="wp">
+    <div class="half">
+      <div class="sam"><div class="tt">Sambutan &amp; Tema Ibadah</div>SHALOM! Selamat hari Minggu buat kita semua.<br>Dengan sukacita kami mengucapkan selamat beribadah untuk jemaat sekalian. Hari ini adalah ${esc(W.minggu || "")}
+        <br><br>Dengan tema Minggu:<br>“${theme}”${verse ? `<br>(${verse})` : ""}</div>
+      <h4>Pokok Doa (Didoakan Pengkhotbah)</h4><div>${wText(W.doa)}</div>
+      <div class="bar">INFORMASI TAMBAHAN (UNTUK DIBACA SENDIRI)</div>
+      <div>${wText(W.info)}</div>
+      ${W.jadwal ? `<div class="li-n top"><span><b>2.</b></span><span><b>${esc(W.jadwalTitle)}</b></span></div><div style="padding-left:1.4em">${wText(W.jadwal)}</div>` : ""}
+      ${(W.att || []).some(Boolean) ? `<table class="att" style="margin-top:12px"><tr><th colspan="5">JUMLAH JEMAAT DI MINGGU, ${esc(W.attDate || "")}</th></tr><tr><td>BAPAK</td><td>IBU</td><td>NAPOSO</td><td>REMAJA</td><td>SEKOLAH MINGGU</td></tr><tr>${W.att.map((n) => `<td>${esc(n)}</td>`).join("")}</tr></table>` : ""}
+    </div>
+    <div class="half">
+      <div class="wj">WARTA JEMAAT</div>
+      <b>PELAYAN IBADAH</b>
+      <table class="team"><tr><th>Tanggal</th><th>Minggu,<br>${dmy(W.day)} ${esc(W.timeThis)}</th><th>Minggu,<br>${dmy(next)} ${esc(W.timeNext)}</th></tr>
+        ${(W.team || []).map(([r, a, b]) => `<tr><td>${esc(r)}</td><td>${esc(a || "-")}</td><td>${esc(b || "-")}</td></tr>`).join("")}</table>
+      <h4>BERITA PELAYANAN</h4><div>${wText(W.berita)}</div>
+    </div>
+  </div>`;
+}
+// Long text is made a little smaller until each half fits its page.
+function fitWarta(root) {
+  root.querySelectorAll(".wp .half").forEach((h) => {
+    let fs = 10.5; h.style.fontSize = fs + "px";
+    while (h.scrollHeight > h.clientHeight + 1 && fs > 6.5) { fs -= 0.25; h.style.fontSize = fs + "px"; }
+    h.querySelectorAll(".org,.ren").forEach((c) => { let s = 1; while (c.scrollHeight > c.clientHeight + 1 && s > 0.6) { s -= 0.04; c.style.fontSize = s + "em"; } });
+  });
+}
+function loadScript(src) {
+  return new Promise((res, rej) => {
+    if (document.querySelector(`script[src="${src}"]`)) return res();
+    const s = document.createElement("script"); s.src = src; s.onload = res; s.onerror = () => { s.remove(); rej(new S.AppError("offline")); }; document.head.appendChild(s);
+  });
+}
+async function wartaPdf(W) {
+  await loadScript("https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js");
+  await loadScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js");
+  const host = document.createElement("div"); host.className = "warta-host"; host.innerHTML = wartaHtml(W); document.body.appendChild(host);
+  try {
+    await Promise.all([...host.querySelectorAll("img")].map((i) => (i.complete ? 0 : new Promise((r) => { i.onload = i.onerror = r; }))));
+    fitWarta(host);
+    const pdf = new window.jspdf.jsPDF({ orientation: "landscape", unit: "mm", format: "a4", compress: true });
+    const pages = host.querySelectorAll(".wp");
+    for (let i = 0; i < pages.length; i++) {
+      const c = await window.html2canvas(pages[i], { scale: 2, backgroundColor: "#ffffff", logging: false });
+      if (i) pdf.addPage();
+      pdf.addImage(c.toDataURL("image/jpeg", 0.9), "JPEG", 0, 0, 297, 210);
+    }
+    return new File([pdf.output("blob")], `Warta Jemaat Minggu ${fmtID(W.day)}.pdf`, { type: "application/pdf" });
+  } finally { host.remove(); }
 }
 
 // ---------- start ----------

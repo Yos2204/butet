@@ -11,7 +11,7 @@ create extension if not exists pgcrypto with schema extensions;
 
 create table if not exists hk_groups (
   id text primary key,
-  kind text not null check (kind in ('sermon','service')),
+  kind text not null check (kind in ('sermon','service','office')),
   name_id text, name_bt text, name_en text,
   color text, icon text, sort int default 0
 );
@@ -97,6 +97,36 @@ create table if not exists hk_outbox (
 
 create table if not exists hk_sent (key text primary key, at timestamptz default now());
 
+-- App settings set by the admin in the first-time setup pop-up (daily bread source, WhatsApp group, time).
+-- claude_key, vapid_private and cron_key are secret: only the notification job and pg_cron read them. All are created on the server (no one types them).
+create table if not exists hk_settings (key text primary key, value jsonb, updated_at timestamptz default now());
+
+-- Tata Ibadah (order of service) made in the workbench by Multimedia makers and published for everyone to read.
+create table if not exists hk_services (
+  id uuid primary key default gen_random_uuid(),
+  service_date date, title text, html text not null,
+  author_name text, created_at timestamptz default now(), removed_at timestamptz
+);
+
+-- Birthdays of people who are not (yet) in the member list, e.g. imported once from a church birthday list.
+create table if not exists hk_birthdays (
+  id uuid primary key default gen_random_uuid(),
+  name text not null, dob date not null, year_known boolean not null default true, note text,
+  author_name text, created_at timestamptz default now(), removed_at timestamptz
+);
+
+-- Files the Secretary, Treasurer and Chairman upload (letters, reports, minutes). Only office holders and the admin see them.
+create table if not exists hk_files (
+  id uuid primary key default gen_random_uuid(),
+  group_id text not null references hk_groups on delete cascade,
+  title text, note text, file_name text, mime text, file_b64 text, size int,
+  author_name text, created_at timestamptz default now(), removed_at timestamptz
+);
+
+-- Older databases: allow the 'office' kind (Secretary, Treasurer, Chairman).
+alter table hk_groups drop constraint if exists hk_groups_kind_check;
+alter table hk_groups add constraint hk_groups_kind_check check (kind in ('sermon','service','office'));
+
 alter table hk_posts add column if not exists removed_at timestamptz;
 alter table hk_rosters add column if not exists removed_at timestamptz;
 alter table hk_bread add column if not exists removed_at timestamptz;
@@ -106,7 +136,7 @@ alter table hk_push add column if not exists revoked boolean not null default fa
 
 -- Lock every table: only the functions (and the server's service key) may touch them.
 do $$ declare t text; begin
-  foreach t in array array['hk_groups','hk_members','hk_sessions','hk_posts','hk_rosters','hk_bread','hk_updates','hk_events','hk_push','hk_outbox','hk_sent'] loop
+  foreach t in array array['hk_groups','hk_members','hk_sessions','hk_posts','hk_rosters','hk_bread','hk_updates','hk_events','hk_push','hk_outbox','hk_sent','hk_settings','hk_birthdays','hk_services','hk_files'] loop
     execute format('alter table %I enable row level security', t);
     execute format('revoke all on %I from anon, authenticated', t);
   end loop;
@@ -123,7 +153,10 @@ insert into hk_groups (id, kind, name_id, name_bt, name_en, color, icon, sort) v
   ('parhalado','service','Parhalado (Penatua & Pendeta)','Parhalado','Elders & Pastor','#8b5a2b','book',13),
   ('band','service','Band','Band','Band','#e11d48','drum',14),
   ('song-leader','service','Song Leader','Song Leader','Song Leader','#ca8a04','mic',15),
-  ('musik','service','Pemusik','Pargonsi / Pemusik','Musicians','#0891b2','note',16)
+  ('musik','service','Pemusik','Pargonsi / Pemusik','Musicians','#0891b2','note',16),
+  ('secretary','office','Sekretaris','Sekretaris','Secretary','#334155','file',21),
+  ('treasurer','office','Bendahara','Bendahara','Treasurer','#15803d','coins',22),
+  ('chairman','office','Ketua','Ketua','Chairman','#9f1239','gavel',23)
 on conflict (id) do nothing;
 
 -- ---------- helpers (not callable from the app) ----------
@@ -149,10 +182,22 @@ create or replace function hk__elder(m hk_members) returns boolean language sql 
   select m.is_admin or m.groups ? 'parhalado'
 $$;
 
+-- Secretary, Treasurer and Chairman ("office" categories): only the people the admin put in one of them, and the admin.
+create or replace function hk__office(m hk_members) returns boolean language sql stable security definer set search_path = public as $$
+  select m.is_admin or exists (select 1 from hk_groups g where g.kind = 'office' and m.groups ? g.id)
+$$;
+
+-- Office categories are seen only by office holders and the admin (not by elders automatically).
 -- Sermonic categories are seen by their own members, elders and admins. Service sections are seen by everyone.
 create or replace function hk__sees(m hk_members, gid text) returns boolean language sql stable security definer set search_path = public as $$
-  select gid is null or hk__elder(m) or m.groups ? gid
-      or exists (select 1 from hk_groups g where g.id = gid and g.kind = 'service')
+  select case when exists (select 1 from hk_groups g where g.id = gid and g.kind = 'office') then hk__office(m)
+    else gid is null or hk__elder(m) or m.groups ? gid
+      or exists (select 1 from hk_groups g where g.id = gid and g.kind = 'service') end
+$$;
+
+-- Multimedia "maker" (or its chair, or an admin) may publish a Tata Ibadah. A "checker" and everyone else only read it.
+create or replace function hk__maker(m hk_members) returns boolean language sql immutable as $$
+  select m.is_admin or coalesce(m.groups ->> 'multimedia', '') in ('maker', 'chair')
 $$;
 
 create or replace function hk__json(r anyelement) returns jsonb language sql immutable as $$ select to_jsonb(r) $$;
@@ -213,15 +258,16 @@ end $$;
 
 -- ---------- everything the signed-in member may see, in one call ----------
 create or replace function hk_data(p_token text) returns jsonb language plpgsql security definer set search_path = public as $$
-declare m hk_members := hk__me(p_token); el boolean := hk__elder(m);
+declare m hk_members := hk__me(p_token); el boolean := hk__elder(m); off boolean := hk__office(m);
+  hide text[] := case when hk__office(m) then '{}' else (select coalesce(array_agg(id), '{}') from hk_groups where kind = 'office') end;
 begin
   return jsonb_build_object(
     'me', jsonb_build_object('id', m.id, 'name', m.name, 'alias', m.alias, 'phone', m.phone, 'dob', m.dob, 'is_admin', m.is_admin, 'groups', m.groups, 'wa_optin', m.wa_optin),
-    'groups', (select coalesce(jsonb_agg(to_jsonb(g) order by g.sort), '[]') from hk_groups g where g.removed_at is null),
+    'groups', (select coalesce(jsonb_agg(to_jsonb(g) order by g.sort), '[]') from hk_groups g where g.removed_at is null and (g.kind <> 'office' or off)),
     'posts', (select coalesce(jsonb_agg(to_jsonb(p) order by p.created_at desc), '[]') from
                (select * from hk_posts where removed_at is null and hk__sees(m, group_id) order by created_at desc limit 300) p),
     'rosters', (select coalesce(jsonb_agg((to_jsonb(r) - 'file_b64') || jsonb_build_object('has_file', r.file_b64 is not null) order by r.month desc, r.created_at desc), '[]')
-               from hk_rosters r where r.removed_at is null and r.month >= to_char(now() - interval '12 months', 'YYYY-MM')),
+               from hk_rosters r where r.removed_at is null and hk__sees(m, r.group_id) and r.month >= to_char(now() - interval '12 months', 'YYYY-MM')),
     'bread', (select coalesce(jsonb_agg(to_jsonb(b) order by b.day desc), '[]') from hk_bread b
                where b.removed_at is null and b.day >= current_date - 90 and (el or b.day <= (now() at time zone 'Asia/Singapore')::date)),
     'updates', (select coalesce(jsonb_agg(to_jsonb(u) order by u.pinned desc, u.created_at desc), '[]') from
@@ -229,18 +275,61 @@ begin
     'events', (select coalesce(jsonb_agg(to_jsonb(e) order by e.starts_at), '[]') from hk_events e
                where e.removed_at is null and e.starts_at > now() - interval '60 days' and hk__sees(m, e.group_id)),
     'people', (select coalesce(jsonb_agg(jsonb_build_object(
-                  'id', x.id, 'name', x.name, 'alias', x.alias, 'bday', to_char(x.dob, 'MM-DD'), 'groups', x.groups, 'is_admin', x.is_admin,
+                  'id', x.id, 'name', x.name, 'alias', x.alias, 'bday', to_char(x.dob, 'MM-DD'), 'groups', x.groups - hide, 'is_admin', x.is_admin,
                   'phone', case when m.is_admin or exists (select 1 from jsonb_each_text(m.groups) g where g.value = 'chair' and x.groups ? g.key) then x.phone end,
                   'dob', case when m.is_admin then x.dob end,
                   'wa_optin', case when m.is_admin then x.wa_optin end,
-                  'has_password', case when m.is_admin then x.pass_hash is not null end) order by x.name), '[]') from hk_members x where x.removed_at is null)
+                  'has_password', case when m.is_admin then x.pass_hash is not null end) order by x.name), '[]') from hk_members x where x.removed_at is null),
+    'services', (select coalesce(jsonb_agg(jsonb_build_object('id', v.id, 'service_date', v.service_date, 'title', v.title, 'author_name', v.author_name,
+                  'created_at', v.created_at, 'size', length(v.html)) order by v.service_date desc nulls last, v.created_at desc), '[]')
+                  from (select * from hk_services where removed_at is null order by service_date desc nulls last, created_at desc limit 60) v),
+    'birthdays', (select coalesce(jsonb_agg(jsonb_build_object('id', b.id, 'name', b.name, 'bday', to_char(b.dob, 'MM-DD'),
+                  'year', case when b.year_known then extract(year from b.dob)::int end, 'note', b.note) order by to_char(b.dob, 'MM-DD')), '[]')
+                  from hk_birthdays b where b.removed_at is null),
+    'files', (select coalesce(jsonb_agg((to_jsonb(f) - 'file_b64') order by f.created_at desc), '[]') from hk_files f
+                where f.removed_at is null and off and hk__sees(m, f.group_id)),
+    'settings', (select coalesce(jsonb_object_agg(key, value), '{}') from hk_settings where key not in ('claude_key', 'vapid_private', 'cron_key'))
+                || jsonb_build_object('claude_key_set', exists (select 1 from hk_settings where key = 'claude_key'))
   );
+end $$;
+
+-- Admin gives one person a role in one group by phone number (e.g. Multimedia "maker" or "checker").
+-- A phone that is not on the member list yet is added with the given name. p_role '' removes the role.
+create or replace function hk_set_role(p_token text, p_phone text, p_group text, p_role text, p_name text default null) returns jsonb language plpgsql security definer set search_path = public as $$
+declare m hk_members := hk__me(p_token); ph text := hk__phone(p_phone); x hk_members;
+begin
+  if not m.is_admin then raise exception 'not_allowed'; end if;
+  if ph !~ '^[3689][0-9]{7}$' then raise exception 'bad_phone'; end if;
+  if coalesce(p_role, '') not in ('', 'member', 'chair', 'maker', 'checker') or not exists (select 1 from hk_groups where id = p_group) then raise exception 'unknown_kind'; end if;
+  select * into x from hk_members where phone = ph;
+  if x.id is null then
+    if coalesce(trim(p_name), '') = '' then raise exception 'need_name'; end if;
+    insert into hk_members (name, phone, groups) values (trim(p_name), ph, '{}') returning * into x;
+  end if;
+  update hk_members set removed_at = null,
+    groups = case when coalesce(p_role, '') = '' then groups - p_group else groups || jsonb_build_object(p_group, p_role) end
+  where id = x.id returning * into x;
+  return jsonb_build_object('id', x.id, 'name', x.name, 'phone', x.phone, 'groups', x.groups);
+end $$;
+
+create or replace function hk_service_html(p_token text, p_id uuid) returns text language plpgsql security definer set search_path = public as $$
+declare m hk_members := hk__me(p_token);
+begin
+  return (select html from hk_services where id = p_id and removed_at is null);
 end $$;
 
 create or replace function hk_roster_file(p_token text, p_id uuid) returns jsonb language plpgsql security definer set search_path = public as $$
 declare m hk_members := hk__me(p_token);
 begin
-  return (select jsonb_build_object('file_b64', file_b64, 'mime', mime, 'file_name', file_name) from hk_rosters where id = p_id and removed_at is null);
+  return (select jsonb_build_object('file_b64', file_b64, 'mime', mime, 'file_name', file_name) from hk_rosters where id = p_id and removed_at is null and hk__sees(m, group_id));
+end $$;
+
+-- Office file: only office holders and the admin may open it.
+create or replace function hk_file(p_token text, p_id uuid) returns jsonb language plpgsql security definer set search_path = public as $$
+declare m hk_members := hk__me(p_token);
+begin
+  if not hk__office(m) then raise exception 'not_allowed'; end if;
+  return (select jsonb_build_object('file_b64', file_b64, 'mime', mime, 'file_name', file_name) from hk_files where id = p_id and removed_at is null);
 end $$;
 
 -- ---------- save and remove, with role checks ----------
@@ -279,11 +368,43 @@ begin
     if (d ->> 'notify')::boolean then insert into hk_outbox (audience, title, body, url) values (case when d ->> 'audience' = 'elders' then 'elders' else 'all' end, d ->> 'title', left(coalesce(d ->> 'body', ''), 180), '#/elders'); end if;
 
   elsif p_kind = 'event' then
-    if not (hk__elder(m) or (gid is not null and hk__chair(m, gid))) then raise exception 'not_allowed'; end if;
+    if not (hk__elder(m) or (gid is not null and hk__chair(m, gid))) or (gid is not null and not hk__sees(m, gid)) then raise exception 'not_allowed'; end if;
     insert into hk_events (id, group_id, title, starts_at, ends_at, place, notes, remind_min, author_name)
     values (coalesce(rid, gen_random_uuid()), gid, d ->> 'title', (d ->> 'starts_at')::timestamptz, nullif(d ->> 'ends_at', '')::timestamptz, d ->> 'place', d ->> 'notes', coalesce((d ->> 'remind_min')::int, 1440), m.name)
     on conflict (id) do update set group_id = excluded.group_id, title = excluded.title, starts_at = excluded.starts_at, ends_at = excluded.ends_at, place = excluded.place, notes = excluded.notes, remind_min = excluded.remind_min
     returning to_jsonb(hk_events.*) into res;
+    if (d ->> 'notify')::boolean then
+      insert into hk_outbox (audience, title, body, url) values (case when gid is null then 'all' else 'group:' || gid end, '🗓 ' || (d ->> 'title'),
+        to_char((d ->> 'starts_at')::timestamptz at time zone 'Asia/Singapore', 'DD/MM/YYYY HH24:MI') || coalesce(' · ' || nullif(d ->> 'place', ''), ''), '#/calendar');
+    end if;
+
+  elsif p_kind = 'service' then
+    if not hk__maker(m) then raise exception 'not_allowed'; end if;
+    if length(coalesce(d ->> 'html', '')) > 9000000 then raise exception 'file_too_big'; end if;
+    insert into hk_services (id, service_date, title, html, author_name)
+    values (coalesce(rid, gen_random_uuid()), nullif(d ->> 'service_date', '')::date, d ->> 'title', d ->> 'html', m.name)
+    on conflict (id) do update set service_date = excluded.service_date, title = excluded.title, html = excluded.html, author_name = excluded.author_name, removed_at = null
+    returning (to_jsonb(hk_services.*) - 'html') into res;
+    if (d ->> 'notify')::boolean then insert into hk_outbox (audience, title, body, url) values ('all', '⛪ ' || coalesce(d ->> 'title', 'Tata Ibadah'), coalesce(d ->> 'service_date', ''), '#/tata'); end if;
+
+  elsif p_kind = 'file' then
+    -- An office holder uploads into their own category; the admin into any of them.
+    if not (exists (select 1 from hk_groups where id = gid and kind = 'office') and (m.is_admin or m.groups ? gid)) then raise exception 'not_allowed'; end if;
+    if length(coalesce(d ->> 'file_b64', '')) > 14000000 then raise exception 'file_too_big'; end if;
+    insert into hk_files (id, group_id, title, note, file_name, mime, file_b64, size, author_name)
+    values (gen_random_uuid(), gid, d ->> 'title', d ->> 'note', d ->> 'file_name', d ->> 'mime', d ->> 'file_b64', (d ->> 'size')::int, m.name)
+    returning (to_jsonb(hk_files.*) - 'file_b64') into res;
+    if (d ->> 'notify')::boolean then
+      insert into hk_outbox (audience, title, body, url) select 'member:' || x.id, '📎 ' || coalesce(d ->> 'title', d ->> 'file_name'), m.name, '#/o/' || gid
+      from hk_members x where x.removed_at is null and x.id <> m.id and hk__office(x);
+    end if;
+
+  elsif p_kind = 'birthday' then
+    if not hk__elder(m) then raise exception 'not_allowed'; end if;
+    insert into hk_birthdays (id, name, dob, year_known, note, author_name)
+    values (coalesce(rid, gen_random_uuid()), d ->> 'name', (d ->> 'dob')::date, coalesce((d ->> 'year_known')::boolean, true), d ->> 'note', m.name)
+    on conflict (id) do update set name = excluded.name, dob = excluded.dob, year_known = excluded.year_known, note = excluded.note, removed_at = null
+    returning to_jsonb(hk_birthdays.*) into res;
 
   elsif p_kind = 'group' then
     if not m.is_admin then raise exception 'not_allowed'; end if;
@@ -318,6 +439,16 @@ begin
     select group_id into gid from hk_events where id = p_id::uuid;
     if not (hk__elder(m) or (gid is not null and hk__chair(m, gid))) then raise exception 'not_allowed'; end if;
     update hk_events set removed_at = now() where id = p_id::uuid;
+  elsif p_kind = 'service' then
+    if not hk__maker(m) then raise exception 'not_allowed'; end if;
+    update hk_services set removed_at = now() where id = p_id::uuid;
+  elsif p_kind = 'file' then
+    select group_id into gid from hk_files where id = p_id::uuid;
+    if not (m.is_admin or m.groups ? gid) then raise exception 'not_allowed'; end if;
+    update hk_files set removed_at = now() where id = p_id::uuid;
+  elsif p_kind = 'birthday' then
+    if not hk__elder(m) then raise exception 'not_allowed'; end if;
+    update hk_birthdays set removed_at = now() where id = p_id::uuid;
   elsif p_kind = 'group' then
     if not m.is_admin then raise exception 'not_allowed'; end if;
     update hk_groups set removed_at = now() where id = p_id;
@@ -347,7 +478,9 @@ begin
       name = excluded.name, alias = excluded.alias, dob = coalesce(excluded.dob, hk_members.dob),
       pass_hash = coalesce(excluded.pass_hash, hk_members.pass_hash),
       is_admin = case when hk_members.id = m.id then true else excluded.is_admin end,
-      groups = excluded.groups, wa_optin = excluded.wa_optin, removed_at = null;
+      -- Office roles (Secretary, Treasurer, Chairman) are only given in the app, so a member list upload keeps them.
+      groups = excluded.groups || coalesce((select jsonb_object_agg(e.key, e.value) from jsonb_each(hk_members.groups) e
+                 join hk_groups g on g.id = e.key and g.kind = 'office'), '{}'), wa_optin = excluded.wa_optin, removed_at = null;
     n := n + 1;
   end loop;
   return n;
@@ -366,8 +499,48 @@ begin
   update hk_push set revoked = true where endpoint = p_endpoint and member_id = m.id;
 end $$;
 
+-- Imports a birthday list once. Rows: [{name, dob 'YYYY-MM-DD', year_known, phone}]
+-- A row that matches a member (by phone, or by exact name when the member has no birthday yet) fills that member's birthday,
+-- so they get their own birthday notification. Other rows go to hk_birthdays. Repeated rows are skipped.
+create or replace function hk_birthdays_import(p_token text, p_rows jsonb) returns jsonb language plpgsql security definer set search_path = public as $$
+declare m hk_members := hk__me(p_token); r jsonb; nm text; dd date; yk boolean; mid uuid; n_mem int := 0; n_add int := 0; n_skip int := 0;
+begin
+  if not hk__elder(m) then raise exception 'not_allowed'; end if;
+  for r in select * from jsonb_array_elements(p_rows) loop
+    nm := trim(coalesce(r ->> 'name', '')); dd := nullif(r ->> 'dob', '')::date; yk := coalesce((r ->> 'year_known')::boolean, true);
+    if nm = '' or dd is null then n_skip := n_skip + 1; continue; end if;
+    mid := null;
+    if length(hk__phone(r ->> 'phone')) = 8 then select id into mid from hk_members where phone = hk__phone(r ->> 'phone') and removed_at is null; end if;
+    if mid is null then
+      select id into mid from hk_members where lower(name) = lower(nm) and removed_at is null and dob is null
+        and (select count(*) from hk_members x where lower(x.name) = lower(nm) and x.removed_at is null) = 1;
+    end if;
+    if mid is not null then
+      update hk_members set dob = dd where id = mid and (dob is null or yk); n_mem := n_mem + 1;
+    elsif exists (select 1 from hk_birthdays where lower(name) = lower(nm) and to_char(dob, 'MM-DD') = to_char(dd, 'MM-DD') and removed_at is null) then
+      n_skip := n_skip + 1;
+    else
+      insert into hk_birthdays (name, dob, year_known, author_name) values (nm, dd, yk, m.name); n_add := n_add + 1;
+    end if;
+  end loop;
+  return jsonb_build_object('members', n_mem, 'added', n_add, 'skipped', n_skip);
+end $$;
+
+-- Admin saves the daily bread and WhatsApp settings. An empty claude_key keeps the saved one.
+create or replace function hk_settings_save(p_token text, p_data jsonb) returns jsonb language plpgsql security definer set search_path = public as $$
+declare m hk_members := hk__me(p_token); k text; v jsonb;
+begin
+  if not m.is_admin then raise exception 'not_allowed'; end if;
+  for k, v in select * from jsonb_each(p_data) loop
+    if k not in ('bread_source', 'bread_lang', 'bread_hour', 'wa_group_link', 'wa_senders', 'setup_done', 'claude_key') then continue; end if;
+    if k = 'claude_key' and coalesce(v #>> '{}', '') = '' then continue; end if;
+    insert into hk_settings (key, value) values (k, v) on conflict (key) do update set value = excluded.value, updated_at = now();
+  end loop;
+  return (select coalesce(jsonb_object_agg(key, value), '{}') from hk_settings where key not in ('claude_key', 'vapid_private', 'cron_key'));
+end $$;
+
 -- Only these functions are open to the app's public key.
 revoke execute on all functions in schema public from public, anon, authenticated;
 grant execute on function hk_login(text, text), hk_first_password(text, text), hk_logout(text), hk_set_password(text, text, text), hk_data(text),
   hk_roster_file(text, uuid), hk_save(text, text, jsonb), hk_remove(text, text, text), hk_members_upsert(text, jsonb),
-  hk_push_save(text, jsonb), hk_push_remove(text, text) to anon;
+  hk_push_save(text, jsonb), hk_push_remove(text, text), hk_birthdays_import(text, jsonb), hk_settings_save(text, jsonb), hk_service_html(text, uuid), hk_set_role(text, text, text, text, text), hk_file(text, uuid) to anon;

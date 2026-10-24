@@ -24,6 +24,10 @@ const DEFAULT_GROUPS = [
   ["band", "service", "Band", "Band", "Band", "#e11d48", "drum", 14],
   ["song-leader", "service", "Song Leader", "Song Leader", "Song Leader", "#ca8a04", "mic", 15],
   ["musik", "service", "Pemusik", "Pargonsi / Pemusik", "Musicians", "#0891b2", "note", 16],
+  // Office categories: only the office holders (set by the admin by phone number) and the admin see them.
+  ["secretary", "office", "Sekretaris", "Sekretaris", "Secretary", "#334155", "file", 21],
+  ["treasurer", "office", "Bendahara", "Bendahara", "Treasurer", "#15803d", "coins", 22],
+  ["chairman", "office", "Ketua", "Ketua", "Chairman", "#9f1239", "gavel", 23],
 ].map(([id, kind, name_id, name_bt, name_en, color, icon, sort]) => ({ id, kind, name_id, name_bt, name_en, color, icon, sort }));
 
 class AppError extends Error { constructor(code) { super(code); this.code = code; } }
@@ -54,6 +58,8 @@ const Local = {
   async load() {
     let db = await idb.get("db");
     if (!db) db = { groups: DEFAULT_GROUPS.slice(), members: [], posts: [], rosters: [], bread: [], updates: [], events: [], outbox: [] };
+    db.birthdays = db.birthdays || []; db.settings = db.settings || {}; db.services = db.services || []; db.files = db.files || [];
+    for (const g of DEFAULT_GROUPS) if (g.kind === "office" && !db.groups.some((x) => x.id === g.id)) db.groups.push({ ...g });
     this.dbo = db; return db;
   },
   async commit() { await idb.set("db", this.dbo); },
@@ -65,7 +71,9 @@ const Local = {
   },
   chair: (m, gid) => m.is_admin || (m.groups || {})[gid] === "chair",
   elder: (m) => m.is_admin || "parhalado" in (m.groups || {}),
-  sees(m, gid) { if (!gid || this.elder(m) || gid in (m.groups || {})) return true; const g = this.dbo.groups.find((x) => x.id === gid); return !!g && g.kind === "service"; },
+  office(m) { return m.is_admin || this.dbo.groups.some((g) => g.kind === "office" && g.id in (m.groups || {})); },
+  officeIds() { return this.dbo.groups.filter((g) => g.kind === "office").map((g) => g.id); },
+  sees(m, gid) { const og = this.dbo.groups.find((x) => x.id === gid); if (og && og.kind === "office") return this.office(m); if (!gid || this.elder(m) || gid in (m.groups || {})) return true; const g = this.dbo.groups.find((x) => x.id === gid); return !!g && g.kind === "service"; },
   async needsSetup() { const db = await this.load(); return !db.members.some((m) => m.is_admin); },
   async setupAdmin(name, phone, pw) {
     const db = await this.load();
@@ -96,21 +104,28 @@ const Local = {
   async data() {
     const m = await this.me(); const db = this.dbo; const el = this.elder(m); const today = sgToday();
     const chairOf = Object.entries(m.groups || {}).filter(([, r]) => r === "chair").map(([g]) => g);
+    const off = this.office(m); const hide = off ? [] : this.officeIds();
+    const strip = (gs) => Object.fromEntries(Object.entries(gs || {}).filter(([k]) => !hide.includes(k)));
     return {
       me: { id: m.id, name: m.name, alias: m.alias, phone: m.phone, dob: m.dob, is_admin: m.is_admin, groups: m.groups, wa_optin: m.wa_optin },
-      groups: db.groups.slice().sort((a, b) => a.sort - b.sort),
+      groups: db.groups.filter((g) => g.kind !== "office" || off).sort((a, b) => a.sort - b.sort),
       posts: db.posts.filter((p) => this.sees(m, p.group_id)).sort((a, b) => b.created_at.localeCompare(a.created_at)),
-      rosters: db.rosters.map(({ file_b64, ...r }) => ({ ...r, has_file: !!file_b64 })).sort((a, b) => b.month.localeCompare(a.month) || b.created_at.localeCompare(a.created_at)),
+      rosters: db.rosters.filter((r) => this.sees(m, r.group_id)).map(({ file_b64, ...r }) => ({ ...r, has_file: !!file_b64 })).sort((a, b) => b.month.localeCompare(a.month) || b.created_at.localeCompare(a.created_at)),
       bread: db.bread.filter((b) => el || b.day <= today).sort((a, b) => b.day.localeCompare(a.day)),
       updates: db.updates.filter((u) => u.audience === "all" || el).sort((a, b) => (b.pinned - a.pinned) || b.created_at.localeCompare(a.created_at)),
       events: db.events.filter((e) => this.sees(m, e.group_id)).sort((a, b) => a.starts_at.localeCompare(b.starts_at)),
       people: db.members.map((x) => ({
-        id: x.id, name: x.name, alias: x.alias || null, bday: x.dob ? x.dob.slice(5) : null, groups: x.groups, is_admin: x.is_admin,
+        id: x.id, name: x.name, alias: x.alias || null, bday: x.dob ? x.dob.slice(5) : null, groups: strip(x.groups), is_admin: x.is_admin,
         phone: m.is_admin || chairOf.some((g) => g in (x.groups || {})) ? x.phone : null,
         dob: m.is_admin ? x.dob : null, wa_optin: m.is_admin ? x.wa_optin : null, has_password: m.is_admin ? !!x.pass_hash : null,
       })).sort((a, b) => a.name.localeCompare(b.name)),
+      services: db.services.map(({ html, ...v }) => ({ ...v, size: html.length })).sort((a, b) => (b.service_date || "").localeCompare(a.service_date || "") || b.created_at.localeCompare(a.created_at)),
+      birthdays: db.birthdays.map((b) => ({ id: b.id, name: b.name, bday: b.dob.slice(5), year: b.year_known ? +b.dob.slice(0, 4) : null, note: b.note || null })).sort((a, b) => a.bday.localeCompare(b.bday)),
+      files: off ? db.files.map(({ file_b64, ...f }) => f).sort((a, b) => b.created_at.localeCompare(a.created_at)) : [],
+      settings: { ...(({ claude_key, ...rest }) => rest)(db.settings), claude_key_set: !!db.settings.claude_key },
     };
   },
+  async file(id) { const m = await this.me(); if (!this.office(m)) throw new AppError("not_allowed"); const f = this.dbo.files.find((x) => x.id === id); return f ? { file_b64: f.file_b64, mime: f.mime, file_name: f.file_name } : null; },
   async rosterFile(id) { await this.me(); const r = this.dbo.rosters.find((x) => x.id === id); return r ? { file_b64: r.file_b64, mime: r.mime, file_name: r.file_name } : null; },
   async save(kind, d) {
     const m = await this.me(); const db = this.dbo; const now = new Date().toISOString(); const gid = d.group_id || null;
@@ -132,6 +147,19 @@ const Local = {
     } else if (kind === "event") {
       if (!(this.elder(m) || (gid && this.chair(m, gid)))) deny();
       res = upsert(db.events, { id: d.id || uid(), group_id: gid, title: d.title, starts_at: d.starts_at, ends_at: d.ends_at || null, place: d.place, notes: d.notes, remind_min: +d.remind_min || 1440, author_name: m.name, created_at: now });
+    } else if (kind === "service") {
+      if (!this.maker(m)) deny();
+      res = upsert(db.services, { id: d.id || uid(), service_date: d.service_date || null, title: d.title, html: d.html, author_name: m.name, created_at: now });
+      res = (({ html, ...r }) => r)(res);
+    } else if (kind === "file") {
+      const g = db.groups.find((x) => x.id === gid);
+      if (!g || g.kind !== "office" || !(m.is_admin || gid in (m.groups || {}))) deny();
+      if ((d.file_b64 || "").length > 14000000) throw new AppError("file_too_big");
+      res = { id: uid(), group_id: gid, title: d.title, note: d.note || null, file_name: d.file_name, mime: d.mime, file_b64: d.file_b64, size: d.size, author_name: m.name, created_at: now };
+      db.files.push(res); res = (({ file_b64, ...r }) => r)(res);
+    } else if (kind === "birthday") {
+      if (!this.elder(m)) deny();
+      res = upsert(db.birthdays, { id: d.id || uid(), name: d.name, dob: d.dob, year_known: d.year_known !== false, note: d.note || null, author_name: m.name });
     } else if (kind === "group") {
       if (!m.is_admin) deny();
       res = upsert(db.groups, { id: d.id, kind: d.kind || "service", name_id: d.name_id, name_bt: d.name_bt, name_en: d.name_en, color: d.color || "#475569", icon: d.icon || "star", sort: d.sort || 50 });
@@ -140,11 +168,13 @@ const Local = {
   },
   async del(kind, id) {
     const m = await this.me(); const db = this.dbo; const deny = () => { throw new AppError("not_allowed"); };
-    const lists = { post: "posts", roster: "rosters", bread: "bread", update: "updates", event: "events", group: "groups", member: "members" };
+    const lists = { post: "posts", roster: "rosters", bread: "bread", update: "updates", event: "events", group: "groups", member: "members", birthday: "birthdays", service: "services", file: "files" };
     const key = kind === "bread" ? "day" : "id"; const list = db[lists[kind]]; if (!list) throw new AppError("unknown_kind");
     const row = list.find((x) => x[key] === id); if (!row) return;
     if ((kind === "post" || kind === "roster") && !this.chair(m, row.group_id)) deny();
-    if ((kind === "bread" || kind === "update") && !this.elder(m)) deny();
+    if ((kind === "bread" || kind === "update" || kind === "birthday") && !this.elder(m)) deny();
+    if (kind === "service" && !this.maker(m)) deny();
+    if (kind === "file" && !(m.is_admin || row.group_id in (m.groups || {}))) deny();
     if (kind === "event" && !(this.elder(m) || (row.group_id && this.chair(m, row.group_id)))) deny();
     if ((kind === "group" || kind === "member") && !m.is_admin) deny();
     if (kind === "member" && id === m.id) deny();
@@ -162,6 +192,36 @@ const Local = {
       n++;
     }
     await this.commit(); return n;
+  },
+  async birthdaysImport(rows) {
+    const m = await this.me(); if (!this.elder(m)) throw new AppError("not_allowed");
+    const out = { members: 0, added: 0, skipped: 0 }; const low = (x) => String(x || "").trim().toLowerCase();
+    for (const r of rows) {
+      if (!r.name || !r.dob) { out.skipped++; continue; }
+      const ph = phone8(r.phone);
+      let mem = ph.length === 8 ? this.dbo.members.find((x) => x.phone === ph) : null;
+      if (!mem) { const same = this.dbo.members.filter((x) => low(x.name) === low(r.name)); if (same.length === 1 && !same[0].dob) mem = same[0]; }
+      if (mem) { if (!mem.dob || r.year_known !== false) mem.dob = r.dob; out.members++; }
+      else if (this.dbo.birthdays.some((b) => low(b.name) === low(r.name) && b.dob.slice(5) === r.dob.slice(5))) out.skipped++;
+      else { this.dbo.birthdays.push({ id: uid(), name: r.name.trim(), dob: r.dob, year_known: r.year_known !== false, author_name: m.name }); out.added++; }
+    }
+    await this.commit(); return out;
+  },
+  maker(m) { return m.is_admin || ["maker", "chair"].includes((m.groups || {}).multimedia); },
+  async serviceHtml(id) { await this.me(); const v = this.dbo.services.find((x) => x.id === id); return v ? v.html : null; },
+  async setRole(phone, group, role, name) {
+    const m = await this.me(); if (!m.is_admin) throw new AppError("not_allowed");
+    const ph = phone8(phone); if (!/^[3689]\d{7}$/.test(ph)) throw new AppError("bad_phone");
+    let x = this.dbo.members.find((y) => y.phone === ph);
+    if (!x) { if (!(name || "").trim()) throw new AppError("need_name"); x = { id: uid(), name: name.trim(), phone: ph, dob: null, pass_hash: null, is_admin: false, groups: {}, wa_optin: false }; this.dbo.members.push(x); }
+    x.groups = { ...(x.groups || {}) }; if (role) x.groups[group] = role; else delete x.groups[group];
+    await this.commit(); return { id: x.id, name: x.name, phone: x.phone, groups: x.groups };
+  },
+  async settingsSave(o) {
+    const m = await this.me(); if (!m.is_admin) throw new AppError("not_allowed");
+    const keys = ["bread_source", "bread_lang", "bread_hour", "wa_group_link", "wa_senders", "setup_done", "claude_key"];
+    for (const k of keys) if (k in o && !(k === "claude_key" && !o[k])) this.dbo.settings[k] = o[k];
+    await this.commit();
   },
   async pushSave() { /* no server in local mode: reminders show when the app is opened */ },
 };
@@ -181,7 +241,7 @@ const Remote = {
     } catch { throw new AppError("offline"); }
     const txt = await res.text(); let j = null; try { j = txt ? JSON.parse(txt) : null; } catch {}
     if (!res.ok) {
-      const code = ((j && j.message) || "").match(/not_signed_in|bad_login|needs_password|not_allowed|short_password|file_too_big|unknown_kind/);
+      const code = ((j && j.message) || "").match(/not_signed_in|bad_login|needs_password|not_allowed|short_password|file_too_big|unknown_kind|bad_phone|need_name/);
       if (code && code[0] === "not_signed_in") LS.set("remote.token", null);
       throw new AppError(code ? code[0] : "server");
     }
@@ -198,10 +258,15 @@ const Remote = {
     try { const d = await this.rpc("hk_data", { p_token: this.token }); LS.set("remote.cache", d); return d; }
     catch (e) { const c = LS.get("remote.cache"); if (e.code === "offline" && c) return { ...c, offline: true }; throw e; }
   },
+  file(id) { return this.rpc("hk_file", { p_token: this.token, p_id: id }); },
   rosterFile(id) { return this.rpc("hk_roster_file", { p_token: this.token, p_id: id }); },
   save(kind, d) { return this.rpc("hk_save", { p_token: this.token, p_kind: kind, p_data: d }); },
   del(kind, id) { return this.rpc("hk_remove", { p_token: this.token, p_kind: kind, p_id: String(id) }); },
   membersUpsert(rows) { return this.rpc("hk_members_upsert", { p_token: this.token, p_rows: rows }); },
+  birthdaysImport(rows) { return this.rpc("hk_birthdays_import", { p_token: this.token, p_rows: rows }); },
+  settingsSave(o) { return this.rpc("hk_settings_save", { p_token: this.token, p_data: o }); },
+  serviceHtml(id) { return this.rpc("hk_service_html", { p_token: this.token, p_id: id }); },
+  setRole(phone, group, role, name) { return this.rpc("hk_set_role", { p_token: this.token, p_phone: phone, p_group: group, p_role: role, p_name: name || null }); },
   pushSave(sub) { return this.rpc("hk_push_save", { p_token: this.token, p_sub: sub }); },
 };
 
