@@ -53,7 +53,7 @@ async function run(S: Record<string, any>) {
   const pushOn = !!(S.vapid_public && S.vapid_private);
   if (pushOn) webpush.setVapidDetails("mailto:admin@hkbp-singapore.org", S.vapid_public, S.vapid_private);
 
-  const members = await db("hk_members?select=id,name,phone,dob,wed,is_admin,groups&removed_at=is.null");
+  const members = await db("hk_members?select=id,name,alias,phone,dob,wed,is_admin,groups&removed_at=is.null");
   const subs = await db("hk_push?select=endpoint,member_id,sub&revoked=is.false");
   const audience = (a: string) => {
     if (a === "all") return members;
@@ -126,9 +126,18 @@ async function run(S: Record<string, any>) {
     const md = today.slice(5);
     const first = (n: string) => n.replace(/^(Pdt|St|Sintua|Bapak|Bpk|Ibu|Kak|Bang|Ev|Dr|Kel)\.?\s+/i, "").split(/\s+/)[0];
     const isB = (m: any) => m.dob && m.dob.slice(5) === md, isA = (m: any) => m.wed && m.wed.slice(5) === md;
+    // The Secretary's birthday list comes first: the wish uses the first name written on that list.
+    const norm = (n: string) => (n || "").toLowerCase().replace(/^(pdt|st|sintua|bapak|bpk|ibu|kak|bang|ev|dr|kel)\.?\s+/, "").replace(/[^a-z ]/g, "").replace(/\s+/g, " ").trim();
+    const list = (await db("hk_birthdays?select=name,dob&removed_at=is.null")).filter((x: any) => x.dob && x.dob.slice(5) === md);
+    for (const e of list) {
+      const n = norm(e.name);
+      const m = members.find((x: any) => norm(x.name) === n || (x.alias || "").split(",").some((a: string) => norm(a) === n));
+      if (m && await claim(`bday:${today}:${m.id}`))
+        await push([m], { title: `Selamat Ulang tahun, ${first(e.name)}!`, body: "Seluruh keluarga HKBP Singapore bersyukur untukmu. Tuhan memberkati dan melindungimu (Bil 6:24).", url: "#/home", tag: "bday" });
+    }
     for (const m of members.filter(isB)) {
       if (await claim(`bday:${today}:${m.id}`))
-        await push([m], { title: `Selamat ulang tahun, ${first(m.name)}! 🎉`, body: "Seluruh keluarga HKBP Singapore bersyukur untukmu. Tuhan memberkati dan melindungimu (Bil 6:24).", url: "#/home", tag: "bday" });
+        await push([m], { title: `Selamat Ulang tahun, ${first(m.name)}!`, body: "Seluruh keluarga HKBP Singapore bersyukur untukmu. Tuhan memberkati dan melindungimu (Bil 6:24).", url: "#/home", tag: "bday" });
     }
     for (const m of members.filter(isA)) {
       if (await claim(`anniv:${today}:${m.id}`))
