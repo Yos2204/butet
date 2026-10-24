@@ -84,7 +84,7 @@ const me = () => D.me;
 // Two layouts: "admin" (chairs, elders and admins maintain content) and "member" (congregation sees the results).
 // The choice only hides or shows tools; what a person may change is still decided by their real role on the server.
 const viewMode = () => LS.get("view", null);
-const hasRights = () => !!(D && (D.me.is_admin || "parhalado" in (D.me.groups || {}) || Object.values(D.me.groups || {}).some((r) => r === "chair" || r === "maker")));
+const hasRights = () => !!(D && (D.me.is_admin || "parhalado" in (D.me.groups || {}) || Object.values(D.me.groups || {}).some((r) => ["chair", "maker", "tmaker", "teacher"].includes(r))));
 // Multimedia: only people on the maker list (or its chair) may open the Tata Ibadah workbench; checkers and everyone else read.
 const isMMMaker = () => !!(D && ["maker", "chair"].includes((D.me.groups || {}).multimedia));
 const mmRole = () => { try { return sessionStorage.getItem("hkbp.mm") || ""; } catch { return ""; } };
@@ -93,7 +93,16 @@ const manage = () => viewMode() === "admin" && hasRights();
 const isAdmin = () => !!(D && D.me.is_admin) && manage();
 const isElder = () => manage() && (D.me.is_admin || "parhalado" in (D.me.groups || {}));
 const roleIn = (gid) => (D.me.groups || {})[gid] || null;
-const canEdit = (gid) => manage() && (D.me.is_admin || roleIn(gid) === "chair");
+// Youth and Sunday School are run by teachers: only a Teacher Maker (phone checked once per session) posts materials, news, events and polls.
+// A Teacher reads everything and starts or ends polls in class. Other categories: the chair (and the admin) post.
+const TEACH = S.TEACH || ["naposo", "sekolah-minggu"];
+const isTeachG = (gid) => TEACH.includes(gid);
+const isTMaker = (gid) => !!D && (D.me.is_admin || roleIn(gid) === "tmaker");
+const isTeacherIn = (gid) => !!D && (D.me.is_admin || ["tmaker", "teacher"].includes(roleIn(gid)));
+const tmOk = () => { try { return !!D && sessionStorage.getItem("hkbp.tm") === D.me.phone; } catch { return false; } };
+const setTmOk = (v) => { try { v ? sessionStorage.setItem("hkbp.tm", v) : sessionStorage.removeItem("hkbp.tm"); } catch {} };
+const canEdit = (gid) => manage() && (isTeachG(gid) ? isTMaker(gid) && tmOk() : D.me.is_admin || roleIn(gid) === "chair");
+const canRunPoll = (gid) => manage() && isTeacherIn(gid);
 const canSee = (g) => (g.kind === "office" ? isOffice() : g.kind === "service" || isElder() || !!roleIn(g.id));
 const G = (id) => D.groups.find((g) => g.id === id);
 const gname = (g) => (g ? g["name_" + lang] || g.name_en || g.id : t("wholeChurch"));
@@ -294,7 +303,7 @@ function shell(active, inner, opts = {}) {
 }
 const langSwitch = () => `<div class="langs" role="group" aria-label="Language">${["id", "bt", "en"].map((l) => `<button data-act="lang" data-l="${l}" aria-pressed="${lang === l}">${l.toUpperCase()}</button>`).join("")}</div>`;
 const empty = (msg, icon = "star") => `<div class="empty">${ic(icon)}<p>${esc(msg)}</p></div>`;
-const roleBadge = (gid) => { const r = isAdmin() && !roleIn(gid) ? "admin" : roleIn(gid); return r ? `<span class="badge ${r}">${esc(t("role_" + r))}</span>` : ""; };
+const roleBadge = (gid) => { const r = isAdmin() && !roleIn(gid) ? "admin" : roleIn(gid); return r ? `<span class="badge ${r === "tmaker" ? "chair" : r === "teacher" ? "member" : r}">${esc(t("role_" + r))}</span>` : ""; };
 const groupTile = (g, extra = "") => `<a class="gtile" href="#/${({ sermon: "g", office: "o" })[g.kind] || "s"}/${g.id}" style="--gc:${g.color}">
     <span class="gicon">${ic(g.icon)}</span><span class="gname"><b>${esc(gname(g))}</b><small>${extra}</small></span>${roleBadge(g.id)}${ic("chev", "chev")}</a>`;
 
@@ -438,9 +447,13 @@ R.group = (gid) => {
   const news = posts.filter((p) => p.kind !== "sermon");
   const evs = D.events.filter((e) => e.group_id === gid);
   const people = D.people.filter((p) => gid in (p.groups || {}));
-  const tabs = [["sermon", "t_sermon", sermons.length], ["news", "t_news", news.length], ["events", "t_events", evs.length], ["members", "t_members", people.length]];
+  const teach = isTeachG(gid); const polls = (D.polls || []).filter((p) => p.group_id === gid);
+  const teachers = people.filter((p) => ["tmaker", "teacher"].includes(p.groups[gid]));
+  const tabs = [["sermon", "t_sermon", sermons.length], ...(teach ? [["polls", "t_polls", polls.filter((p) => p.status === "open").length]] : []), ["news", "t_news", news.length], ["events", "t_events", evs.length], ...(teach ? [["teachers", "t_teachers", teachers.length]] : []), ["members", "t_members", people.length]];
   let body = "";
   if (!ok) body = empty(t("membersOnlyLong"), "lock");
+  else if (tab === "polls" && teach) body = pollsTab(gid, polls);
+  else if (tab === "teachers" && teach) body = teachersTab(gid, teachers);
   else if (tab === "sermon") body = (edit ? `<button class="btn primary block" data-act="newPost" data-g="${gid}" data-kind="sermon">${ic("plus")} ${esc(t("newSermon"))}</button>` : "") + (sermons.length ? sermons.map((p) => postCard(p, edit)).join("") : empty(t("noSermon"), "book"));
   else if (tab === "news") body = (edit ? `<button class="btn primary block" data-act="newPost" data-g="${gid}" data-kind="news">${ic("plus")} ${esc(t("newNews"))}</button>` : "") + (news.length ? news.map((p) => postCard(p, edit)).join("") : empty(t("noNews"), "bell"));
   else if (tab === "events") body = (edit ? `<button class="btn primary block" data-act="newEvent" data-g="${gid}">${ic("plus")} ${esc(t("newEvent"))}</button>` : "") + `<div class="card">${evs.length ? evs.map(eventRow).join("") : `<p class="muted small">${esc(t("noEvents"))}</p>`}</div>`;
@@ -448,8 +461,9 @@ R.group = (gid) => {
   return shell("#/groups", `
     <section class="ghero" style="--gc:${g.color}">
       <span class="gicon xl">${ic(g.icon)}</span>
-      <div><h2>${esc(gname(g))}</h2><p>${esc(t("motto_" + g.id) !== "motto_" + g.id ? t("motto_" + g.id) : t("kindSermon"))}</p>${roleBadge(gid) ? `<div class="hero-role">${roleBadge(gid)} <small>${esc(edit ? t("canUpdate") : t("readOnly"))}</small></div>` : ""}</div>
+      <div><h2>${esc(gname(g))}</h2><p>${esc(t("motto_" + g.id) !== "motto_" + g.id ? t("motto_" + g.id) : t("kindSermon"))}</p>${roleBadge(gid) ? `<div class="hero-role">${roleBadge(gid)} <small>${esc(edit ? t("canUpdate") : teach && canRunPoll(gid) ? t("teacherSub") : t("readOnly"))}</small></div>` : ""}</div>
     </section>
+    ${ok && teach && manage() && isTMaker(gid) && !tmOk() ? `<button class="card notify-ask" data-act="tmVerify" data-g="${gid}">${ic("lock")}<span><b>${esc(t("tmVerify"))}</b><small>${esc(t("tmNeedVerify"))}</small></span>${ic("chev", "chev")}</button>` : ""}
     ${ok ? `<div class="seg" role="tablist" style="--gc:${g.color}">${tabs.map(([k, l, n]) => `<a role="tab" aria-selected="${tab === k}" href="#/g/${gid}?tab=${k}">${esc(t(l))}${n ? ` <i>${n}</i>` : ""}</a>`).join("")}</div>` : ""}
     <div style="--gc:${g.color}">${body}</div>`, { back: "#/groups", title: gname(g), sub: t("kindSermon") });
 };
@@ -466,7 +480,7 @@ function postCard(p, edit) {
 }
 function peopleList(people, gid) {
   if (!people.length) return empty(t("noMembers"), "people");
-  return `<div class="card">${people.map((p) => `<div class="li"><span class="avatar">${esc(initials(p.name))}</span><span class="grow"><b>${esc(p.name)}</b><small>${gid && p.groups[gid] === "chair" ? esc(t("role_chair")) : ""}${p.phone ? (gid && p.groups[gid] === "chair" ? " · " : "") + esc(fmtPhone(p.phone)) : ""}</small></span>
+  return `<div class="card">${people.map((p) => `<div class="li"><span class="avatar">${esc(initials(p.name))}</span><span class="grow"><b>${esc(p.name)}</b><small>${gid && ["chair", "tmaker", "teacher"].includes(p.groups[gid]) ? esc(t("role_" + p.groups[gid])) : ""}${p.phone ? (gid && ["chair", "tmaker", "teacher"].includes(p.groups[gid]) ? " · " : "") + esc(fmtPhone(p.phone)) : ""}</small></span>
     ${p.phone ? `<a class="icon-btn wa" href="https://wa.me/65${p.phone}" target="_blank" rel="noopener" aria-label="WhatsApp">${ic("wa")}</a>` : ""}</div>`).join("")}</div>`;
 }
 
@@ -671,6 +685,12 @@ function hydrate() {
   if (D && /^#\/s\/multimedia/.test(location.hash) && $("#sheet").hidden && viewMode() !== null) {
     if (!mmRole()) setTimeout(mmPrompt, 250);
     else if (D.me.is_admin && manage() && !makers().length && !hydrate.mkAsked) { hydrate.mkAsked = true; setTimeout(A.addMaker, 400); }
+  }
+  const tg = (location.hash.match(/^#\/g\/([\w-]+)/) || [])[1];
+  if (D && tg && isTeachG(tg) && $("#sheet").hidden && manage() && isTMaker(tg) && !tmOk() && hydrate.tmAsked !== tg) { hydrate.tmAsked = tg; setTimeout(() => A.tmVerify({ g: tg }), 300); }
+  if (D && /^#\/home/.test(location.hash) && $("#sheet").hidden && isAdmin() && !hydrate.tsAsked && teachSeedMissing().length) {
+    hydrate.tsAsked = true; let seen = false; try { seen = sessionStorage.getItem("hkbp.ts") === "1"; } catch {}
+    if (!seen) setTimeout(() => { if ($("#sheet").hidden) A.teachSetup(); }, 600);
   }
   if (D && /^#\/o\//.test(location.hash) && $("#sheet").hidden && viewMode() !== null && isOffice()) {
     if (!offOk()) setTimeout(officePrompt, 250);
@@ -914,7 +934,7 @@ A.calPast = () => { LS.set("calPast", !LS.get("calPast", false)); render(); };
 A.icsAll = () => download("hkbp-singapore.ics", ics(D.events.filter((e) => new Date(e.starts_at) > Date.now())), "text/calendar");
 A.evMenu = (d) => {
   const e = D.events.find((x) => x.id === d.id); if (!e) return; const p = sgParts(e.starts_at); const g = e.group_id ? G(e.group_id) : null;
-  const edit = isElder() || (e.group_id && canEdit(e.group_id));
+  const edit = e.group_id && isTeachG(e.group_id) ? canEdit(e.group_id) : isElder() || (e.group_id && canEdit(e.group_id));
   sheet(e.title, `<p class="muted">${esc(fmtDay(p.date))} · ${esc(fmtTime(e.starts_at))}${e.ends_at ? "–" + esc(fmtTime(e.ends_at)) : ""}</p>
     ${e.place ? `<p>${ic("pin")} ${esc(e.place)}</p>` : ""}<p class="small muted">${esc(gname(g))} · ${esc(t("remindTxt", remindLabel(e.remind_min)))}</p>${e.notes ? `<p class="pre">${esc(e.notes)}</p>` : ""}
     <div class="stack"><button class="btn primary block" data-act="icsOne" data-id="${e.id}">${ic("calendar")} ${esc(t("addPhoneCal"))}</button>
@@ -929,14 +949,14 @@ const remindLabel = (m) => t("rem_" + m) !== "rem_" + m ? t("rem_" + m) : `${m} 
 A.newEvent = (d) => {
   if (d.id) return eventForm(D.events.find((x) => x.id === d.id));
   if (d.g) return eventForm({ group_id: d.g });
-  const cats = D.groups.filter((g) => isElder() || canEdit(g.id));
+  const cats = D.groups.filter((g) => (isTeachG(g.id) ? canEdit(g.id) : isElder() || canEdit(g.id)));
   if (!isElder() && cats.length === 1) return eventForm({ group_id: cats[0].id });
   sheet(t("newEvent"), `<p class="muted">${esc(t("evWho"))}</p><div class="stack">
     ${isElder() ? `<button class="opt-card" data-act="evPick" data-g="">${ic("people")}<span><b>${esc(t("evGeneral"))}</b><small>${esc(t("evGeneralSub"))}</small></span>${ic("chev", "chev")}</button>` : ""}
     <button class="opt-card" data-act="evSpecific">${ic("groups")}<span><b>${esc(t("evSpecific"))}</b><small>${esc(t("evSpecificSub"))}</small></span>${ic("chev", "chev")}</button></div>`);
 };
 A.evSpecific = () => {
-  const cats = D.groups.filter((g) => isElder() || canEdit(g.id));
+  const cats = D.groups.filter((g) => (isTeachG(g.id) ? canEdit(g.id) : isElder() || canEdit(g.id)));
   const list = (kind) => cats.filter((g) => g.kind === kind).map((g) => `<button class="gtile" data-act="evPick" data-g="${g.id}" style="--gc:${g.color}"><span class="gicon">${ic(g.icon)}</span><span class="gname"><b>${esc(gname(g))}</b></span>${ic("chev", "chev")}</button>`).join("");
   sheet(t("evPickCat"), `${list("sermon") ? `<h4>${esc(t("kindSermon"))}</h4><div class="glist">${list("sermon")}</div>` : ""}${list("service") ? `<h4>${esc(t("kindService"))}</h4><div class="glist">${list("service")}</div>` : ""}`);
 };
@@ -1242,9 +1262,9 @@ async function seedDemo() {
     { name: "Pdt. Jonathan Sitompul", alias: "Amang Pandita", phone: "80000002", dob: "1975-" + md(3), password: "demo", groups: { parhalado: "chair", ama: "member" } },
     { name: "St. Bonar Hutapea", alias: "Amang Bonar", phone: "80000003", dob: "1968-" + md(0), password: "demo", groups: { parhalado: "member", ama: "chair", "song-leader": "member" } },
     { name: "Ruth Sinaga", alias: "Inang Ruth", phone: "80000004", dob: "1980-" + md(12), password: "demo", groups: { ina: "chair", "song-leader": "chair" } },
-    { name: "Rina Simanjuntak", alias: "Rina", phone: "80000005", dob: "1999-" + md(5), password: "demo", groups: { naposo: "chair", band: "member", multimedia: "member" } },
-    { name: "Josua Pardede", alias: "Josua", phone: "80000006", dob: "2001-" + md(20), password: "demo", groups: { naposo: "member", multimedia: "chair", band: "chair" } },
-    { name: "Grace Tobing", alias: "Grace", phone: "80000007", dob: "1995-" + md(40), password: "demo", groups: { "sekolah-minggu": "chair", musik: "member" } },
+    { name: "Rina Simanjuntak", alias: "Rina", phone: "80000005", dob: "1999-" + md(5), password: "demo", groups: { naposo: "tmaker", band: "member", multimedia: "member" } },
+    { name: "Josua Pardede", alias: "Josua", phone: "80000006", dob: "2001-" + md(20), password: "demo", groups: { naposo: "teacher", multimedia: "chair", band: "chair" } },
+    { name: "Grace Tobing", alias: "Grace", phone: "80000007", dob: "1995-" + md(40), password: "demo", groups: { "sekolah-minggu": "tmaker", musik: "member" } },
     { name: "Daniel Lumbantoruan", alias: "Daniel", phone: "80000008", dob: "1988-" + md(9), password: "demo", groups: { pelaut: "chair", musik: "chair", jemaat: "member" } },
     { name: "Maria Nainggolan", alias: "Maria", phone: "80000009", dob: "1990-" + md(1), password: "demo", groups: { jemaat: "chair", ina: "member" } },
   ];
@@ -1259,6 +1279,8 @@ async function seedDemo() {
     ["pelaut", "sermon", "Tuhan Meredakan Badai", "Markus 4:35-41", "Renungan untuk saudara pelaut dan pekerja: Yesus ada di perahu yang sama. Kontak doa: grup WhatsApp Pelaut."],
   ];
   for (const [g, kind, title, verse, body] of posts) await api.save("post", { group_id: g, kind, title, verse, body, day: kind === "sermon" ? sun : null });
+  await api.save("poll", { group_id: "naposo", question: "Tema retreat Naposo tahun depan?", options: ["Panggilan & Pelayanan", "Iman di Tempat Kerja", "Keluarga & Persahabatan"], status: "open" });
+  await api.save("poll", { group_id: "sekolah-minggu", question: "Lagu pujian favorit minggu ini?", options: ["Yesus Sayang Semua", "Allah Peduli", "Kasih-Nya"] });
   await api.save("bread", { day, verse: "Mazmur 46:2", title: "Tempat Perlindungan", body: "Allah itu bagi kita tempat perlindungan dan kekuatan, sebagai penolong dalam kesesakan sangat terbukti.\n\nDi tengah kesibukan Singapura, kita mudah merasa sendirian. Tetapi Tuhan tidak jauh. Hari ini, sebelum membuka HP di pagi hari, ambil satu menit untuk diam dan berkata: \"Tuhan, Engkau perlindunganku.\"\n\nDoa: Tuhan Yesus, jadilah kekuatanku hari ini. Amin." });
   await api.save("bread", { day: addDays(day, -1), verse: "Yohanes 15:5", title: "Tinggal di dalam Dia", body: "Akulah pokok anggur dan kamulah ranting-rantingnya...\n\nRanting tidak berbuah karena berusaha keras, tetapi karena tetap melekat. Hari ini, tetaplah melekat pada Yesus lewat doa singkat di sela pekerjaan.\n\nDoa: Tuhan, biarlah aku tinggal di dalam-Mu. Amin." });
   await api.save("update", { title: "Rapat Parhalado bulan ini", body: "Rapat Parhalado diadakan Sabtu depan jam 19:00 di gereja. Agenda: persiapan Natal dan Tahun Baru, laporan keuangan, jadwal perjamuan kudus.", audience: "elders", pinned: true });
@@ -1274,6 +1296,127 @@ async function seedDemo() {
   await api.save("roster", { group_id: "song-leader", month: ym, title: `Song Leader ${monthName(ym)}`, file_name: "song-leader.docx", mime: "", table_json: [{ name: "Table 1", rows: [["Minggu", "Song Leader", "Pemandu Koor"], ...sundays.map((d, i) => [nm(d), ["Inang Ruth", "Amang Bonar", "Inang Ruth", "Amang Bonar", "Inang Ruth"][i], ["Grace", "Maria", "Grace", "Maria", "Grace"][i]])] }] });
   D = null; await refresh();
 }
+
+// ---------- Youth and Sunday School teachers, and class polls ----------
+// Starting Teacher Makers, given by the admin (YB). Phones come from the member list; the admin fills in any that are missing in a pop-up.
+const TEACH_SEED = { "sekolah-minggu": ["@me", "Dien Pasaribu"], naposo: ["@me", "Richard Siburian", "Royen Gultom"] };
+const normName = (n) => String(n || "").toLowerCase().replace(/^(pdt|st|sintua|cst|bapak|ibu|sdr|sdri|kak|bang)\.?\s+/g, "").replace(/[^a-z ]/g, " ").replace(/\s+/g, " ").trim();
+function seedPerson(name) {
+  if (name === "@me") return { name: D.me.name, phone: D.me.phone };
+  const parts = normName(name).split(" ");
+  const hit = D.people.filter((p) => { const n = normName(p.name); return parts.every((w) => n.split(" ").includes(w)); });
+  return { name, phone: hit.length === 1 ? hit[0].phone || "" : "" };
+}
+const teachSeedMissing = () => Object.entries(TEACH_SEED).flatMap(([g, list]) => list.map((n) => ({ g, ...seedPerson(n) }))
+  .filter((x) => !D.people.some((p) => p.phone && p.phone === x.phone && (p.groups || {})[x.g] === "tmaker")));
+A.teachSetup = () => {
+  try { sessionStorage.setItem("hkbp.ts", "1"); } catch {}
+  const rows = Object.entries(TEACH_SEED).map(([g, list]) => `<h4>${esc(gname(G(g)))} · ${esc(t("role_tmaker"))}</h4>` + list.map((n, i) => {
+    const x = seedPerson(n); const done = D.people.some((p) => p.phone && p.phone === x.phone && (p.groups || {})[g] === "tmaker");
+    return `<div class="ts-row"><label>${esc(t("f_name"))}<input name="n_${g}_${i}" value="${esc(x.name)}" ${n === "@me" ? "readonly" : ""}></label>
+      <label>${esc(t("f_phone"))}${done ? ` <span class="badge chair">${ic("check")}</span>` : ""}<div class="phone-in"><span>+65</span><input name="p_${g}_${i}" inputmode="numeric" placeholder="8123 4567" value="${esc(x.phone)}"></div></label></div>`;
+  }).join("")).join("");
+  sheet(t("tsTitle"), `<form class="form" data-form="tsetup"><p class="muted">${esc(t("tsLead"))}</p>${rows}
+    <button class="btn primary block">${ic("check")} ${esc(t("tsSave"))}</button></form>`, (el) => { const e = [...el.querySelectorAll("input[name^=p_]")].find((x) => !x.value); if (e) e.focus(); });
+};
+F.tsetup = async (f) => {
+  const missing = []; let n = 0;
+  for (const [g, list] of Object.entries(TEACH_SEED)) for (let i = 0; i < list.length; i++) {
+    const name = f["n_" + g + "_" + i].value.trim(); const ph = f["p_" + g + "_" + i].value;
+    if (!S.phone8(ph)) { missing.push(name); continue; }
+    if (!validPhone(ph)) throw new S.AppError("bad_phone");
+    if (D.people.some((p) => p.phone === S.phone8(ph) && (p.groups || {})[g] === "tmaker")) continue;
+    await api.setTeacher(ph, g, "tmaker", name); n++;
+  }
+  closeSheet(); await refresh();
+  toast(missing.length ? t("tsMissing", [...new Set(missing)].join(", ")) : t("tsDone"), !!missing.length);
+};
+A.tmVerify = (d) => sheet(t("tmVerify"), `<form class="form" data-form="tmcheck" data-g="${esc(d.g)}"><p class="muted">${esc(t("tmVerifyLead"))}</p>
+  <label>${esc(t("f_phone"))}<div class="phone-in"><span>+65</span><input name="phone" inputmode="numeric" required placeholder="8123 4567" autocomplete="tel"></div></label>
+  <button class="btn primary block">${esc(t("verify"))}</button></form>`, (el) => el.querySelector("input").focus());
+F.tmcheck = async (f) => {
+  // Must be the signed-in member's own number and a Teacher Maker of this class. The server checks every change again.
+  if (S.phone8(f.phone.value) !== D.me.phone || !isTMaker(f.dataset.g)) { setTmOk(""); closeSheet(); toast(t("tmReject"), true); return; }
+  setTmOk(D.me.phone); closeSheet(); toast(t("tmOk"));
+};
+
+function teachersTab(gid, list) {
+  const mk = canEdit(gid); const order = { tmaker: 0, teacher: 1 };
+  const rows = list.slice().sort((a, b) => order[a.groups[gid]] - order[b.groups[gid]] || a.name.localeCompare(b.name)).map((p) => `<div class="li"><span class="avatar">${esc(initials(p.name))}</span>
+    <span class="grow"><b>${esc(p.name)}</b><small>${esc(t("role_" + p.groups[gid]))}${p.phone ? " · " + esc(fmtPhone(p.phone)) : ""}</small></span>
+    ${p.phone ? `<a class="icon-btn wa" href="https://wa.me/65${p.phone}" target="_blank" rel="noopener" aria-label="WhatsApp">${ic("wa")}</a>` : ""}
+    ${mk && p.phone && p.id !== D.me.id ? `<button class="icon-btn" data-act="rmTeacher" data-g="${gid}" data-phone="${esc(p.phone)}" aria-label="${esc(t("delete"))}">${ic("trash")}</button>` : ""}</div>`).join("");
+  return `<div class="card"><div class="card-h"><h3>${ic("people")} ${esc(t("t_teachers"))}</h3>${mk ? `<button class="btn sm primary" data-act="addTeacher" data-g="${gid}">${ic("plus")} ${esc(t("addTeacher"))}</button>` : ""}</div>
+    <p class="small muted">${esc(t("teachersLead"))}</p>
+    ${rows || `<p class="muted small">${esc(t("noTeachers"))}</p>`}
+    ${isAdmin() ? `<button class="btn sm ghost" data-act="teachSetup">${ic("gear")} ${esc(t("tsTitle"))}</button>` : ""}</div>`;
+}
+A.addTeacher = (d) => sheet(t("addTeacher"), `<form class="form" data-form="teacher" data-g="${esc(d.g)}"><p class="muted">${esc(t("addTeacherLead"))}</p>
+  <label>${esc(t("f_teacherRole"))}<select name="role"><option value="teacher">${esc(t("role_teacher"))} · ${esc(t("teacherSub"))}</option><option value="tmaker" ${d.r === "tmaker" ? "selected" : ""}>${esc(t("role_tmaker"))} · ${esc(t("tmakerSub"))}</option></select></label>
+  <label>${esc(t("f_phone"))}<div class="phone-in"><span>+65</span><input name="phone" inputmode="numeric" required placeholder="8123 4567"></div></label>
+  <label>${esc(t("f_nameIfNew"))}<input name="name" autocomplete="off"></label>
+  <label class="check"><input type="checkbox" name="more"> ${esc(t("addAnother"))}</label>
+  <button class="btn primary block">${ic("plus")} ${esc(t("addTeacher"))}</button></form>`, (el) => el.querySelector("input[name=phone]").focus());
+F.teacher = async (f) => {
+  const g = f.dataset.g; const role = f.role.value;
+  const r = await api.setTeacher(f.phone.value, g, role, f.name.value.trim());
+  const more = f.more.checked; await refresh(); toast(t("teacherAdded", r.name, t("role_" + role)));
+  closeSheet(); if (more) setTimeout(() => A.addTeacher({ g, r: role }), 220);
+};
+A.rmTeacher = async (d, btn) => {
+  if (btn.dataset.sure !== "1") { btn.dataset.sure = "1"; toast(t("tapAgain")); return; }
+  await api.setTeacher(d.phone, d.g, ""); await refresh(); toast(t("saved")); render();
+};
+
+function pollsTab(gid, list) {
+  const mk = canEdit(gid);
+  const order = { open: 0, draft: 1, closed: 2 };
+  const sorted = list.slice().sort((a, b) => order[a.status] - order[b.status] || b.created_at.localeCompare(a.created_at));
+  return (mk ? `<button class="btn primary block" data-act="newPoll" data-g="${gid}">${ic("plus")} ${esc(t("newPoll"))}</button>` : "")
+    + (canRunPoll(gid) && !mk ? `<p class="small muted center">${esc(t("teacherPollLead"))}</p>` : "")
+    + (sorted.length ? sorted.map(pollCard).join("") : empty(t("noPolls"), "check"));
+}
+function pollCard(p) {
+  const gid = p.group_id; const run = canRunPoll(gid); const mk = canEdit(gid);
+  const mine = p.mine || []; const counts = p.counts; const total = p.voters || 0;
+  const bars = counts ? `<div class="poll-res">${p.options.map((o, i) => { const pct = total ? Math.round((counts[i] * 100) / total) : 0;
+    return `<div class="pr ${mine.includes(i) ? "mine" : ""}"><span class="grow">${esc(o)}</span><b>${pct}%</b><small>${counts[i]}</small><i style="width:${pct}%"></i></div>`; }).join("")}</div>` : "";
+  const form = p.status === "open" ? `<form class="form poll-form" data-form="vote" data-id="${p.id}">
+    ${p.options.map((o, i) => `<label class="opt"><input type="${p.multi ? "checkbox" : "radio"}" name="c" value="${i}" ${mine.includes(i) ? "checked" : ""}><span>${esc(o)}</span></label>`).join("")}
+    <button class="btn primary block">${esc(t(mine.length ? "changeVote" : "vote"))}</button></form>` : "";
+  const share = `📊 *${p.question}*\n${p.options.map((o, i) => `${i + 1}. ${o}`).join("\n")}\n\n${t("pollVoteIn")}: ${appUrl()}#/g/${gid}?tab=polls`;
+  return `<article class="card poll ${p.status}" style="--gc:${(G(gid) || {}).color}">
+    <div class="meta"><span class="badge ${p.status === "open" ? "chair" : "member"}">${esc(t("poll_" + p.status))}</span> ${esc(fmt(p.created_at, { day: "numeric", month: "short" }))} · ${esc(p.author_name || "")}${p.multi ? " · " + esc(t("pollMultiShort")) : ""}</div>
+    <h3>${esc(p.question)}</h3>
+    ${form}
+    ${bars || (p.status !== "draft" ? `<p class="small muted">${esc(t("pollHidden"))}</p>` : "")}
+    <p class="small muted">${esc(t("votes", total))}${p.opened_by && p.status !== "draft" ? " · " + esc(t("pollBy", p.opened_by)) : ""}</p>
+    <div class="row end">
+      ${p.status !== "draft" ? `<a class="btn sm wa" href="${wa(share)}" target="_blank" rel="noopener">${ic("wa")}</a>` : ""}
+      ${run && p.status !== "open" ? `<button class="btn sm primary" data-act="pollState" data-id="${p.id}" data-s="open">${esc(t(p.status === "closed" ? "pollReopen" : "pollStart"))}</button>` : ""}
+      ${run && p.status === "open" ? `<button class="btn sm" data-act="pollState" data-id="${p.id}" data-s="closed">${esc(t("pollEnd"))}</button>` : ""}
+      ${mk ? `<button class="btn sm danger" data-act="del" data-kind="poll" data-id="${p.id}" aria-label="${esc(t("delete"))}">${ic("trash")}</button>` : ""}
+    </div></article>`;
+}
+A.newPoll = (d) => sheet(t("newPoll"), `<form class="form" data-form="poll" data-g="${esc(d.g)}">
+  <label>${esc(t("f_question"))}<input name="question" required maxlength="300"></label>
+  <label>${esc(t("f_options"))}<textarea name="options" rows="5" required placeholder="${esc(t("f_optionsPh"))}"></textarea></label>
+  <label class="check"><input type="checkbox" name="multi"> ${esc(t("pollMulti"))}</label>
+  <label class="check"><input type="checkbox" name="open"> ${esc(t("pollOpenNow"))}</label>
+  <label class="check"><input type="checkbox" name="notify"> ${esc(t("notifyGroup"))}</label>
+  <button class="btn primary block">${esc(t("save"))}</button></form>`, (el) => el.querySelector("input").focus());
+F.poll = async (f) => {
+  const options = f.options.value.split("\n").map((x) => x.replace(/^\s*(\d+[.)]|[-•*])\s*/, "").trim()).filter(Boolean);
+  if (options.length < 2 || options.length > 12) throw new S.AppError("poll_opts");
+  await api.save("poll", { group_id: f.dataset.g, question: f.question.value.trim(), options, multi: f.multi.checked, status: f.open.checked ? "open" : "draft", notify: f.notify.checked });
+  closeSheet(); await refresh(); toast(t("saved"));
+};
+F.vote = async (f) => {
+  const c = [...f.querySelectorAll("input[name=c]:checked")].map((x) => +x.value);
+  if (!c.length) throw new S.AppError("poll_pick");
+  await api.vote(f.dataset.id, c); await refresh(); toast(t("voted"));
+};
+A.pollState = (d, btn) => busy(btn, async () => { await api.pollState(d.id, d.s); await refresh(); toast(t(d.s === "open" ? "pollStarted" : "pollEnded")); render(); });
 
 // ---------- Secretary, Treasurer, Chairman (office categories) ----------
 // Only the office holders (added by the admin by phone number) and the admin see these; the server hides them from everyone else.

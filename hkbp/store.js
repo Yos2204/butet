@@ -30,6 +30,9 @@ const DEFAULT_GROUPS = [
   ["chairman", "office", "Ketua", "Ketua", "Chairman", "#9f1239", "gavel", 23],
 ].map(([id, kind, name_id, name_bt, name_en, color, icon, sort]) => ({ id, kind, name_id, name_bt, name_en, color, icon, sort }));
 
+// Categories run by teachers (Teacher Makers and Teachers), see hk__teach in backend/schema.sql.
+const TEACH = ["naposo", "sekolah-minggu"];
+
 class AppError extends Error { constructor(code) { super(code); this.code = code; } }
 
 // ---------- tiny IndexedDB wrapper (rosters can be a few MB, too big for localStorage) ----------
@@ -58,6 +61,7 @@ const Local = {
   async load() {
     let db = await idb.get("db");
     if (!db) db = { groups: DEFAULT_GROUPS.slice(), members: [], posts: [], rosters: [], bread: [], updates: [], events: [], outbox: [] };
+    db.polls = db.polls || []; db.votes = db.votes || [];
     db.birthdays = db.birthdays || []; db.settings = db.settings || {}; db.services = db.services || []; db.files = db.files || [];
     for (const g of DEFAULT_GROUPS) if (g.kind === "office" && !db.groups.some((x) => x.id === g.id)) db.groups.push({ ...g });
     this.dbo = db; return db;
@@ -71,6 +75,10 @@ const Local = {
   },
   chair: (m, gid) => m.is_admin || (m.groups || {})[gid] === "chair",
   elder: (m) => m.is_admin || "parhalado" in (m.groups || {}),
+  // Youth and Sunday School: Teacher Makers post; teachers read and open polls (hk__teach / hk__poster / hk__teacher).
+  teach: (gid) => TEACH.includes(gid),
+  poster(m, gid) { return this.teach(gid) ? m.is_admin || (m.groups || {})[gid] === "tmaker" : this.chair(m, gid); },
+  teacher: (m, gid) => m.is_admin || ["tmaker", "teacher"].includes((m.groups || {})[gid]),
   office(m) { return m.is_admin || this.dbo.groups.some((g) => g.kind === "office" && g.id in (m.groups || {})); },
   officeIds() { return this.dbo.groups.filter((g) => g.kind === "office").map((g) => g.id); },
   sees(m, gid) { const og = this.dbo.groups.find((x) => x.id === gid); if (og && og.kind === "office") return this.office(m); if (!gid || this.elder(m) || gid in (m.groups || {})) return true; const g = this.dbo.groups.find((x) => x.id === gid); return !!g && g.kind === "service"; },
@@ -103,7 +111,8 @@ const Local = {
   },
   async data() {
     const m = await this.me(); const db = this.dbo; const el = this.elder(m); const today = sgToday();
-    const chairOf = Object.entries(m.groups || {}).filter(([, r]) => r === "chair").map(([g]) => g);
+    const chairOf = Object.entries(m.groups || {}).filter(([, r]) => r === "chair" || r === "tmaker").map(([g]) => g);
+    const since = new Date(Date.now() - 180 * 864e5).toISOString();
     const off = this.office(m); const hide = off ? [] : this.officeIds();
     const strip = (gs) => Object.fromEntries(Object.entries(gs || {}).filter(([k]) => !hide.includes(k)));
     return {
@@ -119,6 +128,11 @@ const Local = {
         phone: m.is_admin || chairOf.some((g) => g in (x.groups || {})) ? x.phone : null,
         dob: m.is_admin ? x.dob : null, wa_optin: m.is_admin ? x.wa_optin : null, has_password: m.is_admin ? !!x.pass_hash : null,
       })).sort((a, b) => a.name.localeCompare(b.name)),
+      polls: db.polls.filter((p) => this.sees(m, p.group_id) && p.created_at > since && (p.status !== "draft" || this.teacher(m, p.group_id))).map((p) => {
+        const vs = db.votes.filter((v) => v.poll_id === p.id); const mine = vs.find((v) => v.member_id === m.id);
+        return { ...p, mine: mine ? mine.choices : null, voters: vs.length,
+          counts: this.teacher(m, p.group_id) || p.status === "closed" || mine ? p.options.map((_, i) => vs.filter((v) => v.choices.includes(i)).length) : null };
+      }).sort((a, b) => b.created_at.localeCompare(a.created_at)),
       services: db.services.map(({ html, ...v }) => ({ ...v, size: html.length })).sort((a, b) => (b.service_date || "").localeCompare(a.service_date || "") || b.created_at.localeCompare(a.created_at)),
       birthdays: db.birthdays.map((b) => ({ id: b.id, name: b.name, bday: b.dob.slice(5), year: b.year_known ? +b.dob.slice(0, 4) : null, note: b.note || null })).sort((a, b) => a.bday.localeCompare(b.bday)),
       files: off ? db.files.map(({ file_b64, ...f }) => f).sort((a, b) => b.created_at.localeCompare(a.created_at)) : [],
@@ -133,7 +147,7 @@ const Local = {
     const upsert = (list, row, key = "id") => { const i = list.findIndex((x) => x[key] === row[key]); if (i >= 0) list[i] = { ...list[i], ...row }; else list.push(row); return i >= 0 ? list[i] : row; };
     let res;
     if (kind === "post") {
-      if (!this.chair(m, gid)) deny();
+      if (!this.poster(m, gid)) deny();
       res = upsert(db.posts, { id: d.id || uid(), group_id: gid, kind: d.kind || "news", title: d.title, verse: d.verse, body: d.body, day: d.day || null, author_name: m.name, created_at: d.created_at || now });
     } else if (kind === "roster") {
       if (!this.chair(m, gid)) deny();
@@ -145,8 +159,14 @@ const Local = {
       if (!this.elder(m)) deny();
       res = upsert(db.updates, { id: d.id || uid(), title: d.title, body: d.body, audience: d.audience || "all", pinned: !!d.pinned, author_name: m.name, created_at: d.created_at || now });
     } else if (kind === "event") {
-      if (!(this.elder(m) || (gid && this.chair(m, gid)))) deny();
+      if (!(this.teach(gid) ? this.poster(m, gid) : this.elder(m) || (gid && this.chair(m, gid))) || (gid && !this.sees(m, gid))) deny();
       res = upsert(db.events, { id: d.id || uid(), group_id: gid, title: d.title, starts_at: d.starts_at, ends_at: d.ends_at || null, place: d.place, notes: d.notes, remind_min: +d.remind_min || 1440, author_name: m.name, created_at: now });
+    } else if (kind === "poll") {
+      if (!this.poster(m, gid)) deny();
+      if (!Array.isArray(d.options) || d.options.length < 2 || d.options.length > 12 || !String(d.question || "").trim()) throw new AppError("unknown_kind");
+      const old = d.id && db.polls.find((x) => x.id === d.id);
+      if (old && (old.group_id !== gid || db.votes.some((v) => v.poll_id === old.id))) return old;
+      res = upsert(db.polls, { id: d.id || uid(), group_id: gid, question: String(d.question).trim(), options: d.options, multi: !!d.multi, status: old ? old.status : d.status === "open" ? "open" : "draft", author_name: old ? old.author_name : m.name, created_at: old ? old.created_at : now, opened_by: old ? old.opened_by : null, opened_at: old ? old.opened_at : null });
     } else if (kind === "service") {
       if (!this.maker(m)) deny();
       res = upsert(db.services, { id: d.id || uid(), service_date: d.service_date || null, title: d.title, html: d.html, author_name: m.name, created_at: now });
@@ -168,14 +188,15 @@ const Local = {
   },
   async del(kind, id) {
     const m = await this.me(); const db = this.dbo; const deny = () => { throw new AppError("not_allowed"); };
-    const lists = { post: "posts", roster: "rosters", bread: "bread", update: "updates", event: "events", group: "groups", member: "members", birthday: "birthdays", service: "services", file: "files" };
+    const lists = { poll: "polls", post: "posts", roster: "rosters", bread: "bread", update: "updates", event: "events", group: "groups", member: "members", birthday: "birthdays", service: "services", file: "files" };
     const key = kind === "bread" ? "day" : "id"; const list = db[lists[kind]]; if (!list) throw new AppError("unknown_kind");
     const row = list.find((x) => x[key] === id); if (!row) return;
-    if ((kind === "post" || kind === "roster") && !this.chair(m, row.group_id)) deny();
+    if ((kind === "post" || kind === "poll") && !this.poster(m, row.group_id)) deny();
+    if (kind === "roster" && !this.chair(m, row.group_id)) deny();
     if ((kind === "bread" || kind === "update" || kind === "birthday") && !this.elder(m)) deny();
     if (kind === "service" && !this.maker(m)) deny();
     if (kind === "file" && !(m.is_admin || row.group_id in (m.groups || {}))) deny();
-    if (kind === "event" && !(this.elder(m) || (row.group_id && this.chair(m, row.group_id)))) deny();
+    if (kind === "event" && !(this.teach(row.group_id) ? this.poster(m, row.group_id) : this.elder(m) || (row.group_id && this.chair(m, row.group_id)))) deny();
     if ((kind === "group" || kind === "member") && !m.is_admin) deny();
     if (kind === "member" && id === m.id) deny();
     db[lists[kind]] = list.filter((x) => x !== row); await this.commit();
@@ -186,7 +207,9 @@ const Local = {
     for (const r of rows) {
       const ph = phone8(r.phone); if (ph.length !== 8) continue;
       const ex = this.dbo.members.find((x) => x.phone === ph);
-      const row = { name: r.name, alias: r.alias || null, phone: ph, dob: r.dob || (ex && ex.dob) || null, is_admin: ex && ex.id === m.id ? true : !!r.is_admin, groups: r.groups || {}, wa_optin: !!r.wa_optin };
+      // Office and teacher roles are only given in the app, so a member list upload keeps them.
+      const keep = ex ? Object.fromEntries(Object.entries(ex.groups || {}).filter(([g, v]) => this.officeIds().includes(g) || v === "tmaker" || v === "teacher")) : {};
+      const row = { name: r.name, alias: r.alias || null, phone: ph, dob: r.dob || (ex && ex.dob) || null, is_admin: ex && ex.id === m.id ? true : !!r.is_admin, groups: { ...(r.groups || {}), ...keep }, wa_optin: !!r.wa_optin };
       if (r.password) row.pass_hash = await sha(r.password);
       if (ex) Object.assign(ex, row); else this.dbo.members.push({ id: uid(), pass_hash: null, ...row });
       n++;
@@ -216,6 +239,29 @@ const Local = {
     if (!x) { if (!(name || "").trim()) throw new AppError("need_name"); x = { id: uid(), name: name.trim(), phone: ph, dob: null, pass_hash: null, is_admin: false, groups: {}, wa_optin: false }; this.dbo.members.push(x); }
     x.groups = { ...(x.groups || {}) }; if (role) x.groups[group] = role; else delete x.groups[group];
     await this.commit(); return { id: x.id, name: x.name, phone: x.phone, groups: x.groups };
+  },
+  async setTeacher(phone, group, role, name) {
+    const m = await this.me(); if (!this.teach(group) || !this.poster(m, group)) throw new AppError("not_allowed");
+    const ph = phone8(phone); if (!/^[3689]\d{7}$/.test(ph)) throw new AppError("bad_phone");
+    if (!["", "tmaker", "teacher"].includes(role || "")) throw new AppError("unknown_kind");
+    let x = this.dbo.members.find((y) => y.phone === ph);
+    if (!x) { if (!(name || "").trim()) throw new AppError("need_name"); x = { id: uid(), name: name.trim(), phone: ph, dob: null, pass_hash: null, is_admin: false, groups: {}, wa_optin: false }; this.dbo.members.push(x); }
+    x.groups = { ...(x.groups || {}), [group]: role || "member" };
+    await this.commit(); return { id: x.id, name: x.name, phone: x.phone, groups: x.groups };
+  },
+  async pollState(id, status) {
+    const m = await this.me(); const p = this.dbo.polls.find((x) => x.id === id);
+    if (!p || !this.teacher(m, p.group_id) || !["open", "closed"].includes(status)) throw new AppError("not_allowed");
+    p.status = status; if (status === "open") { p.opened_by = m.name; p.opened_at = new Date().toISOString(); }
+    await this.commit();
+  },
+  async vote(id, choices) {
+    const m = await this.me(); const p = this.dbo.polls.find((x) => x.id === id);
+    if (!p || p.status !== "open" || !this.sees(m, p.group_id)) throw new AppError("not_allowed");
+    const c = [...new Set((choices || []).map(Number))];
+    if (!c.length || (!p.multi && c.length !== 1) || c.some((i) => !(i >= 0 && i < p.options.length))) throw new AppError("unknown_kind");
+    this.dbo.votes = this.dbo.votes.filter((v) => !(v.poll_id === id && v.member_id === m.id)); this.dbo.votes.push({ poll_id: id, member_id: m.id, choices: c });
+    await this.commit();
   },
   async settingsSave(o) {
     const m = await this.me(); if (!m.is_admin) throw new AppError("not_allowed");
@@ -267,6 +313,9 @@ const Remote = {
   settingsSave(o) { return this.rpc("hk_settings_save", { p_token: this.token, p_data: o }); },
   serviceHtml(id) { return this.rpc("hk_service_html", { p_token: this.token, p_id: id }); },
   setRole(phone, group, role, name) { return this.rpc("hk_set_role", { p_token: this.token, p_phone: phone, p_group: group, p_role: role, p_name: name || null }); },
+  setTeacher(phone, group, role, name) { return this.rpc("hk_set_teacher", { p_token: this.token, p_phone: phone, p_group: group, p_role: role, p_name: name || null }); },
+  pollState(id, status) { return this.rpc("hk_poll_state", { p_token: this.token, p_id: id, p_status: status }); },
+  vote(id, choices) { return this.rpc("hk_vote", { p_token: this.token, p_id: id, p_choices: choices }); },
   pushSave(sub) { return this.rpc("hk_push_save", { p_token: this.token, p_sub: sub }); },
 };
 
@@ -278,5 +327,5 @@ function pick() {
   return Local;
 }
 
-window.HKBP_STORE = { pick, LS, phone8, sgToday, AppError, DEFAULT_GROUPS, uid };
+window.HKBP_STORE = { pick, LS, phone8, sgToday, AppError, DEFAULT_GROUPS, uid, TEACH };
 })();
