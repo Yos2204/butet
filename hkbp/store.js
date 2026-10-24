@@ -171,8 +171,9 @@ const Local = {
       if (!this.elder(m)) deny();
       res = upsert(db.bread, { day: d.day, verse: d.verse, title: d.title, body: d.body, author_name: m.name, updated_at: now }, "day");
     } else if (kind === "update") {
-      if (!this.elder(m)) deny();
-      res = upsert(db.updates, { id: d.id || uid(), title: d.title, body: d.body, audience: d.audience || "all", pinned: !!d.pinned, author_name: m.name, created_at: d.created_at || now });
+      const berita = d.kind === "berita"; // Berita Pelayanan: only the Secretary (and the admin) posts it
+      if (berita ? !this.chair(m, "secretary") : !this.elder(m)) deny();
+      res = upsert(db.updates, { id: d.id || uid(), kind: berita ? "berita" : "update", day: d.day || null, title: d.title, body: d.body, audience: berita ? "all" : d.audience || "all", pinned: !!d.pinned, author_name: m.name, created_at: d.created_at || now });
     } else if (kind === "event") {
       if (!(this.teach(gid) ? this.poster(m, gid) : this.elder(m) || (gid && this.chair(m, gid))) || (gid && !this.sees(m, gid))) deny();
       res = upsert(db.events, { id: d.id || uid(), group_id: gid, title: d.title, starts_at: d.starts_at, ends_at: d.ends_at || null, place: d.place, notes: d.notes, remind_min: +d.remind_min || 1440, author_name: m.name, created_at: now });
@@ -208,7 +209,8 @@ const Local = {
     const row = list.find((x) => x[key] === id); if (!row) return;
     if ((kind === "post" || kind === "poll") && !this.poster(m, row.group_id)) deny();
     if (kind === "roster" && !this.chair(m, row.group_id)) deny();
-    if ((kind === "bread" || kind === "update" || kind === "birthday") && !this.elder(m)) deny();
+    if (kind === "update" && row.kind === "berita") { if (!this.chair(m, "secretary")) deny(); }
+    else if ((kind === "bread" || kind === "update" || kind === "birthday") && !this.elder(m)) deny();
     if (kind === "service" && !this.maker(m)) deny();
     if (kind === "file" && !(m.is_admin || row.group_id in (m.groups || {}))) deny();
     if (kind === "event" && !(this.teach(row.group_id) ? this.poster(m, row.group_id) : this.elder(m) || (row.group_id && this.chair(m, row.group_id)))) deny();

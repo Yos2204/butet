@@ -358,7 +358,7 @@ R.home = () => {
   const mine = m.dob && m.dob.slice(5) === day.slice(5);
   const myDuties = duties().filter((d) => !d.date || d.date >= day).slice(0, 4);
   const evs = D.events.filter((e) => new Date(e.starts_at) > Date.now() - 3 * 3600e3).slice(0, 3);
-  const ups = D.updates.slice(0, 2);
+  const bn = beritaLatest();
   const myGroups = D.groups.filter((g) => roleIn(g.id) && g.kind !== "office");
   const hour = +new Intl.DateTimeFormat("en-GB", { timeZone: TZ, hour: "numeric", hour12: false }).format(new Date());
   const notifyAsk = "Notification" in window ? Notification.permission === "default" || !LS.get("notifyOn") : /iP(hone|ad)/.test(navigator.userAgent) && !standalone();
@@ -400,8 +400,8 @@ R.home = () => {
     </article>
 
     <article class="card">
-      <div class="card-h"><h3>${ic("book")} ${esc(t("eldersUpdates"))}</h3><a class="small" href="#/elders">${esc(t("seeAll"))}</a></div>
-      ${ups.length ? ups.map((u) => updateCard(u, true)).join("") : `<p class="muted small">${esc(t("noUpdates"))}</p>`}
+      <div class="card-h"><h3>${ic("book")} ${esc(t("beritaTitle"))}</h3><a class="small" href="#/berita">${esc(t("seeAll"))}</a></div>
+      ${bn ? beritaBody(bn, true) : `<p class="muted small">${esc(t("beritaNone"))}</p>`}
     </article>
 
     ${myGroups.length ? `<h3 class="sec-h">${esc(t("myGroups"))}</h3><div class="glist">${myGroups.map((g) => groupTile(g, esc(t(g.kind === "sermon" ? "kindSermon" : "kindService")))).join("")}</div>` : ""}
@@ -626,10 +626,54 @@ function breadEditor(day) {
     </form>`, { back: "#/bread", title: t("breadTitle"), sub: t("writeBread") });
 }
 
+// ---------- Berita Pelayanan: the Secretary uploads it from a file; everyone reads it ----------
+const beritaAll = () => (D.updates || []).filter((u) => u.kind === "berita").sort((a, b) => (b.day || b.created_at).localeCompare(a.day || a.created_at) || b.created_at.localeCompare(a.created_at));
+const beritaLatest = () => beritaAll()[0] || null;
+const canBerita = () => manage() && (D.me.is_admin || roleIn("secretary") === "chair");
+function beritaItems(body) {
+  const items = []; let cur = null;
+  String(body || "").split(/\n/).forEach((line) => {
+    const l = line.trim(); const m = l.match(/^(\d{1,2})[.)]\s+(.*)$/);
+    if (m) { cur = { title: m[2], body: [] }; items.push(cur); }
+    else if (cur) cur.body.push(line); else if (l) { cur = { title: "", body: [line] }; items.push(cur); }
+  });
+  return items.map((x) => ({ title: x.title, body: x.body.join("\n").replace(/^\n+|\s+$/g, "") }));
+}
+function beritaBody(u, compact) {
+  const items = beritaItems(u.body); const list = compact ? items.slice(0, 3) : items;
+  return `<div class="berita">${u.day ? `<div class="meta">${esc(t("beritaFor", fmtDay(u.day)))}</div>` : ""}
+    ${list.map((x, i) => `<div class="bi"><b>${x.title ? `${i + 1}. ${esc(x.title)}` : ""}</b>${x.body ? `<p class="${compact ? "clamp2" : "pre"}">${esc(x.body)}</p>` : ""}</div>`).join("")}
+    ${compact && items.length > list.length ? `<p class="small muted">+${items.length - list.length}</p>` : ""}</div>`;
+}
+R.berita = () => {
+  const all = beritaAll(); const can = canBerita();
+  return shell("#/home", `
+    ${can ? `<div class="card admin-card"><h3>${ic("upload")} ${esc(t("beritaUpload"))}</h3><p class="small muted">${esc(t("beritaUpLead"))}</p>
+      <button class="btn primary block" data-act="beritaFile">${ic("upload")} ${esc(t("chooseFile"))}</button>
+      <p class="small muted" style="text-align:center;margin:8px 0">.docx · .doc · .pdf · .xlsx · .xls</p>
+      <form class="form" data-form="beritalink"><label>${esc(t("w_upLink"))}<input name="link" type="url" inputmode="url" placeholder="https://docs.google.com/…" required></label><button class="btn block">${esc(t("readLink"))}</button></form></div>` : ""}
+    ${all.length ? all.map((u, i) => `<article class="card">${i ? `<details><summary><b>${esc(u.day ? fmtDay(u.day) : fmt(u.created_at, { day: "numeric", month: "long" }))}</b></summary>${beritaBody(u, false)}</details>` : beritaBody(u, false)}
+      <div class="row end"><span class="small muted grow">${esc(u.author_name || "")}</span>${can ? `<button class="btn sm danger" data-act="del" data-kind="update" data-id="${u.id}" aria-label="${esc(t("delete"))}">${ic("trash")}</button>` : ""}</div></article>`).join("") : empty(t("beritaNone"), "book")}`,
+    { back: "#/home", title: t("beritaTitle"), sub: "HKBP Singapore" });
+};
+// Read the Berita Pelayanan part of a file (or the whole text when the file has only that), then let the Secretary check it before saving.
+function beritaFromRes(res) {
+  let txt = ""; try { txt = (wartaFromFile(res, nextSunday(), [], "berita") || {}).berita || ""; } catch (e) { console.warn(e); }
+  if (!txt) txt = linesOfRes(res).join("\n").replace(/^\s*berita pelayanan\s*\n/i, "").replace(/\n{3,}/g, "\n\n").trim();
+  return txt;
+}
+function beritaReview(res) {
+  const body = beritaFromRes(res); if (!body) { toast(t("w_noMatch"), true); return; }
+  sheet(t("beritaTitle"), `<form class="form" data-form="berita">
+    <label>${esc(t("f_date"))}<input type="date" name="day" value="${esc(nextSunday())}" required></label>
+    <label>${esc(t("beritaCheck"))}<textarea name="body" rows="14" required>${esc(body)}</textarea></label>
+    <label class="check"><input type="checkbox" name="notify" checked> ${esc(t("f_notify"))}</label>
+    <button class="btn primary block">${ic("check")} ${esc(t("save"))}</button></form>`);
+}
 R.elders = () => shell("#/more", `
   <p class="lead">${esc(t("eldersLead"))}</p>
   ${isElder() ? `<button class="btn primary block" data-act="newUpdate">${ic("plus")} ${esc(t("newUpdate"))}</button>` : ""}
-  ${D.updates.length ? D.updates.map((u) => `<article class="card">${updateCard(u, false)}</article>`).join("") : empty(t("noUpdates"), "book")}`,
+  ${D.updates.filter((u) => u.kind !== "berita").length ? D.updates.filter((u) => u.kind !== "berita").map((u) => `<article class="card">${updateCard(u, false)}</article>`).join("") : empty(t("noUpdates"), "book")}`,
   { back: "#/home", title: t("eldersUpdates"), sub: "Parhalado HKBP Singapore" });
 
 R.people = () => {
@@ -698,7 +742,7 @@ async function render() {
     if (!api.hasSession() && await api.needsSetup()) { await R.login(); return; }
     if (!D) await refresh();
     if (!r) { history.replaceState(null, "", "#/home"); r = "home"; }
-    const map = { tata: R.tata, home: R.home, groups: R.groups, g: R.group, serve: R.serve, s: R.section, calendar: R.calendar, bread: R.bread, elders: R.elders, people: R.people, more: R.more, o: R.office, warta: R.warta };
+    const map = { tata: R.tata, home: R.home, groups: R.groups, g: R.group, serve: R.serve, s: R.section, calendar: R.calendar, bread: R.bread, elders: R.elders, berita: R.berita, people: R.people, more: R.more, o: R.office, warta: R.warta };
     const html = (map[r] || R.notFound)(arg);
     if (typeof html === "string") view().innerHTML = html;
     document.title = r === "home" ? "Sada HKBPS" : `${$(".brand b") ? $(".brand b").textContent : ""} · Sada HKBPS`;
@@ -813,6 +857,17 @@ A.openNatal = (d) => {
   const el = document.createElement("div"); el.id = "wb";
   el.innerHTML = `<div class="wb-bar"><button class="icon-btn" data-act="closeWb" aria-label="${esc(t("close"))}">${ic("x")}</button><b>🎄 ${esc(d.live ? t("natalLive") : t("natalTitle"))}</b><a class="btn sm" href="${url}" target="_blank" rel="noopener">${ic("link")} ${esc(t("natalNewTab"))}</a></div><iframe src="${url}" title="Natal Naposo" allow="fullscreen; autoplay"></iframe>`;
   document.body.appendChild(el); document.body.classList.add("noscroll");
+};
+A.beritaFile = () => {
+  const inp = document.createElement("input"); inp.type = "file"; inp.accept = W_ACCEPT;
+  inp.onchange = async () => { const f = inp.files[0]; if (!f) return; toast(t("reading")); try { beritaReview(await P.file(f)); } catch (e) { console.warn(e); toast(t(e.message === "unsupported" ? "err_unsupported" : "err_read"), true); } };
+  inp.click();
+};
+F.beritalink = async (f) => { const r = await P.link(f.link.value.trim()); if (!(r.lines || []).some(Boolean) && !r.tables.length) throw new S.AppError(r.note === "link_folder" ? "link_folder" : r.note === "link_private" ? "link_private" : "read"); beritaReview(r); };
+F.berita = async (f) => {
+  const day = f.day.value; const old = beritaAll().find((u) => u.day === day);
+  await api.save("update", { id: old ? old.id : undefined, kind: "berita", day, title: "Berita Pelayanan · " + fmtID(day), body: f.body.value.trim(), notify: f.notify.checked });
+  closeSheet(); await refresh(); toast(t("beritaSaved"));
 };
 A.closeWb = () => { const el = $("#wb"); if (el) el.remove(); document.body.classList.remove("noscroll"); };
 A.publishWb = () => {
@@ -1680,14 +1735,14 @@ function breadFor(day) {
 function wartaAutoParts(day, team) {
   const next = addDays(day, 7);
   const seen = new Set(); const bdays = birthdaysBetween(day, 6).map((x) => x.p.name).filter((n) => !seen.has(n) && seen.add(n));
-  const ups = D.updates.filter((u) => u.audience === "all" && u.created_at.slice(0, 10) >= addDays(day, -10) && u.created_at.slice(0, 10) <= day);
+  const bn = beritaAll().find((u) => u.day === day) || beritaAll().find((u) => (u.day || u.created_at.slice(0, 10)) <= day && (u.day || u.created_at.slice(0, 10)) >= addDays(day, -7));
   const until = addDays(day, 35);
   const evs = D.events.filter((e) => !(e.group_id && (G(e.group_id) || {}).kind === "office")).map((e) => ({ e, d: sgParts(e.starts_at).date })).filter((x) => x.d >= day && x.d <= until);
   const b = breadFor(day);
   return {
     bdays: bdays.join("\n"),
     finance: (finFor(day) || {}).body || "",
-    berita: ups.map((u, i) => `${i + 1}. ${String(u.title || "").toUpperCase()}\n${u.body || ""}`).join("\n\n"),
+    berita: bn ? bn.body : "",
     jadwalTitle: "JADWAL PELAYANAN BULAN " + new Intl.DateTimeFormat("id-ID", { month: "long" }).format(new Date(day + "T12:00:00+08:00")).toUpperCase(),
     jadwal: evs.map((x, i) => `${"abcdefghijklmnopqrstuvwxyz"[i] || i + 1}. ${x.e.title} (${+x.d.slice(8)}/${+x.d.slice(5, 7)})`).join("\n"),
     team: team.map(([r, a, c]) => { const g = TEAM_ROSTER[r]; return g ? [r, rosterNames(g, day) || a, rosterNames(g, next) || c] : [r, a, c]; }),
