@@ -272,16 +272,82 @@ nav.tabs a.on .ic { background: var(--brand-soft); border-radius: 10px; width: 4
 .toast.show { opacity: 1; transform: translateX(-50%); }
 .toast.bad { background: var(--danger); color: #fff; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+/* pop-up choices */
+.opt-card { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; padding: 14px; border-radius: 16px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); box-shadow: var(--shadow); margin-top: 8px; }
+.opt-card > .ic:first-child { width: 28px; height: 28px; color: var(--brand); background: var(--brand-soft); border-radius: 10px; padding: 5px; box-sizing: content-box; }
+.opt-card span { flex: 1; min-width: 0; } .opt-card b { display: block; font-size: 15.5px; } .opt-card small { display: block; color: var(--muted); font-size: 13px; }
+.opt-card:active { transform: scale(.99); }
+.role-pick { text-align: left; } .role-pick h3 { justify-content: center; }
+button.link { border: 0; background: none; color: var(--brand); font-weight: 800; padding: 0; text-decoration: underline; }
+fieldset.opts { border: 0; padding: 0; margin: 12px 0 0; } fieldset.opts legend { font-weight: 700; font-size: 13.5px; padding: 0; margin-bottom: 4px; }
+.form label.opt { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--line); border-radius: 14px; margin: 6px 0 0; font-weight: 500; background: var(--surface); }
+.form label.opt input { margin-top: 3px; accent-color: var(--brand); width: auto; flex: none; }
+.form label.opt b { display: block; font-size: 14.5px; } .form label.opt small { display: block; color: var(--muted); font-size: 12.5px; font-weight: 500; }
+.form label.opt:has(input:checked) { border-color: var(--brand); background: var(--brand-soft); }
+.form label.check { display: flex; align-items: center; gap: 8px; font-weight: 600; } .form label.check input { width: auto; accent-color: var(--brand); }
+.row.three > * { flex: 1 1 90px; }
+.for-chip { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 14px; background: color-mix(in srgb, var(--gc) 12%, var(--surface)); color: var(--ink); }
+.for-chip > .ic { color: var(--gc); } .for-chip small { display: block; color: var(--muted); font-size: 11.5px; text-transform: uppercase; letter-spacing: .05em; font-weight: 700; } .for-chip b { display: block; }
+.done-ic { width: 56px; height: 56px; border-radius: 50%; margin: 4px auto 8px; display: grid; place-items: center; background: color-mix(in srgb, var(--good) 15%, var(--surface)); color: var(--good); } .done-ic .ic { width: 30px; height: 30px; }
+.date-chip.bday { --gc: #c94f8a; }
+.wa-send { border: 2px solid #25d366; background: color-mix(in srgb, #25d366 8%, var(--surface)); }
+button.gtile { width: 100%; text-align: left; font: inherit; border: 1px solid var(--line); cursor: pointer; }
+/* Tata Ibadah */
+.tata-view { margin: 12px 0; } .tata-frame { position: relative; width: 100%; aspect-ratio: 16 / 10; min-height: 260px; border-radius: 16px; overflow: hidden; background: #0e0f1c; display: grid; place-items: center; box-shadow: var(--shadow); }
+.tata-frame iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #0e0f1c; }
+.tata-frame:fullscreen { border-radius: 0; aspect-ratio: auto; }
+@media (orientation: portrait) and (max-width: 760px) { .tata-frame { aspect-ratio: auto; height: 72vh; height: 72dvh; } }
+#wb { position: fixed; inset: 0; z-index: 35; background: var(--bg); display: flex; flex-direction: column; }
+#wb .wb-bar { display: flex; align-items: center; gap: 10px; padding: calc(8px + env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) 8px max(12px, env(safe-area-inset-left)); border-bottom: 1px solid var(--line); background: var(--surface); }
+#wb .wb-bar b { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#wb iframe { flex: 1; width: 100%; border: 0; }
+
+/* fits every phone: notches, small screens, tilting */
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+body { min-height: 100dvh; overflow-x: hidden; }
+#view { padding-left: max(16px, env(safe-area-inset-left)); padding-right: max(16px, env(safe-area-inset-right)); }
+h1 { font-size: clamp(22px, 6.4vw, 30px); }
+.sheet-card { max-height: 92dvh; }
+img, table, iframe { max-width: 100%; }
+@media (max-width: 360px) { body { font-size: 14.5px; } .langs button { padding: 4px 7px; } .brand b { font-size: 16px; } .logo-sm { width: 34px; height: 34px; } }
+/* Sideways phones and tablets: the tab bar moves to a rail on the left, content gets more width. */
+@media (orientation: landscape) and (max-height: 540px), (min-width: 900px) {
+  nav.tabs { top: 0; bottom: 0; right: auto; width: calc(84px + env(safe-area-inset-left)); padding: calc(10px + env(safe-area-inset-top)) 6px 10px calc(6px + env(safe-area-inset-left)); border-top: 0; border-right: 1px solid var(--line); display: flex; align-items: center; }
+  nav.tabs .in { display: flex; flex-direction: column; gap: 6px; width: 100%; }
+  #view { margin-left: calc(84px + env(safe-area-inset-left)); max-width: 1040px; padding-bottom: calc(24px + env(safe-area-inset-bottom)); }
+  header.top { padding-top: calc(6px + env(safe-area-inset-top)); padding-bottom: 6px; }
+  .toast { bottom: calc(20px + env(safe-area-inset-bottom)); }
+  .sheet-card { max-width: 620px; }
+  #sheet { align-items: center; } .sheet-card { border-radius: 24px; }
+}
+@media (orientation: landscape) and (max-height: 540px) { .login { min-height: auto; padding-top: 16px; } .login .logo-xl { width: 64px; height: 64px; } .hello h1 { font-size: 22px; } }
+/* wide screens: home cards in two columns */
+@media (min-width: 900px) { main.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; align-items: start; } main.cols > .hello, main.cols > .sec-h, main.cols > .glist, main.cols > p, main.cols > .notify-ask, main.cols > .hbd { grid-column: 1 / -1; } }
+/* Office categories and Warta Jemaat */
+.office-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin: 4px 0 12px; }
+.office-tabs .chip.on { background: var(--gc); color: #fff; border-color: var(--gc); }
+.src-tag { font-size: 11px; font-weight: 700; color: var(--brand); background: color-mix(in srgb, var(--brand) 10%, transparent); padding: 1px 7px; border-radius: 999px; margin-left: 4px; }
+details.wsec summary { cursor: pointer; padding: 2px 0; list-style-position: inside; }
+details.wsec[open] summary { margin-bottom: 10px; }
+.wteam input { width: 100%; min-width: 110px; padding: 6px 8px; font: inherit; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); }
+.wteam th input { font-weight: 700; }
+.row.att > * { flex: 1 1 70px; }
+.sticky-actions { position: sticky; bottom: calc(70px + env(safe-area-inset-bottom)); background: var(--bg); padding: 8px 0; z-index: 5; }
+.warta-host { position: fixed; left: -20000px; top: 0; width: 1123px; }
+.warta-prev .wp-scroll { flex: 1; overflow: auto; padding: 8px; background: #64748b; }
+.warta-prev .wp-zoom { transform-origin: top left; width: 1123px; }
+.warta-prev .wp { box-shadow: 0 4px 18px rgba(0,0,0,.35); }
 </style>
 </head>
 <body>
 <div id="view"><div class="login"><img class="logo-xl" src="logo.png" alt="HKBP"><h1>HKBP Singapore</h1></div></div>
 <div id="sheet" hidden></div>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
-<script src="config.js?v=5"></script>
-<script src="i18n.js?v=5"></script>
-<script src="store.js?v=5"></script>
-<script src="parse.js?v=5"></script>
-<script src="app.js?v=5"></script>
+<script src="config.js?v=6"></script>
+<script src="i18n.js?v=6"></script>
+<script src="store.js?v=6"></script>
+<script src="parse.js?v=6"></script>
+<script src="app.js?v=6"></script>
 </body>
 </html>
