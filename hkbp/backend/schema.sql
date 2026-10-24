@@ -235,19 +235,19 @@ create or replace function hk__maker(m hk_members) returns boolean language sql 
   select m.is_admin or coalesce(m.groups ->> 'multimedia', '') in ('maker', 'chair')
 $$;
 
--- Youth and Sunday School are run by their teachers. A Teacher Maker ("tmaker") posts materials, news, events and polls;
+-- Youth, Remaja and Sunday School are run by their teachers. In Youth the Makers are the Youth Chair, Treasurer and Secretary (ychair/ytreasurer/ysecretary). A Teacher Maker ("tmaker") posts materials, news, events and polls;
 -- a Teacher ("teacher") reads everything and opens or closes polls in class. Only Makers (and the admin) add teachers.
 create or replace function hk__teach(gid text) returns boolean language sql immutable as $$
-  select coalesce(gid in ('naposo', 'sekolah-minggu'), false)
+  select coalesce(gid in ('naposo', 'sekolah-minggu', 'remaja'), false)
 $$;
 
 create or replace function hk__teacher(m hk_members, gid text) returns boolean language sql immutable as $$
-  select m.is_admin or coalesce(m.groups ->> gid, '') in ('tmaker', 'teacher')
+  select m.is_admin or coalesce(m.groups ->> gid, '') in ('tmaker', 'teacher', 'ychair', 'ytreasurer', 'ysecretary')
 $$;
 
 -- Who may post in a category: the Teacher Makers in Youth and Sunday School, the chair elsewhere, and the admin.
 create or replace function hk__poster(m hk_members, gid text) returns boolean language sql immutable as $$
-  select case when hk__teach(gid) then m.is_admin or coalesce(m.groups ->> gid, '') = 'tmaker' else hk__chair(m, gid) end
+  select case when hk__teach(gid) then m.is_admin or coalesce(m.groups ->> gid, '') in ('tmaker', 'ychair', 'ytreasurer', 'ysecretary') else hk__chair(m, gid) end
 $$;
 
 create or replace function hk__json(r anyelement) returns jsonb language sql immutable as $$ select to_jsonb(r) $$;
@@ -334,7 +334,7 @@ begin
                where e.removed_at is null and e.starts_at > now() - interval '60 days' and hk__sees(m, e.group_id)),
     'people', (select coalesce(jsonb_agg(jsonb_build_object(
                   'id', x.id, 'name', x.name, 'alias', x.alias, 'bday', to_char(x.dob, 'MM-DD'), 'anniv', to_char(x.wed, 'MM-DD'), 'groups', x.groups - hide, 'is_admin', x.is_admin,
-                  'phone', case when m.is_admin or exists (select 1 from jsonb_each_text(m.groups) g where g.value in ('chair', 'tmaker') and x.groups ? g.key) then x.phone end,
+                  'phone', case when m.is_admin or exists (select 1 from jsonb_each_text(m.groups) g where g.value in ('chair', 'tmaker', 'ychair', 'ytreasurer', 'ysecretary') and x.groups ? g.key) then x.phone end,
                   'dob', case when m.is_admin then x.dob end,
                   'wed', case when m.is_admin then x.wed end,
                   'wa_optin', case when m.is_admin then x.wa_optin end,
@@ -393,7 +393,7 @@ declare m hk_members := hk__me(p_token); ph text := hk__phone(p_phone); x hk_mem
 begin
   if not m.is_admin then raise exception 'not_allowed'; end if;
   if ph !~ '^[3689][0-9]{7}$' then raise exception 'bad_phone'; end if;
-  if coalesce(p_role, '') not in ('', 'member', 'chair', 'maker', 'checker', 'tmaker', 'teacher') or not exists (select 1 from hk_groups where id = p_group) then raise exception 'unknown_kind'; end if;
+  if coalesce(p_role, '') not in ('', 'member', 'chair', 'maker', 'checker', 'tmaker', 'teacher', 'ychair', 'ytreasurer', 'ysecretary') or not exists (select 1 from hk_groups where id = p_group) then raise exception 'unknown_kind'; end if;
   select * into x from hk_members where phone = ph;
   if x.id is null then
     if coalesce(trim(p_name), '') = '' then raise exception 'need_name'; end if;
@@ -412,7 +412,7 @@ declare m hk_members := hk__me(p_token); ph text := hk__phone(p_phone); x hk_mem
 begin
   if not hk__teach(p_group) or not hk__poster(m, p_group) then raise exception 'not_allowed'; end if;
   if ph !~ '^[3689][0-9]{7}$' then raise exception 'bad_phone'; end if;
-  if coalesce(p_role, '') not in ('', 'tmaker', 'teacher') then raise exception 'unknown_kind'; end if;
+  if coalesce(p_role, '') not in ('', 'tmaker', 'teacher', 'ychair', 'ytreasurer', 'ysecretary') then raise exception 'unknown_kind'; end if;
   select * into x from hk_members where phone = ph;
   if x.id is null then
     if coalesce(trim(p_name), '') = '' then raise exception 'need_name'; end if;
@@ -636,7 +636,7 @@ begin
       is_admin = case when hk_members.id = m.id then true else excluded.is_admin end,
       -- Office roles (Secretary, Treasurer, Chairman) and teacher roles are only given in the app, so a member list upload keeps them.
       groups = excluded.groups || coalesce((select jsonb_object_agg(e.key, e.value) from jsonb_each(hk_members.groups) e
-                 join hk_groups g on g.id = e.key and (g.kind = 'office' or e.value #>> '{}' in ('tmaker', 'teacher'))), '{}'), wa_optin = excluded.wa_optin, removed_at = null;
+                 join hk_groups g on g.id = e.key and (g.kind = 'office' or e.value #>> '{}' in ('tmaker', 'teacher', 'ychair', 'ytreasurer', 'ysecretary'))), '{}'), wa_optin = excluded.wa_optin, removed_at = null;
     n := n + 1;
   end loop;
   return n;
@@ -699,7 +699,7 @@ end $$;
 create or replace function hk_group_walink(p_token text, p_group text, p_link text) returns void language plpgsql security definer set search_path = public as $$
 declare m hk_members := hk__me(p_token); l text := nullif(trim(coalesce(p_link, '')), '');
 begin
-  if not (m.is_admin or coalesce(m.groups ->> p_group, '') in ('chair', 'tmaker')) then raise exception 'not_allowed'; end if;
+  if not (m.is_admin or coalesce(m.groups ->> p_group, '') in ('chair', 'tmaker', 'ychair', 'ytreasurer', 'ysecretary')) then raise exception 'not_allowed'; end if;
   if l is not null and l !~ '^https://(chat\.whatsapp\.com|wa\.me|whatsapp\.com)/' then raise exception 'bad_link'; end if;
   update hk_groups set wa_link = l where id = p_group;
 end $$;

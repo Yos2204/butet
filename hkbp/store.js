@@ -32,7 +32,9 @@ const DEFAULT_GROUPS = [
 ].map(([id, kind, name_id, name_bt, name_en, color, icon, sort]) => ({ id, kind, name_id, name_bt, name_en, color, icon, sort }));
 
 // Categories run by teachers (Teacher Makers and Teachers), see hk__teach in backend/schema.sql.
-const TEACH = ["naposo", "sekolah-minggu"];
+const TEACH = ["naposo", "sekolah-minggu", "remaja"];
+// Makers (may post) in teacher-run categories. In Youth they are the Youth Chair, Treasurer and Secretary (YB 2026-10-25).
+const MAKERS = ["tmaker", "ychair", "ytreasurer", "ysecretary"];
 
 class AppError extends Error { constructor(code) { super(code); this.code = code; } }
 
@@ -79,8 +81,8 @@ const Local = {
   elder: (m) => m.is_admin || "parhalado" in (m.groups || {}),
   // Youth and Sunday School: Teacher Makers post; teachers read and open polls (hk__teach / hk__poster / hk__teacher).
   teach: (gid) => TEACH.includes(gid),
-  poster(m, gid) { return this.teach(gid) ? m.is_admin || (m.groups || {})[gid] === "tmaker" : this.chair(m, gid); },
-  teacher: (m, gid) => m.is_admin || ["tmaker", "teacher"].includes((m.groups || {})[gid]),
+  poster(m, gid) { return this.teach(gid) ? m.is_admin || MAKERS.includes((m.groups || {})[gid]) : this.chair(m, gid); },
+  teacher: (m, gid) => m.is_admin || [...MAKERS, "teacher"].includes((m.groups || {})[gid]),
   office(m) { return m.is_admin || this.dbo.groups.some((g) => g.kind === "office" && g.id in (m.groups || {})); },
   officeIds() { return this.dbo.groups.filter((g) => g.kind === "office").map((g) => g.id); },
   sees(m, gid) { const og = this.dbo.groups.find((x) => x.id === gid); if (og && og.kind === "office") return this.office(m); if (!gid || this.elder(m) || gid in (m.groups || {})) return true; const g = this.dbo.groups.find((x) => x.id === gid); return !!g && g.kind === "service"; },
@@ -129,7 +131,7 @@ const Local = {
   async data() {
     if (!this.hasSession()) return this.publicData();
     const m = await this.me(); const db = this.dbo; const el = this.elder(m); const today = sgToday();
-    const chairOf = Object.entries(m.groups || {}).filter(([, r]) => r === "chair" || r === "tmaker").map(([g]) => g);
+    const chairOf = Object.entries(m.groups || {}).filter(([, r]) => r === "chair" || MAKERS.includes(r)).map(([g]) => g);
     const since = new Date(Date.now() - 180 * 864e5).toISOString();
     const off = this.office(m); const hide = off ? [] : this.officeIds();
     const strip = (gs) => Object.fromEntries(Object.entries(gs || {}).filter(([k]) => !hide.includes(k)));
@@ -228,7 +230,7 @@ const Local = {
       const ph = phone8(r.phone); if (ph.length !== 8) continue;
       const ex = this.dbo.members.find((x) => x.phone === ph);
       // Office and teacher roles are only given in the app, so a member list upload keeps them.
-      const keep = ex ? Object.fromEntries(Object.entries(ex.groups || {}).filter(([g, v]) => this.officeIds().includes(g) || v === "tmaker" || v === "teacher")) : {};
+      const keep = ex ? Object.fromEntries(Object.entries(ex.groups || {}).filter(([g, v]) => this.officeIds().includes(g) || MAKERS.includes(v) || v === "teacher")) : {};
       const row = { name: r.name, alias: r.alias || null, phone: ph, dob: r.dob || (ex && ex.dob) || null, wed: r.wed || (ex && ex.wed) || null, is_admin: ex && ex.id === m.id ? true : !!r.is_admin, groups: { ...(r.groups || {}), ...keep }, wa_optin: !!r.wa_optin };
       if (r.password) row.pass_hash = await sha(r.password);
       if (ex) Object.assign(ex, row); else this.dbo.members.push({ id: uid(), pass_hash: null, ...row });
@@ -263,7 +265,7 @@ const Local = {
   async setTeacher(phone, group, role, name) {
     const m = await this.me(); if (!this.teach(group) || !this.poster(m, group)) throw new AppError("not_allowed");
     const ph = phone8(phone); if (!/^[3689]\d{7}$/.test(ph)) throw new AppError("bad_phone");
-    if (!["", "tmaker", "teacher"].includes(role || "")) throw new AppError("unknown_kind");
+    if (!["", ...MAKERS, "teacher"].includes(role || "")) throw new AppError("unknown_kind");
     let x = this.dbo.members.find((y) => y.phone === ph);
     if (!x) { if (!(name || "").trim()) throw new AppError("need_name"); x = { id: uid(), name: name.trim(), phone: ph, dob: null, pass_hash: null, is_admin: false, groups: {}, wa_optin: false }; this.dbo.members.push(x); }
     x.groups = { ...(x.groups || {}), [group]: role || "member" };
@@ -290,7 +292,7 @@ const Local = {
     await this.commit();
   },
   async groupWaLink(gid, link) {
-    const m = await this.me(); if (!(m.is_admin || ["chair", "tmaker"].includes((m.groups || {})[gid]))) throw new AppError("not_allowed");
+    const m = await this.me(); if (!(m.is_admin || ["chair", ...MAKERS].includes((m.groups || {})[gid]))) throw new AppError("not_allowed");
     const l = String(link || "").trim() || null; if (l && !/^https:\/\/(chat\.whatsapp\.com|wa\.me|whatsapp\.com)\//.test(l)) throw new AppError("bad_link");
     const g = this.dbo.groups.find((x) => x.id === gid); if (g) g.wa_link = l; await this.commit();
   },
@@ -373,5 +375,5 @@ function pick() {
   return Local;
 }
 
-window.HKBP_STORE = { pick, LS, phone8, sgToday, AppError, DEFAULT_GROUPS, uid, TEACH };
+window.HKBP_STORE = { pick, LS, phone8, sgToday, AppError, DEFAULT_GROUPS, uid, TEACH, MAKERS };
 })();
