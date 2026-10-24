@@ -238,7 +238,7 @@ $$;
 -- Youth, Remaja, Sunday School, Ama and Ina are run by their teachers. In Youth the Makers are the Youth Chair, Treasurer and Secretary (ychair/ytreasurer/ysecretary). A Teacher Maker ("tmaker") posts materials, news, events and polls;
 -- a Teacher ("teacher") reads everything and opens or closes polls in class. Only Makers (and the admin) add teachers.
 create or replace function hk__teach(gid text) returns boolean language sql immutable as $$
-  select coalesce(gid in ('naposo', 'sekolah-minggu', 'remaja', 'ama', 'ina'), false)
+  select coalesce(gid in ('naposo', 'sekolah-minggu', 'remaja', 'ama', 'ina', 'pelaut'), false)
 $$;
 
 create or replace function hk__teacher(m hk_members, gid text) returns boolean language sql immutable as $$
@@ -264,26 +264,48 @@ begin
 end $$;
 
 -- ---------- sign in ----------
+-- Makers = anyone who may change something: a leader role in any group, an elder, an office holder or the admin.
+create or replace function hk__leader(m hk_members) returns boolean language sql stable security definer set search_path = public as $$
+  select coalesce(m.is_admin, false) or exists (select 1 from jsonb_each_text(coalesce(m.groups, '{}')) g where g.value <> 'member' or g.key = 'parhalado'
+                     or exists (select 1 from hk_groups o where o.id = g.key and o.kind = 'office'))
+$$;
+
+-- A Maker's password may not be their own phone number.
+create or replace function hk__pw_is_phone(p text, phone text) returns boolean language sql immutable as $$
+  select coalesce(p, '') ~ '^[+0-9 ()-]+$' and hk__phone(p) = phone
+$$;
+
+-- The sign-in screen checks the phone as it is typed: 'maker' (has a password), 'maker_new' (must create one),
+-- 'member' (phone only, read only) or 'unknown' (not on the list).
+create or replace function hk_phone_check(p_phone text) returns text language plpgsql security definer set search_path = public as $$
+declare m hk_members;
+begin
+  perform pg_sleep(0.2);
+  select * into m from hk_members where phone = hk__phone(p_phone) and removed_at is null;
+  if m.id is null then return 'unknown'; end if;
+  if not hk__leader(m) then return 'member'; end if;
+  return case when m.pass_hash is null then 'maker_new' else 'maker' end;
+end $$;
+
 create or replace function hk_login(p_phone text, p_password text) returns jsonb language plpgsql security definer set search_path = public, extensions as $$
 declare m hk_members; tok text;
 begin
   perform pg_sleep(0.3); -- slows down password guessing
   select * into m from hk_members where phone = hk__phone(p_phone) and removed_at is null;
-  -- Ordinary members (no leader role, not an elder, office holder or admin) may sign in with just their phone number.
-  if m.id is not null and m.pass_hash is null and coalesce(p_password, '') = '' and not m.is_admin
-     and not exists (select 1 from jsonb_each_text(m.groups) g where g.value <> 'member' or g.key = 'parhalado'
-                     or exists (select 1 from hk_groups o where o.id = g.key and o.kind = 'office')) then
+  -- Members who are not Makers sign in with just their phone number (read only).
+  if m.id is not null and coalesce(p_password, '') = '' and not hk__leader(m) then
     tok := encode(gen_random_bytes(24), 'hex');
     insert into hk_sessions values (tok, m.id, now() + interval '180 days');
     return jsonb_build_object('token', tok);
   end if;
-  if m.id is not null and m.pass_hash is null then raise exception 'needs_password'; end if; -- leaders: the app asks them to create one
+  if m.id is not null and m.pass_hash is null then raise exception 'needs_password'; end if; -- Makers: the app asks them to create one
   if m.id is null or m.pass_hash <> crypt(coalesce(p_password, ''), m.pass_hash) then
     raise exception 'bad_login';
   end if;
   tok := encode(gen_random_bytes(24), 'hex');
   insert into hk_sessions values (tok, m.id, now() + interval '180 days');
-  return jsonb_build_object('token', tok);
+  -- A Maker whose password is still their phone number must choose a new one.
+  return jsonb_build_object('token', tok, 'must_change', hk__leader(m) and hk__pw_is_phone(p_password, m.phone));
 end $$;
 
 -- First sign-in with a one-time setup code (given by the admin): sets the member's own password.
@@ -295,6 +317,7 @@ begin
   select * into m from hk_members where phone = hk__phone(p_phone) and removed_at is null;
   if m.id is null or m.pass_hash is not null then raise exception 'bad_login'; end if;
   if length(coalesce(p_password, '')) < 6 then raise exception 'short_password'; end if;
+  if hk__pw_is_phone(p_password, m.phone) then raise exception 'pw_is_phone'; end if;
   update hk_members set pass_hash = crypt(p_password, gen_salt('bf')), setup_code_hash = null where id = m.id and pass_hash is null;
   if not found then raise exception 'bad_login'; end if;
   tok := encode(gen_random_bytes(24), 'hex');
@@ -311,6 +334,7 @@ declare m hk_members := hk__me(p_token);
 begin
   if length(coalesce(p_new, '')) < 6 then raise exception 'short_password'; end if;
   if m.pass_hash <> crypt(coalesce(p_old, ''), m.pass_hash) then raise exception 'bad_login'; end if;
+  if hk__pw_is_phone(p_new, m.phone) then raise exception 'pw_is_phone'; end if;
   update hk_members set pass_hash = crypt(p_new, gen_salt('bf')) where id = m.id;
 end $$;
 
@@ -749,4 +773,4 @@ end $$;
 grant execute on function hk_login(text, text), hk_first_password(text, text), hk_logout(text), hk_set_password(text, text, text), hk_data(text),
   hk_roster_file(text, uuid), hk_save(text, text, jsonb), hk_remove(text, text, text), hk_members_upsert(text, jsonb),
   hk_push_save(text, jsonb), hk_push_remove(text, text), hk_birthdays_import(text, jsonb), hk_settings_save(text, jsonb), hk_service_html(text, uuid), hk_set_role(text, text, text, text, text), hk_file(text, uuid),
-  hk_set_teacher(text, text, text, text, text), hk_poll_state(text, uuid, text), hk_vote(text, uuid, jsonb), hk_public(), hk_group_walink(text, text, text), hk_cal_token(text), hk_profile_save(text, jsonb) to anon;
+  hk_set_teacher(text, text, text, text, text), hk_poll_state(text, uuid, text), hk_vote(text, uuid, jsonb), hk_public(), hk_group_walink(text, text, text), hk_cal_token(text), hk_profile_save(text, jsonb), hk_phone_check(text) to anon;
