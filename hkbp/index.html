@@ -2,7 +2,7 @@
 <html lang="id">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
 <title>HKBP Singapore</title>
 <meta name="description" content="HKBP Singapore church app: categorial groups, service rosters, daily bread, birthdays, elders' updates and events.">
 <meta name="theme-color" content="#2f3189">
@@ -338,16 +338,39 @@ details.wsec[open] summary { margin-bottom: 10px; }
 .warta-prev .wp-scroll { flex: 1; overflow: auto; padding: 8px; background: #64748b; }
 .warta-prev .wp-zoom { transform-origin: top left; width: 1123px; }
 .warta-prev .wp { box-shadow: 0 4px 18px rgba(0,0,0,.35); }
+/* Fit every phone (iPhone and Android, upright and sideways).
+   iPhones zoom in when a text box with letters smaller than 16px is tapped, and an installed app stays zoomed,
+   which pushes the page past the right edge. Text boxes are therefore 16px, and nothing may be wider than the screen. */
+input, select, textarea { font-size: 16px !important; max-width: 100%; min-width: 0; }
+html, body { overflow-x: hidden; }
+@supports (overflow: clip) { html, body { overflow-x: clip; } }
+#view, main, .card, .sheet-body, .form, .ghero, .ghero > div, section, article, details { min-width: 0; max-width: 100%; }
+img, svg, video, canvas, iframe, table, pre { max-width: 100%; }
+.btn { white-space: normal; text-align: center; max-width: 100%; min-width: 0; overflow-wrap: anywhere; line-height: 1.25; }
+.btn.sm { white-space: nowrap; }
+.card-h { flex-wrap: wrap; row-gap: 8px; }
+.card-h > h3 { flex: 1 1 auto; min-width: 0; }
+.grow, .li .grow, .gname, .opt-card span { min-width: 0; overflow-wrap: anywhere; }
+p, h1, h2, h3, h4, li, label, small, b { overflow-wrap: break-word; }
+.phone-in { min-width: 0; } .phone-in input { flex: 1 1 auto; width: 100%; min-width: 0; }
+.tbl-wrap { max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.chips, .office-tabs, .row { min-width: 0; }
+@media (orientation: landscape) and (max-height: 540px) {
+  #view { padding-right: max(16px, env(safe-area-inset-right)); }
+  header.top { margin-right: calc(-1 * max(16px, env(safe-area-inset-right))); padding-right: max(16px, env(safe-area-inset-right)); }
+  .sheet-card { max-height: 94dvh; padding-left: max(18px, env(safe-area-inset-left)); padding-right: max(18px, env(safe-area-inset-right)); }
+  .ghero { padding-top: 12px; padding-bottom: 12px; }
+}
 </style>
 </head>
 <body>
 <div id="view"><div class="login"><img class="logo-xl" src="logo.png" alt="HKBP"><h1>HKBP Singapore</h1></div></div>
 <div id="sheet" hidden></div>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
-<script src="config.js?v=6"></script>
-<script src="i18n.js?v=6"></script>
-<script src="store.js?v=6"></script>
-<script src="parse.js?v=6"></script>
-<script src="app.js?v=6"></script>
+<script src="config.js?v=7"></script>
+<script src="i18n.js?v=7"></script>
+<script src="store.js?v=7"></script>
+<script src="parse.js?v=7"></script>
+<script src="app.js?v=7"></script>
 </body>
 </html>
