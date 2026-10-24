@@ -92,6 +92,7 @@ const Local = {
   async login(phone, pw) {
     const db = await this.load(); const h = await sha(pw);
     const m = db.members.find((x) => x.phone === phone8(phone));
+    if (m && !m.pass_hash && !pw && !m.is_admin && !Object.entries(m.groups || {}).some(([g, r]) => r !== "member" || g === "parhalado" || (db.groups.find((x) => x.id === g) || {}).kind === "office")) { LS.set("local.me", m.id); return; }
     if (m && !m.pass_hash) throw new AppError("needs_password");
     if (!m || m.pass_hash !== h) throw new AppError("bad_login");
     LS.set("local.me", m.id);

@@ -266,7 +266,15 @@ declare m hk_members; tok text;
 begin
   perform pg_sleep(0.3); -- slows down password guessing
   select * into m from hk_members where phone = hk__phone(p_phone) and removed_at is null;
-  if m.id is not null and m.pass_hash is null then raise exception 'needs_password'; end if; -- the app then asks them to create one
+  -- Ordinary members (no leader role, not an elder, office holder or admin) may sign in with just their phone number.
+  if m.id is not null and m.pass_hash is null and coalesce(p_password, '') = '' and not m.is_admin
+     and not exists (select 1 from jsonb_each_text(m.groups) g where g.value <> 'member' or g.key = 'parhalado'
+                     or exists (select 1 from hk_groups o where o.id = g.key and o.kind = 'office')) then
+    tok := encode(gen_random_bytes(24), 'hex');
+    insert into hk_sessions values (tok, m.id, now() + interval '180 days');
+    return jsonb_build_object('token', tok);
+  end if;
+  if m.id is not null and m.pass_hash is null then raise exception 'needs_password'; end if; -- leaders: the app asks them to create one
   if m.id is null or m.pass_hash <> crypt(coalesce(p_password, ''), m.pass_hash) then
     raise exception 'bad_login';
   end if;

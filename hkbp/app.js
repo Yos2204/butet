@@ -1239,7 +1239,7 @@ A.editMember = (d) => {
     <label>${esc(t("f_phone"))}<div class="phone-in"><span>+65</span><input name="phone" inputmode="numeric" required value="${esc(p.phone || "")}"></div></label>
     <label>${esc(t("f_dob"))}<input type="date" name="dob" value="${esc(p.dob || "")}"></label>
     <label>${esc(t("f_wed"))}<input type="date" name="wed" value="${esc(p.wed || "")}"></label>
-    <label>${esc(t(d.id ? "f_pwKeep" : "f_password"))}<input name="password" ${d.id ? "" : "required"} autocomplete="off"></label>
+    <label>${esc(t(d.id ? "f_pwKeep" : "f_password"))}<input name="password" autocomplete="off" placeholder="${esc(t("pwOptional"))}"></label>
     <h4>${esc(t("groupsRoles"))}</h4>
     <div class="roles">${D.groups.map((g) => `<label class="role-row" style="--gc:${g.color}"><span>${ic(g.icon)} ${esc(gname(g))}</span><select name="g_${g.id}"><option value="">—</option><option value="member" ${p.groups[g.id] === "member" ? "selected" : ""}>${esc(t("role_member"))}</option><option value="chair" ${p.groups[g.id] === "chair" ? "selected" : ""}>${esc(t("role_chair"))}</option>${g.id === "multimedia" ? ["maker", "checker"].map((r) => `<option value="${r}" ${p.groups[g.id] === r ? "selected" : ""}>${esc(t("role_" + r))}</option>`).join("") : ""}</select></label>`).join("")}</div>
     <label class="check"><input type="checkbox" name="is_admin" ${p.is_admin ? "checked" : ""}> ${esc(t("isAdmin"))}</label>
@@ -1890,13 +1890,15 @@ F.finance = async (f) => {
 //  - Pelayan Ibadah: last week's "next Sunday" column, plus Multimedia / Song Leader / Musicians from their rosters
 //  - Berita Pelayanan: elders' updates from the last 10 days; Jadwal: church calendar for the coming weeks
 //  - Badan Organisasi, Pokok Doa, offering info, address: carried over from the previous Warta
+// The church's weekly roster sheet (one tab per month), used when no other link is saved.
+const ROSTER_DEFAULT = "https://docs.google.com/spreadsheets/d/1ftYDy2TeXSNI0QjUsEaTCL9uISr1v4jL/edit?gid=1530963920#gid=1530963920";
 const TEAM_ROLES = ["Bahasa", "Pengkhotbah", "Liturgist", "St. Sekolah Minggu", "Pembaca Warta", "Tally Counter", "Penerima Tamu", "Pemain Musik", "Song Leader", "Sekolah Minggu", "Remaja", "Multimedia"];
 const TEAM_ROSTER = { "Pemain Musik": "musik", "Song Leader": "song-leader", "Multimedia": "multimedia" };
 // Other names the weekly roster sheet uses for the same job.
-const ROLE_ALIAS = { agenda: "Liturgist", liturgis: "Liturgist", warta: "Pembaca Warta", "pembaca warta": "Pembaca Warta", "penerima tamu": "Penerima Tamu", "usher": "Penerima Tamu", "pemain musik": "Pemain Musik", musik: "Pemain Musik", "song leader": "Song Leader", "songleader": "Song Leader", "st sekolah minggu": "St. Sekolah Minggu", "st. sekolah minggu": "St. Sekolah Minggu", pengkhotbah: "Pengkhotbah", "pemimpin ibadah": "Liturgist", "tally counter": "Tally Counter", bahasa: "Bahasa", "sekolah minggu": "Sekolah Minggu", remaja: "Remaja", multimedia: "Multimedia" };
+const ROLE_ALIAS = { agenda: "Liturgist", liturgis: "Liturgist", warta: "Pembaca Warta", "pembaca warta": "Pembaca Warta", "penerima tamu": "Penerima Tamu", "usher": "Penerima Tamu", "pemain musik": "Pemain Musik", musik: "Pemain Musik", "song leader": "Song Leader", "songleader": "Song Leader", "st sekolah minggu": "St. Sekolah Minggu", "st. sekolah minggu": "St. Sekolah Minggu", pengkhotbah: "Pengkhotbah", "pemimpin ibadah": "Liturgist", "tally counter": "Tally Counter", bahasa: "Bahasa", "sekolah minggu": "Sekolah Minggu", remaja: "Remaja", multimedia: "Multimedia", "keyboard/piano": "Pemain Musik", keyboard: "Pemain Musik", piano: "Pemain Musik", gitar: "Pemain Musik", guitar: "Pemain Musik", bass: "Pemain Musik", drum: "Pemain Musik", drums: "Pemain Musik" };
 const WARTA_BASE = {
   resort: "Resort Singapore - Distrik XX Kepulauan Riau", address: "8 Short Street Singapore 188214", email: "hkbpsingapura@gmail.com",
-  timeThis: "13.30 - 15.30", timeNext: "13.30 - 15.30", minggu: "", theme: "", verse: "", renTitle: "", renVerse: "", renungan: "", renunganBy: "", rosterLink: "",
+  timeThis: "13.30 - 15.30", timeNext: "13.30 - 15.30", minggu: "", theme: "", verse: "", renTitle: "", renVerse: "", renungan: "", renunganBy: "", rosterLink: ROSTER_DEFAULT,
   bdays: "", anniv: "", bdayVerse: "Mazmur 22: 11: “Kepada-Mu aku diserahkan sejak aku lahir, sejak dalam kandungan ibuku Engkaulah Allahku.”",
   annivVerse: "Mazmur 128: 1: “Berbahagialah setiap orang yang takut akan TUHAN, yang hidup menurut jalan yang ditunjukkan-Nya!”",
   finance: "", org: "Spiritual Committee\nPreacher : Pdt. Catherina N Hutasoit\n88176835\nDeacons :\n1. St Ratna Silitonga\n2. St Johnny Tobing\nOrdinary Com.-Administration\nKetua (Chairman)\nSt Royen Gultom 97355376\nAnggota :\nSekretaris (Hon. Secretary)\nRichard Siburian 9842-9041\nBendahara (Hon. Treasurer)\nDwita Situmorang 90106487\nAnggota Biasa (Admin)\n1. Nurani Simatupang\n2. Maria Tobing\nAnggota Biasa (Auditors)\n1. Sondang Simbolon\n2. Petra Sibuea\nDewan Koinonia (Koinonia Council)\nSt Farinton Nainggolan\nAnggota :\n1. Dien Pasaribu (S Minggu)\n2. St Yosafat Bangun (Remaja)\n3. Naomi Lubis (Pemuda)\n4. Dearni Purba (Kaum Perempuan)\n5. Toga Sihombing (Kaum Bapak)\n6. Reynold Limbong (Pelaut/pekerja)\nDewan Marturia (Marturia Council)\nSt. Helmi Sihombing\nAnggota :\n1. St Royen Gultom (Zending)\n2. Richard Siburian (Musik)\n3. Mira Nainggolan (Musik-Vocal)\nDewan Diakonia (Diaconia Council)\nSt. Ratna Silitonga\nAnggota :\n1. St. Harry Sianturi (Sosial Kem.)\n2. Sophia Siagian (Kesehatan)\n3. Marcus Simanjuntak (Pendidikan)\n4. Andrew Butarbutar (Perlengkapan)\nSintua (Elders)\nSt Royen Gultom; St. Alston Manik; St Johnny Tobing; St Helmi Sihombing; St Ratna Silitonga; St Jannes Sibuea; St Sabar Butarbutar; St Yosafat Bangun; St Hermanto Hutasoit; St Farinton Nainggolan; St Harry Sianturi", doa: "1. Pelayanan gereja sesuai dengan warta jemaat & yang berulang tahun.\n2. Kesehatan seluruh jemaat HKBP Singapore dan se-Resort Singapore, termasuk para siswa, mahasiswa, Pekerja dan Pelaut di Singapore dan keluarga.\n3. Pemulihan jemaat yang sakit.",
@@ -1995,7 +1997,8 @@ R.warta = (day) => {
     if (m.sunday && !f.minggu.value) f.minggu.value = m.sunday;
     if (m.theme && !f.theme.value) { f.theme.value = (th ? th[1] : m.theme).replace(/^["“]|["”]$/g, ""); if (th && !f.verse.value) f.verse.value = th[2]; }
   });
-  if (!W._id && W.rosterLink) setTimeout(() => A.wRoster({ quiet: 1 }), 400);
+  if (!W.rosterLink) W.rosterLink = ROSTER_DEFAULT;
+  if (!W._id || !(W.team || []).some((r) => r[1] || r[2])) setTimeout(() => A.wRoster({ quiet: 1 }), 400);
   const sec = (title, inner, open) => `<details class="card wsec"${open ? " open" : ""}><summary><b>${esc(title)}</b></summary>${inner}</details>`;
   return shell("#/home", `
     <div class="card"><p class="small muted">${esc(t("wartaFormLead"))}</p>
@@ -2330,27 +2333,36 @@ function rosterFromTables(tables, day) {
   const next = addDays(day, 7); const found = {};
   const roleOf = (c) => { const k = plain(c).toLowerCase().replace(/\s+/g, " ").replace(/[:.]$/, "").trim(); if (!k || k.length > 40) return null; return ROLE_ALIAS[k] || TEAM_ROLES.find((r) => r.toLowerCase() === k) || null; };
   const dateOf = (c, ym) => { const s = String(c || "").trim(); if (!s || s.length > 30) return null; return rowDate([s], ym); };
-  tables.forEach((tb) => {
-    const rows = tb.rows || []; const ym = (tb.name && rowDate([tb.name + " 1"], day.slice(0, 7)) || day).slice(0, 7);
-    const ymG = (() => { const m = String(tb.name || "").match(/(jan|feb|mar|apr|mei|may|jun|jul|agu|aug|sep|okt|oct|nov|des|dec)\w*\s+(\d{4})/i); return m ? `${m[2]}-${String(MONTHS[m[1].slice(0, 3).toLowerCase()]).padStart(2, "0")}` : day.slice(0, 7); })();
+  // Two names in one cell (on two lines, or "St. A St. B") become "St. A, St. B".
+  const val = (c) => plain(c).split(/\s*[\n;]\s*|\s+(?=(?:C?St|Pdt|Ev|Sy|Bvr|Dr)\.\s)/).filter(Boolean).join(", ");
+  // Several lines for one job (more teachers, the instruments under Pemain Musik) are joined.
+  const add = (role, d, v) => { if (!v) return; found[role] = found[role] || {}; const o = found[role][d]; if (!o) found[role][d] = v; else if (!o.split(", ").includes(v)) found[role][d] = o + ", " + v; };
+  const tabYm = (tb) => { const m = String(tb.name || "").match(/(jan|feb|mar|apr|mei|may|jun|jul|agu|aug|sep|okt|oct|nov|des|dec)\w*\s+(\d{4})/i); return m ? `${m[2]}-${String(MONTHS[m[1].slice(0, 3).toLowerCase()]).padStart(2, "0")}` : null; };
+  // A workbook with one tab per month: read only this Sunday's month and next Sunday's month.
+  const months = [day.slice(0, 7), next.slice(0, 7)];
+  const monthTabs = tables.filter((tb) => months.includes(tabYm(tb)));
+  (monthTabs.length ? monthTabs : tables).forEach((tb) => {
+    const rows = tb.rows || []; const ymG = tabYm(tb) || day.slice(0, 7);
     // Dates across a row.
     rows.forEach((row, ri) => {
       const cols = {}; row.forEach((c, ci) => { const d = dateOf(c, ymG); if (d === day || d === next) cols[d] = ci; });
       if (!Object.keys(cols).length) return;
+      const first = row.findIndex((c) => dateOf(c, ymG)); let last = null; // labels sit left of the first date
       rows.slice(ri + 1).forEach((r) => {
-        const lab = r.slice(0, Math.min(...Object.values(cols))).map(plain).filter(Boolean)[0]; const role = roleOf(lab); if (!role) return;
-        Object.entries(cols).forEach(([d, ci]) => { const v = plain(r[ci]); if (v) { found[role] = found[role] || {}; if (!found[role][d]) found[role][d] = v; } });
+        const labs = r.slice(0, first).map(plain).filter(Boolean); const role = labs.length ? roleOf(labs[0]) : last;
+        last = role; if (!role) return;
+        Object.entries(cols).forEach(([d, ci]) => add(role, d, val(r[ci])));
       });
     });
     // Dates down a column, jobs across the header row.
     const head = rows.find((r) => r.filter((c) => roleOf(c)).length >= 2);
     if (head) rows.forEach((r) => {
       const d = r.map((c) => dateOf(c, ymG)).find((x) => x === day || x === next); if (!d) return;
-      head.forEach((c, ci) => { const role = roleOf(c); const v = plain(r[ci]); if (role && v) { found[role] = found[role] || {}; if (!found[role][d]) found[role][d] = v; } });
+      head.forEach((c, ci) => { const role = roleOf(c); if (role) add(role, d, val(r[ci])); });
     });
   });
   const roles = Object.keys(found); if (!roles.length) return null;
-  return roles.map((r) => [r, (found[r][day] || "").replace(/\s*;\s*/g, ", "), (found[r][next] || "").replace(/\s*;\s*/g, ", ")]);
+  return roles.map((r) => [r, found[r][day] || "", found[r][next] || ""]);
 }
 
 // ---------- the printed bulletin ----------
