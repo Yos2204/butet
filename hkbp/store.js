@@ -174,7 +174,7 @@ const Remote = {
     } catch { throw new AppError("offline"); }
     const txt = await res.text(); let j = null; try { j = txt ? JSON.parse(txt) : null; } catch {}
     if (!res.ok) {
-      const code = ((j && j.message) || "").match(/not_signed_in|bad_login|not_allowed|short_password|file_too_big|unknown_kind/);
+      const code = ((j && j.message) || "").match(/not_signed_in|bad_login|bad_code|not_allowed|short_password|file_too_big|unknown_kind/);
       if (code && code[0] === "not_signed_in") LS.set("remote.token", null);
       throw new AppError(code ? code[0] : "server");
     }
@@ -184,6 +184,7 @@ const Remote = {
   hasSession() { return !!this.token; },
   async needsSetup() { return false; },
   async login(phone, pw) { const r = await this.rpc("hk_login", { p_phone: phone, p_password: pw }); LS.set("remote.token", r.token); },
+  async claim(phone, code, pw) { const r = await this.rpc("hk_claim", { p_phone: phone, p_code: code, p_password: pw }); LS.set("remote.token", r.token); },
   async logout() { const t = this.token; LS.set("remote.token", null); LS.set("remote.cache", null); try { await this.rpc("hk_logout", { p_token: t }); } catch {} },
   async setPassword(o, n) { return this.rpc("hk_set_password", { p_token: this.token, p_old: o, p_new: n }); },
   async data() {
@@ -192,7 +193,7 @@ const Remote = {
   },
   rosterFile(id) { return this.rpc("hk_roster_file", { p_token: this.token, p_id: id }); },
   save(kind, d) { return this.rpc("hk_save", { p_token: this.token, p_kind: kind, p_data: d }); },
-  del(kind, id) { return this.rpc("hk_delete", { p_token: this.token, p_kind: kind, p_id: String(id) }); },
+  del(kind, id) { return this.rpc("hk_remove", { p_token: this.token, p_kind: kind, p_id: String(id) }); },
   membersUpsert(rows) { return this.rpc("hk_members_upsert", { p_token: this.token, p_rows: rows }); },
   pushSave(sub) { return this.rpc("hk_push_save", { p_token: this.token, p_sub: sub }); },
 };

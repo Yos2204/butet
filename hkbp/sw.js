@@ -1,6 +1,6 @@
 // HKBP Singapore service worker: offline shell, push notifications, and opening the app from a notification.
-const CACHE = "hkbp-v1";
-const SHELL = ["./", "index.html", "config.js?v=1", "i18n.js?v=1", "store.js?v=1", "parse.js?v=1", "app.js?v=1", "manifest.webmanifest", "logo.svg", "icon.svg", "icon-192.png", "icon-512.png", "apple-touch-icon.png"];
+const CACHE = "hkbp-v3";
+const SHELL = ["./", "index.html", "config.js?v=3", "i18n.js?v=3", "store.js?v=3", "parse.js?v=3", "app.js?v=3", "manifest.webmanifest", "logo.png", "icon-192.png", "icon-512.png", "apple-touch-icon.png"];
 self.addEventListener("install", (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener("activate", (e) => { e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k.startsWith("hkbp-") && k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim())); });
 self.addEventListener("fetch", (e) => {
