@@ -353,6 +353,10 @@ details.wsec[open] summary { margin-bottom: 10px; }
 .poll-res .pr.mine b::after { content: " ✓"; }
 .poll-res .pr small { min-width: 22px; text-align: right; opacity: .75; }
 .ts-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.natal { border: 1px solid color-mix(in srgb, #c62828 30%, var(--line)); }
+.natal-tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 10px 0; }
+.natal-tiles .btn { flex-direction: column; gap: 4px; padding: 10px 4px; font-size: 13px; }
+@media (max-width: 360px) { .natal-tiles { grid-template-columns: 1fr 1fr; } }
 @media (max-width: 420px) { .ts-row { grid-template-columns: 1fr; } }
 /* Warta builder: an upload button beside every field */
 .w-lab { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
@@ -452,10 +456,10 @@ p, h1, h2, h3, h4, li, label, small, b { overflow-wrap: break-word; }
 <div id="view"><div class="login"><img class="logo-xl" src="logo.png" alt="HKBP"><h1>HKBP Singapore</h1></div></div>
 <div id="sheet" hidden></div>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
-<script src="config.js?v=13"></script>
-<script src="i18n.js?v=13"></script>
-<script src="store.js?v=13"></script>
-<script src="parse.js?v=13"></script>
-<script src="app.js?v=13"></script>
+<script src="config.js?v=14"></script>
+<script src="i18n.js?v=14"></script>
+<script src="store.js?v=14"></script>
+<script src="parse.js?v=14"></script>
+<script src="app.js?v=14"></script>
 </body>
 </html>
