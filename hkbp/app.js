@@ -108,6 +108,18 @@ window.addEventListener("hashchange", () => { const g = (location.hash.match(/^#
 const canEdit = (gid) => manage() && (isTeachG(gid) ? isTMaker(gid) && tmOk(gid) : D.me.is_admin || roleIn(gid) === "chair");
 const canRunPoll = (gid) => manage() && isTeacherIn(gid);
 const canSee = (g) => (g.kind === "office" ? isOffice() : g.kind === "service" || isElder() || !!roleIn(g.id));
+// First-login profile (YB 2026-10-24): four questions pick which categories the member sees.
+// Pilot: only these phone numbers get the pop-up for now; add more (or everyone) once YB has tested it.
+const PROFILE_PILOT = ["85334780"];
+const profileOn = () => !!D && !isGuest() && !!me() && PROFILE_PILOT.includes(S.phone8(me().phone));
+function profileCats(p) {
+  if (!p) return null;
+  if (p.confirmed === false) return ["remaja"];
+  const c = [p.married ? (p.male ? "ama" : "ina") : "naposo"];
+  if (p.pelaut) c.push("pelaut");
+  return c;
+}
+const catShown = (g) => { if (g.kind !== "sermon" || !profileOn() || LS.get("allCats")) return true; const c = profileCats(me().profile); return !c || c.includes(g.id); };
 const G = (id) => D.groups.find((g) => g.id === id);
 const gname = (g) => (g ? g["name_" + lang] || g.name_en || g.id : t("wholeChurch"));
 const firstName = (n) => String(n || "").replace(/^(Pdt|St|Sintua|Bapak|Ibu|Kak|Bang|Ev|Dr)\.?\s+/i, "").split(/\s+/)[0];
@@ -372,7 +384,7 @@ R.home = () => {
   const myDuties = duties().filter((d) => !d.date || d.date >= day).slice(0, 4);
   const evs = D.events.filter((e) => new Date(e.starts_at) > Date.now() - 3 * 3600e3).slice(0, 3);
   const bn = beritaLatest();
-  const myGroups = D.groups.filter((g) => roleIn(g.id) && g.kind !== "office");
+  const myGroups = D.groups.filter((g) => roleIn(g.id) && g.kind !== "office" && catShown(g));
   const hour = +new Intl.DateTimeFormat("en-GB", { timeZone: TZ, hour: "numeric", hour12: false }).format(new Date());
   const annivToday = isGuest() ? [] : D.people.filter((p) => p.anniv && p.anniv === day.slice(5));
   const notifyAsk = "Notification" in window ? Notification.permission === "default" || !LS.get("notifyOn") : /iP(hone|ad)/.test(navigator.userAgent) && !standalone();
@@ -449,10 +461,12 @@ function updateCard(u, compact) {
 
 // Categories (sermonic): same format, each with its own colour, icon and verse.
 R.groups = () => {
-  const list = D.groups.filter((g) => g.kind === "sermon");
+  const all = D.groups.filter((g) => g.kind === "sermon"); const list = all.filter(catShown);
+  const pf = profileOn() && me().profile;
   return shell("#/groups", `
     <h2 class="page-h">${esc(t("groupsTitle"))}</h2>
     <p class="lead">${esc(t("groupsLead"))}</p>
+    ${pf ? `<div class="card row between pf-note"><span class="small muted">${esc(t(LS.get("allCats") ? "pfAllShown" : "pfFiltered"))}</span><span class="row"><button class="btn sm ghost" data-act="profile">${esc(t("pfChange"))}</button><button class="btn sm" data-act="allCats">${esc(t(LS.get("allCats") ? "pfMine" : "pfAll"))}</button></span></div>` : ""}
     <div class="gcards">${list.map((g) => {
       const n = D.people.filter((p) => g.id in (p.groups || {})).length; const posts = D.posts.filter((p) => p.group_id === g.id).length; const ok = canSee(g);
       return `<a class="gcard ${ok ? "" : "locked"}" href="#/g/${g.id}" style="--gc:${g.color}">
@@ -763,6 +777,7 @@ R.more = () => {
       <button class="li" data-act="notify">${ic("bell")}<span class="grow"><b>${esc(t("notifications"))}</b><small>${esc(perm === "granted" ? t("notifyOnTxt") : perm === "denied" ? t("notifyDenied") : t("notifyAskBody"))}</small></span>${ic("chev", "chev")}</button>
       ${hasRights() ? `<button class="li" data-act="toggleView">${ic("people")}<span class="grow"><b>${esc(t("layout"))}: ${esc(t(manage() ? "viewAdmin" : "viewMember"))}</b><small>${esc(t(manage() ? "toMember" : "toAdmin"))}</small></span>${ic("chev", "chev")}</button>` : ""}
       ${isAdmin() ? `<button class="li" data-act="breadSetup">${ic("bread")}<span class="grow"><b>${esc(t("bs_title"))}</b><small>${esc(t("src_" + ((D.settings || {}).bread_source || "elders")))}</small></span>${ic("chev", "chev")}</button>` : ""}
+      ${profileOn() ? `<button class="li" data-act="profile">${ic("people")}<span class="grow"><b>${esc(t("pfTitle"))}</b><small>${esc(me().profile ? profileCats(me().profile).map((id) => gname(G(id))).filter(Boolean).join(", ") : t("pfNotYet"))}</small></span>${ic("chev", "chev")}</button>` : ""}
       <button class="li" data-act="password">${ic("key")}<span class="grow"><b>${esc(t("changePw"))}</b></span>${ic("chev", "chev")}</button>
       <button class="li" data-act="install">${ic("phone")}<span class="grow"><b>${esc(t("installTitle"))}</b><small>${esc(standalone() ? t("installed") : t("installHint"))}</small></span>${ic("chev", "chev")}</button>
       ${isElder() ? `<button class="li" data-act="settings">${ic("gear")}<span class="grow"><b>${esc(t("settings"))}</b><small>${esc(api.mode === "remote" ? t("modeRemote") : t("modeLocal"))}</small></span>${ic("chev", "chev")}</button>` : ""}
@@ -795,6 +810,7 @@ async function render() {
 function hydrate() {
   if (D && !isGuest() && api.hasSession() && $("#sheet").hidden) {
     if (viewMode() === null) { if (hasRights()) setTimeout(rolePrompt, 300); else LS.set("view", "member"); }
+    else if (profileOn() && !me().profile) setTimeout(() => { if ($("#sheet").hidden && profileOn() && !me().profile) profilePrompt(); }, 900);
   }
   if (D && /^#\/s\/multimedia/.test(location.hash) && $("#sheet").hidden && viewMode() !== null) {
     if (!mmRole()) setTimeout(mmPrompt, 250);
@@ -819,6 +835,27 @@ const A = {};
 const F = {};
 A.lang = (d) => { lang = d.l; LS.set("lang", lang); render(); };
 A.pickView = (d) => { LS.set("view", d.v || null); closeSheet(); render(); };
+function profilePrompt() {
+  const p = me().profile || {};
+  const q = (name, key, a, b) => `<fieldset class="yn"><legend>${esc(t(key))}</legend><div class="row2">
+    <label><input type="radio" name="${name}" value="1" required ${p[name] === true ? "checked" : ""}><span>${esc(t(a))}</span></label>
+    <label><input type="radio" name="${name}" value="0" ${p[name] === false ? "checked" : ""}><span>${esc(t(b))}</span></label></div></fieldset>`;
+  sheet(t("pfTitle"), `<form class="form" data-form="profile">
+    <p class="muted">${esc(t("pfLead"))}</p>
+    ${q("married", "pfMarried", "pfYesMarried", "pfNotMarried")}
+    ${q("male", "pfGender", "pfMale", "pfFemale")}
+    ${q("pelaut", "pfPelaut", "yes", "no")}
+    ${q("confirmed", "pfConfirmed", "yes", "no")}
+    <button class="btn primary block">${esc(t("save"))}</button></form>`);
+}
+A.profile = () => profilePrompt();
+A.allCats = () => { LS.set("allCats", LS.get("allCats") ? null : 1); render(); };
+F.profile = async (f) => {
+  const v = (n) => f.querySelector(`input[name="${n}"]:checked`).value === "1";
+  const p = { married: v("married"), male: v("male"), pelaut: v("pelaut"), confirmed: v("confirmed") };
+  const res = await api.profileSave(p); D.me.profile = res || p; LS.set("allCats", null);
+  closeSheet(); toast(t("pfSaved") + " " + profileCats(D.me.profile).map((id) => gname(G(id))).filter(Boolean).join(", ")); render();
+};
 A.toggleView = () => { LS.set("view", manage() ? "member" : "admin"); toast(t(manage() ? "nowAdmin" : "nowMember")); render(); };
 function rolePrompt() {
   if (!$("#sheet").hidden) return;
