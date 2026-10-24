@@ -152,7 +152,7 @@ async function run(S: Record<string, any>) {
       if (!(await claim(`cat:${today}:${g.id}`))) continue;
       const who = new Set([...b, ...a].map((m: any) => m.id));
       const body = [b.length ? `🎂 Ulang tahun: ${b.map((m: any) => m.name).join(", ")}` : "", a.length ? `💍 Ulang tahun pernikahan: ${a.map((m: any) => m.name).join(", ")}` : ""].filter(Boolean).join("\n");
-      const leaders = inG.filter((m: any) => ["chair", "tmaker"].includes(m.groups[g.id]));
+      const leaders = inG.filter((m: any) => ["chair", "tmaker", "ychair", "ytreasurer", "ysecretary"].includes(m.groups[g.id]));
       const lead = new Set(leaders.map((m: any) => m.id));
       await push(inG.filter((m: any) => !who.has(m.id) && !lead.has(m.id)), { title: `Hari ini di ${g.name_id} 🎉`, body: body + "\nUcapkan selamat dan doakan mereka!", url: `#/g/${g.id}?wish=${today}`, tag: "cat-" + g.id });
       await push(leaders, { title: `📲 Kirim ucapan ke grup WA ${g.name_id}`, body: body + "\nKetuk: ucapan sudah disiapkan, tinggal tempel dan kirim.", url: `#/g/${g.id}?wish=${today}`, tag: "catwa-" + g.id });
