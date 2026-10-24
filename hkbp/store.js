@@ -16,7 +16,7 @@ const DEFAULT_GROUPS = [
   ["sekolah-minggu", "sermon", "Sekolah Minggu", "Sikola Minggu", "Sunday School", "#e8913a", "child", 1],
   ["remaja", "sermon", "Remaja", "Remaja", "Teens", "#9333ea", "star", 2],
   ["naposo", "sermon", "Naposobulung (Pemuda)", "Naposobulung", "Youth", "#4f6bed", "spark", 3],
-  ["ina", "sermon", "Ina (Kaum Ibu)", "Parompuan / Ina", "Mothers", "#c94f8a", "heart", 4],
+  ["ina", "sermon", "Ina (Kaum Perempuan)", "Parompuan / Ina", "Mothers", "#c94f8a", "heart", 4],
   ["ama", "sermon", "Ama (Kaum Bapak)", "Ama", "Fathers", "#1f8a70", "shield", 5],
   ["pelaut", "sermon", "Pelaut & Pekerja", "Parlayar dohot Pangula", "Sailors & Workers", "#2a7fb8", "anchor", 6],
   ["multimedia", "service", "Multimedia", "Multimedia", "Multimedia", "#7c5cff", "screen", 11],
@@ -65,7 +65,7 @@ const Local = {
     db.polls = db.polls || []; db.votes = db.votes || [];
     db.birthdays = db.birthdays || []; db.settings = db.settings || {}; db.services = db.services || []; db.files = db.files || [];
     for (const g of DEFAULT_GROUPS) if ((g.kind === "office" || g.id === "remaja") && !db.groups.some((x) => x.id === g.id)) db.groups.push({ ...g });
-    for (const g of db.groups) { const d = DEFAULT_GROUPS.find((x) => x.id === g.id); if (d && d.kind === "sermon") g.sort = d.sort; }
+    for (const g of db.groups) { const d = DEFAULT_GROUPS.find((x) => x.id === g.id); if (d && d.kind === "sermon") { g.sort = d.sort; if (g.id === "ina") g.name_id = d.name_id; } }
     this.dbo = db; return db;
   },
   async commit() { await idb.set("db", this.dbo); },
