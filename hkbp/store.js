@@ -294,7 +294,12 @@ const Local = {
     const l = String(link || "").trim() || null; if (l && !/^https:\/\/(chat\.whatsapp\.com|wa\.me|whatsapp\.com)\//.test(l)) throw new AppError("bad_link");
     const g = this.dbo.groups.find((x) => x.id === gid); if (g) g.wa_link = l; await this.commit();
   },
-  async profileSave(p) { const m = await this.me(); m.profile = { married: !!p.married, male: !!p.male, pelaut: !!p.pelaut, confirmed: !!p.confirmed, at: new Date().toISOString() }; await this.commit(); return m.profile; },
+  async profileSave(p) {
+    const m = await this.me(); const v = {};
+    for (const k of ["married", "male", "pelaut", "confirmed"]) if (k in p) v[k] = !!p[k];
+    if ("serve" in p) v.serve = this.dbo.groups.filter((g) => g.kind === "service" && (p.serve || []).includes(g.id)).sort((a, b) => a.sort - b.sort).map((g) => g.id);
+    m.profile = { ...(m.profile || {}), ...v, at: new Date().toISOString() }; await this.commit(); return m.profile;
+  },
   async calToken() { throw new AppError("demo_only"); }, // a calendar feed needs the shared database
   async pushSave() { /* no server in local mode: reminders show when the app is opened */ },
 };
