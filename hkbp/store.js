@@ -14,10 +14,11 @@ const sgToday = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Singapo
 
 const DEFAULT_GROUPS = [
   ["sekolah-minggu", "sermon", "Sekolah Minggu", "Sikola Minggu", "Sunday School", "#e8913a", "child", 1],
-  ["naposo", "sermon", "Naposobulung (Pemuda)", "Naposobulung", "Youth", "#4f6bed", "spark", 2],
-  ["ina", "sermon", "Ina (Kaum Ibu)", "Parompuan / Ina", "Mothers", "#c94f8a", "heart", 3],
-  ["ama", "sermon", "Ama (Kaum Bapak)", "Ama", "Fathers", "#1f8a70", "shield", 4],
-  ["pelaut", "sermon", "Pelaut & Pekerja", "Parlayar dohot Pangula", "Sailors & Workers", "#2a7fb8", "anchor", 5],
+  ["remaja", "sermon", "Remaja", "Remaja", "Teens", "#9333ea", "star", 2],
+  ["naposo", "sermon", "Naposobulung (Pemuda)", "Naposobulung", "Youth", "#4f6bed", "spark", 3],
+  ["ina", "sermon", "Ina (Kaum Ibu)", "Parompuan / Ina", "Mothers", "#c94f8a", "heart", 4],
+  ["ama", "sermon", "Ama (Kaum Bapak)", "Ama", "Fathers", "#1f8a70", "shield", 5],
+  ["pelaut", "sermon", "Pelaut & Pekerja", "Parlayar dohot Pangula", "Sailors & Workers", "#2a7fb8", "anchor", 6],
   ["multimedia", "service", "Multimedia", "Multimedia", "Multimedia", "#7c5cff", "screen", 11],
   ["jemaat", "service", "Jemaat", "Ruas", "Congregation", "#0f766e", "people", 12],
   ["parhalado", "service", "Parhalado (Penatua & Pendeta)", "Parhalado", "Elders & Pastor", "#8b5a2b", "book", 13],
@@ -63,7 +64,8 @@ const Local = {
     if (!db) db = { groups: DEFAULT_GROUPS.slice(), members: [], posts: [], rosters: [], bread: [], updates: [], events: [], outbox: [] };
     db.polls = db.polls || []; db.votes = db.votes || [];
     db.birthdays = db.birthdays || []; db.settings = db.settings || {}; db.services = db.services || []; db.files = db.files || [];
-    for (const g of DEFAULT_GROUPS) if (g.kind === "office" && !db.groups.some((x) => x.id === g.id)) db.groups.push({ ...g });
+    for (const g of DEFAULT_GROUPS) if ((g.kind === "office" || g.id === "remaja") && !db.groups.some((x) => x.id === g.id)) db.groups.push({ ...g });
+    for (const g of db.groups) { const d = DEFAULT_GROUPS.find((x) => x.id === g.id); if (d && d.kind === "sermon") g.sort = d.sort; }
     this.dbo = db; return db;
   },
   async commit() { await idb.set("db", this.dbo); },
@@ -132,7 +134,7 @@ const Local = {
     const off = this.office(m); const hide = off ? [] : this.officeIds();
     const strip = (gs) => Object.fromEntries(Object.entries(gs || {}).filter(([k]) => !hide.includes(k)));
     return {
-      me: { id: m.id, name: m.name, alias: m.alias, phone: m.phone, dob: m.dob, wed: m.wed || null, is_admin: m.is_admin, groups: m.groups, wa_optin: m.wa_optin },
+      me: { id: m.id, name: m.name, alias: m.alias, phone: m.phone, dob: m.dob, wed: m.wed || null, is_admin: m.is_admin, groups: m.groups, wa_optin: m.wa_optin, profile: m.profile || null },
       groups: db.groups.filter((g) => g.kind !== "office" || off).sort((a, b) => a.sort - b.sort),
       posts: db.posts.filter((p) => this.sees(m, p.group_id)).sort((a, b) => b.created_at.localeCompare(a.created_at)),
       rosters: db.rosters.filter((r) => this.sees(m, r.group_id)).map(({ file_b64, ...r }) => ({ ...r, has_file: !!file_b64 })).sort((a, b) => b.month.localeCompare(a.month) || b.created_at.localeCompare(a.created_at)),
@@ -292,6 +294,7 @@ const Local = {
     const l = String(link || "").trim() || null; if (l && !/^https:\/\/(chat\.whatsapp\.com|wa\.me|whatsapp\.com)\//.test(l)) throw new AppError("bad_link");
     const g = this.dbo.groups.find((x) => x.id === gid); if (g) g.wa_link = l; await this.commit();
   },
+  async profileSave(p) { const m = await this.me(); m.profile = { married: !!p.married, male: !!p.male, pelaut: !!p.pelaut, confirmed: !!p.confirmed, at: new Date().toISOString() }; await this.commit(); return m.profile; },
   async calToken() { throw new AppError("demo_only"); }, // a calendar feed needs the shared database
   async pushSave() { /* no server in local mode: reminders show when the app is opened */ },
 };
@@ -352,6 +355,7 @@ const Remote = {
   vote(id, choices) { return this.rpc("hk_vote", { p_token: this.token, p_id: id, p_choices: choices }); },
   groupWaLink(gid, link) { return this.rpc("hk_group_walink", { p_token: this.token, p_group: gid, p_link: link || null }); },
   calToken() { return this.rpc("hk_cal_token", { p_token: this.token }); },
+  profileSave(p) { return this.rpc("hk_profile_save", { p_token: this.token, p }); },
   calUrl(tok) { return `${this.cfg.supabaseUrl}/functions/v1/hkbp-cal?t=${tok}`; },
   pushSave(sub) { return this.rpc("hk_push_save", { p_token: this.token, p_sub: sub }); },
 };

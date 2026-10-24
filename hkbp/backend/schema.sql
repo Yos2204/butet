@@ -38,6 +38,7 @@ alter table hk_members add column if not exists setup_code_hash text; -- one-tim
 alter table hk_members add column if not exists wed date;            -- wedding date (anniversary wishes)
 alter table hk_members add column if not exists cal_token text unique; -- secret part of the member's calendar feed link
 alter table hk_groups add column if not exists wa_link text;          -- the category's WhatsApp group invite link
+alter table hk_members add column if not exists profile jsonb;        -- first-login answers: married, gender, pelaut, confirmed (picks which categories show)
 
 create table if not exists hk_sessions (
   token text primary key,
@@ -166,10 +167,11 @@ end $$;
 
 insert into hk_groups (id, kind, name_id, name_bt, name_en, color, icon, sort) values
   ('sekolah-minggu','sermon','Sekolah Minggu','Sikola Minggu','Sunday School','#e8913a','child',1),
-  ('naposo','sermon','Naposobulung (Pemuda)','Naposobulung','Youth','#4f6bed','spark',2),
-  ('ina','sermon','Ina (Kaum Ibu)','Parompuan / Ina','Mothers','#c94f8a','heart',3),
-  ('ama','sermon','Ama (Kaum Bapak)','Ama','Fathers','#1f8a70','shield',4),
-  ('pelaut','sermon','Pelaut & Pekerja','Parlayar dohot Pangula','Sailors & Workers','#2a7fb8','anchor',5),
+  ('remaja','sermon','Remaja','Remaja','Teens','#9333ea','star',2),
+  ('naposo','sermon','Naposobulung (Pemuda)','Naposobulung','Youth','#4f6bed','spark',3),
+  ('ina','sermon','Ina (Kaum Ibu)','Parompuan / Ina','Mothers','#c94f8a','heart',4),
+  ('ama','sermon','Ama (Kaum Bapak)','Ama','Fathers','#1f8a70','shield',5),
+  ('pelaut','sermon','Pelaut & Pekerja','Parlayar dohot Pangula','Sailors & Workers','#2a7fb8','anchor',6),
   ('multimedia','service','Multimedia','Multimedia','Multimedia','#7c5cff','screen',11),
   ('jemaat','service','Jemaat','Ruas','Congregation','#0f766e','people',12),
   ('parhalado','service','Parhalado (Penatua & Pendeta)','Parhalado','Elders & Pastor','#8b5a2b','book',13),
@@ -317,7 +319,7 @@ declare m hk_members := hk__me(p_token); el boolean := hk__elder(m); off boolean
   hide text[] := case when hk__office(m) then '{}' else (select coalesce(array_agg(id), '{}') from hk_groups where kind = 'office') end;
 begin
   return jsonb_build_object(
-    'me', jsonb_build_object('id', m.id, 'name', m.name, 'alias', m.alias, 'phone', m.phone, 'dob', m.dob, 'wed', m.wed, 'is_admin', m.is_admin, 'groups', m.groups, 'wa_optin', m.wa_optin),
+    'me', jsonb_build_object('id', m.id, 'name', m.name, 'alias', m.alias, 'phone', m.phone, 'dob', m.dob, 'wed', m.wed, 'is_admin', m.is_admin, 'groups', m.groups, 'wa_optin', m.wa_optin, 'profile', m.profile),
     'groups', (select coalesce(jsonb_agg(to_jsonb(g) order by g.sort), '[]') from hk_groups g where g.removed_at is null and (g.kind <> 'office' or off)),
     'posts', (select coalesce(jsonb_agg(to_jsonb(p) order by p.created_at desc), '[]') from
                (select * from hk_posts where removed_at is null and hk__sees(m, group_id) order by created_at desc limit 300) p),
@@ -724,7 +726,17 @@ end $$;
 
 -- Only these functions are open to the app's public key.
 revoke execute on all functions in schema public from public, anon, authenticated;
+-- First-login answers (married, gender, Pelaut/Pekerja, confirmed). Only picks which categories the member's view shows.
+create or replace function hk_profile_save(p_token text, p jsonb) returns jsonb language plpgsql security definer set search_path = public as $$
+declare m hk_members := hk__me(p_token); v jsonb;
+begin
+  if m.id is null then raise exception 'not_signed_in'; end if;
+  v := jsonb_build_object('married', (p ->> 'married')::boolean, 'male', (p ->> 'male')::boolean, 'pelaut', (p ->> 'pelaut')::boolean, 'confirmed', (p ->> 'confirmed')::boolean, 'at', now());
+  update hk_members set profile = v where id = m.id;
+  return v;
+end $$;
+
 grant execute on function hk_login(text, text), hk_first_password(text, text), hk_logout(text), hk_set_password(text, text, text), hk_data(text),
   hk_roster_file(text, uuid), hk_save(text, text, jsonb), hk_remove(text, text, text), hk_members_upsert(text, jsonb),
   hk_push_save(text, jsonb), hk_push_remove(text, text), hk_birthdays_import(text, jsonb), hk_settings_save(text, jsonb), hk_service_html(text, uuid), hk_set_role(text, text, text, text, text), hk_file(text, uuid),
-  hk_set_teacher(text, text, text, text, text), hk_poll_state(text, uuid, text), hk_vote(text, uuid, jsonb), hk_public(), hk_group_walink(text, text, text), hk_cal_token(text) to anon;
+  hk_set_teacher(text, text, text, text, text), hk_poll_state(text, uuid, text), hk_vote(text, uuid, jsonb), hk_public(), hk_group_walink(text, text, text), hk_cal_token(text), hk_profile_save(text, jsonb) to anon;
