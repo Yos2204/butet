@@ -1641,7 +1641,7 @@ async function seedDemo() {
 // Starting Teacher Makers, given by the admin (YB). Phones come from the member list; the admin fills in any that are missing in a pop-up.
 // Starting Makers, given by the admin (YB). Phones come from the member list or from YB; the admin fills in any that are missing in a pop-up.
 const TEACH_SEED = {
-  "sekolah-minggu": [["@me", "tmaker"], ["Dien Pasaribu", "tmaker"]],
+  "sekolah-minggu": [["@me", "tmaker"], ["Dien Pasaribu", "tmaker", "88783871"]],
   remaja: [["@me", "tmaker"], ["Richard Siburian", "tmaker"], ["Royen Gultom", "tmaker"]],
   ama: [["@me", "tmaker"], ["Toga Sihombing", "tmaker", "97894504"]],
   ina: [["@me", "tmaker"], ["Dearni Purba", "tmaker", "97827584"]],
