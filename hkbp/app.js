@@ -228,7 +228,7 @@ async function enableNotifications(btn) {
   const perm = await Notification.requestPermission();
   if (perm !== "granted") { toast(t("notifyDenied"), true); return; }
   const reg = await swReg();
-  if (api.mode === "remote" && vapid() && reg && reg.pushManager) {
+  if (api.mode === "remote" && vapid() && reg && reg.pushManager && !isGuest()) {
     try {
       let sub = await reg.pushManager.getSubscription();
       // Re-subscribe if the phone is still registered with an older server key.
@@ -281,10 +281,18 @@ Reply with JSON only: {"verse": "...", "title": "...", "body": "..."}`;
 }
 
 // ---------- data refresh ----------
+// Without a sign-in the app shows the public parts (daily bread, church updates and events, Tata Ibadah, service rosters).
+// Categories and the office ask for phone number and password when opened.
+const GUEST = () => ({ id: null, name: "", alias: null, phone: null, dob: null, is_admin: false, groups: {}, wa_optin: false });
 async function refresh() {
-  try { D = await api.data(); }
-  catch (e) { if (e.code === "not_signed_in") { D = null; location.hash = "#/login"; } else throw e; }
+  D = await api.data();
+  if (D && !D.me) { D.me = GUEST(); D.guest = true; }
 }
+const isGuest = () => !D || !!D.guest;
+// Go to sign-in, and come back to the same page afterwards.
+let A_signIn = () => { LS.set("afterLogin", location.hash && !/^#\/login/.test(location.hash) ? location.hash : "#/home"); closeSheet(); location.hash = "#/login"; };
+const backAfterLogin = () => { const h = LS.get("afterLogin", "#/home") || "#/home"; LS.set("afterLogin", null); location.hash = h; };
+const signInCard = (msg) => `<div class="card center pad sign-in-card">${ic("lock")}<p>${esc(msg)}</p><button class="btn primary" data-act="signIn">${ic("lock")} ${esc(t("signIn"))}</button></div>`;
 
 // ---------- layout ----------
 const TABS = [["home", "#/home", "tab_home"], ["groups", "#/groups", "tab_groups"], ["roster", "#/serve", "tab_serve"], ["calendar", "#/calendar", "tab_calendar"], ["more", "#/more", "tab_more"]];
@@ -314,10 +322,10 @@ R.login = async () => {
   const setup = await api.needsSetup();
   const demo = api.mode === "local";
   view().innerHTML = `<div class="login">
-    <div class="login-top">${langSwitch()}</div>
+    <div class="login-top">${!setup ? `<a class="btn sm ghost" href="${esc(LS.get("afterLogin", "#/home") || "#/home")}">${ic("back")} ${esc(t("back"))}</a>` : ""}${langSwitch()}</div>
     <img class="logo-xl" src="logo.png" alt="HKBP">
     <h1>HKBP Singapore</h1>
-    <p class="muted">${esc(t("loginLead"))}</p>
+    <p class="muted">${esc(t(setup ? "loginLead" : "loginLeadCat"))}</p>
     ${setup ? `
       <form class="card form" data-form="setup">
         <h3>${esc(t("setupTitle"))}</h3>
@@ -328,16 +336,12 @@ R.login = async () => {
         <button class="btn primary block">${esc(t("setupBtn"))}</button>
       </form>
       <button class="btn block ghost" data-act="seedDemo">${ic("spark")} ${esc(t("demoBtn"))}</button>` : `
-      ${!viewMode() ? `<div class="card role-pick"><h3>${esc(t("whoAreYou"))}</h3><p class="small muted">${esc(t("whoLead"))}</p>
-        <button class="opt-card" data-act="pickView" data-v="member">${ic("people")}<span><b>${esc(t("viewMember"))}</b><small>${esc(t("viewMemberSub"))}</small></span>${ic("chev", "chev")}</button>
-        <button class="opt-card" data-act="pickView" data-v="admin">${ic("gear")}<span><b>${esc(t("viewAdmin"))}</b><small>${esc(t("viewAdminSub"))}</small></span>${ic("chev", "chev")}</button></div>` : `
-      <p class="small center">${esc(t("signingInAs"))} <b>${esc(t(viewMode() === "admin" ? "viewAdmin" : "viewMember"))}</b> · <button class="link" data-act="pickView" data-v="">${esc(t("change"))}</button></p>
       <form class="card form" data-form="login">
         <label>${esc(t("f_phone"))}<div class="phone-in"><span>+65</span><input name="phone" inputmode="numeric" required placeholder="8123 4567" autocomplete="username"></div></label>
         <label>${esc(t("f_password"))}<input name="pw" type="password" autocomplete="current-password"></label>
         <button class="btn primary block">${ic("lock")} ${esc(t("signIn"))}</button>
         <p class="small muted center">${esc(t("forgot"))}</p>
-      </form>`}
+      </form>
       ${demo ? `<p class="small muted center">${esc(t("demoLogins"))}</p>` : ""}`}
     ${demo ? `<p class="small muted center">${ic("phone")} ${esc(t("demoBanner"))}</p>` : ""}
     <p class="small muted center">${esc(t("installHint"))}</p>
@@ -358,8 +362,9 @@ R.home = () => {
   return shell("#/home", `
     <section class="hello">
       <p class="muted small">${esc(fmtDay(day))}</p>
-      <h1>${esc(t(hour < 11 ? "morning" : hour < 15 ? "afternoon" : hour < 18 ? "evening1" : "evening2"))}, ${esc(firstName(m.name))}</h1>
+      <h1>${esc(t(hour < 11 ? "morning" : hour < 15 ? "afternoon" : hour < 18 ? "evening1" : "evening2"))}${m.name ? ", " + esc(firstName(m.name)) : ""}</h1>
     </section>
+    ${isGuest() ? `<button class="card notify-ask" data-act="signIn">${ic("lock")}<span><b>${esc(t("guestTitle"))}</b><small>${esc(t("guestBody"))}</small></span>${ic("chev", "chev")}</button>` : ""}
     ${mine ? `<div class="card hbd">${ic("cake")}<div><h2>${esc(t("hbdTitle", firstName(m.name)))}</h2><p>${esc(t("hbdBody"))}</p></div></div>` : ""}
     ${notifyAsk ? `<button class="card notify-ask" data-act="notify">${ic("bell")}<span><b>${esc(t("notifyAskTitle"))}</b><small>${esc(standalone() || !/iP(hone|ad)/.test(navigator.userAgent) ? t("notifyAskBody") : t("iosInstallFirst"))}</small></span>${ic("chev", "chev")}</button>` : ""}
 
@@ -381,10 +386,10 @@ R.home = () => {
         ${inDays === 0 && p.phone && p.id !== m.id ? `<a class="icon-btn wa" href="${wa(t("hbdWish", firstName(p.name)), p.phone)}" target="_blank" rel="noopener" aria-label="WhatsApp">${ic("wa")}</a>` : inDays === 0 ? `<span class="party">🎉</span>` : ""}</div>`).join("")}
     </article>` : ""}
 
-    <article class="card">
+    ${isGuest() ? "" : `<article class="card">
       <div class="card-h"><h3>${ic("roster")} ${esc(t("myDuties"))}</h3><a class="small" href="#/serve">${esc(t("rosters"))}</a></div>
       ${myDuties.length ? myDuties.map(dutyRow).join("") : `<p class="muted small">${esc(t("noDuties"))}</p>`}
-    </article>
+    </article>`}
 
     <article class="card">
       <div class="card-h"><h3>${ic("calendar")} ${esc(t("upcoming"))}</h3><a class="small" href="#/calendar">${esc(t("seeAll"))}</a></div>
@@ -451,7 +456,7 @@ R.group = (gid) => {
   const teachers = people.filter((p) => ["tmaker", "teacher"].includes(p.groups[gid]));
   const tabs = [["sermon", "t_sermon", sermons.length], ...(teach ? [["polls", "t_polls", polls.filter((p) => p.status === "open").length]] : []), ["news", "t_news", news.length], ["events", "t_events", evs.length], ...(teach ? [["teachers", "t_teachers", teachers.length]] : []), ["members", "t_members", people.length]];
   let body = "";
-  if (!ok) body = empty(t("membersOnlyLong"), "lock");
+  if (!ok) body = isGuest() ? signInCard(t("signInCat")) : empty(t("membersOnlyLong"), "lock");
   else if (tab === "polls" && teach) body = pollsTab(gid, polls);
   else if (tab === "teachers" && teach) body = teachersTab(gid, teachers);
   else if (tab === "sermon") body = (edit ? `<button class="btn primary block" data-act="newPost" data-g="${gid}" data-kind="sermon">${ic("plus")} ${esc(t("newSermon"))}</button>` : "") + (sermons.length ? sermons.map((p) => postCard(p, edit)).join("") : empty(t("noSermon"), "book"));
@@ -615,6 +620,7 @@ R.elders = () => shell("#/more", `
   { back: "#/home", title: t("eldersUpdates"), sub: "Parhalado HKBP Singapore" });
 
 R.people = () => {
+  if (isGuest()) return shell("#/more", signInCard(t("signInCat")), { back: "#/more", title: t("people") });
   const day = today();
   const soon = birthdaysBetween(day, 30);
   const month = allBdays().filter((p) => p.bday.slice(0, 2) === day.slice(5, 7)).sort((a, b) => a.bday.localeCompare(b.bday));
@@ -636,6 +642,15 @@ R.people = () => {
 R.more = () => {
   const m = me(); const roles = Object.entries(m.groups || {});
   const perm = "Notification" in window ? Notification.permission : "unsupported";
+  if (isGuest()) return shell("#/more", `
+    ${signInCard(t("guestBody"))}
+    <div class="menu card">
+      <a class="li" href="#/elders">${ic("book")}<span class="grow"><b>${esc(t("eldersUpdates"))}</b></span>${ic("chev", "chev")}</a>
+      <a class="li" href="#/bread">${ic("bread")}<span class="grow"><b>${esc(t("breadTitle"))}</b></span>${ic("chev", "chev")}</a>
+      <button class="li" data-act="notify">${ic("bell")}<span class="grow"><b>${esc(t("notifications"))}</b><small>${esc(perm === "granted" ? t("notifyOnTxt") : perm === "denied" ? t("notifyDenied") : t("notifyAskBody"))}</small></span>${ic("chev", "chev")}</button>
+      <button class="li" data-act="install">${ic("phone")}<span class="grow"><b>${esc(t("installTitle"))}</b><small>${esc(standalone() ? t("installed") : t("installHint"))}</small></span>${ic("chev", "chev")}</button>
+    </div>
+    <p class="small muted center pad">HKBP Singapore · ${esc(t("logoNote"))}</p>`, { title: t("tab_more"), sub: "HKBP Singapore" });
   return shell("#/more", `
     <section class="profile card">
       <span class="avatar lg">${esc(initials(m.name))}</span>
@@ -665,11 +680,11 @@ async function render() {
   if (rendering) return; rendering = true;
   try {
     const h = location.hash.replace(/^#\/?/, "").split("?")[0];
-    const [r, arg] = h.split("/");
-    if (!api.hasSession()) { if (r !== "login") { location.replace("#/login"); } await R.login(); return; }
+    let [r, arg] = h.split("/");
+    if (r === "login") { if (api.hasSession()) { location.replace("#/home"); return; } await R.login(); return; }
+    if (!api.hasSession() && await api.needsSetup()) { await R.login(); return; }
     if (!D) await refresh();
-    if (!D) { await R.login(); return; }
-    if (r === "login" || !r) { location.replace("#/home"); return; }
+    if (!r) { history.replaceState(null, "", "#/home"); r = "home"; }
     const map = { tata: R.tata, home: R.home, groups: R.groups, g: R.group, serve: R.serve, s: R.section, calendar: R.calendar, bread: R.bread, elders: R.elders, people: R.people, more: R.more, o: R.office, warta: R.warta };
     const html = (map[r] || R.notFound)(arg);
     if (typeof html === "string") view().innerHTML = html;
@@ -679,7 +694,7 @@ async function render() {
   finally { rendering = false; }
 }
 function hydrate() {
-  if (D && api.hasSession() && $("#sheet").hidden) {
+  if (D && !isGuest() && api.hasSession() && $("#sheet").hidden) {
     if (viewMode() === null) { if (hasRights()) setTimeout(rolePrompt, 300); else LS.set("view", "member"); }
   }
   if (D && /^#\/s\/multimedia/.test(location.hash) && $("#sheet").hidden && viewMode() !== null) {
@@ -738,6 +753,7 @@ function mmPrompt() {
 A.mmSwitch = () => { setMMRole(""); mmPrompt(); };
 A.mmPick = (d) => {
   if (d.v === "checker") { setMMRole("checker"); closeSheet(); render(); return; }
+  if (isGuest()) return A_signIn();
   sheet(t("role_maker"), `<form class="form" data-form="mmmaker"><p class="muted">${esc(t("makerPhoneLead"))}</p>
     <label>${esc(t("f_phone"))}<div class="phone-in"><span>+65</span><input name="phone" inputmode="numeric" required placeholder="8123 4567" autocomplete="tel"></div></label>
     <button class="btn primary block">${esc(t("verify"))}</button></form>`, (el) => el.querySelector("input").focus());
@@ -929,7 +945,8 @@ A.closeSheet = closeSheet;
 A.retry = () => { D = null; render(); };
 A.seedDemo = async (d, btn) => { await busy(btn, () => seedDemo()); toast(t("demoReady")); render(); };
 A.notify = (d, btn) => enableNotifications(btn);
-A.logout = async () => { await api.logout(); D = null; location.hash = "#/login"; render(); };
+A.logout = async () => { await api.logout(); D = null; location.hash = "#/home"; render(); toast(t("signedOut")); };
+A.signIn = () => A_signIn();
 A.calPast = () => { LS.set("calPast", !LS.get("calPast", false)); render(); };
 A.icsAll = () => download("hkbp-singapore.ics", ics(D.events.filter((e) => new Date(e.starts_at) > Date.now())), "text/calendar");
 A.evMenu = (d) => {
@@ -1187,12 +1204,12 @@ document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("#she
 F.login = async (f) => {
   try { await api.login(f.phone.value, f.pw.value); }
   catch (e) { if (e.code !== "needs_password") throw e; return firstPwSheet(f.phone.value); }
-  D = null; await refresh(); afterSignIn(); location.hash = "#/home"; localReminders(); };
+  D = null; await refresh(); afterSignIn(); backAfterLogin(); localReminders(); };
 function afterSignIn() { if (viewMode() === "admin" && D && !hasRights()) { LS.set("view", "member"); toast(t("notAdmin")); } }
 F.firstpw = async (f) => {
   if ((f.pw.value || "").length < 6) throw new S.AppError("short_password");
   if (f.pw.value !== f.pw2.value) throw new S.AppError("pw_mismatch");
-  await api.firstPassword(f.dataset.phone, f.pw.value); closeSheet(); D = null; await refresh(); afterSignIn(); location.hash = "#/home"; toast(t("firstPwDone")); localReminders();
+  await api.firstPassword(f.dataset.phone, f.pw.value); closeSheet(); D = null; await refresh(); afterSignIn(); backAfterLogin(); toast(t("firstPwDone")); localReminders();
 };
 F.setup = async (f) => { if (!validPhone(f.phone.value)) throw new S.AppError("bad_phone"); await api.setupAdmin(f.name.value.trim(), f.phone.value, f.pw.value); await api.login(f.phone.value, f.pw.value); D = null; await refresh(); location.hash = "#/people"; };
 F.bread = async (f) => { await api.save("bread", { day: f.day.value, verse: f.verse.value.trim(), title: f.title.value.trim(), body: f.body.value.trim() }); await refresh(); toast(t("saved")); location.hash = "#/bread/" + f.day.value; };
@@ -1439,6 +1456,7 @@ function officeHome() {
 
 R.office = (gid) => {
   const g = G(gid);
+  if (isGuest()) return shell("#/home", signInCard(t("signInCat")), { back: "#/home" });
   if (!g || g.kind !== "office" || !isOffice()) return shell("#/home", empty(t("officeOnly"), "lock"), { back: "#/home" });
   if (!offOk()) return shell("#/home", `<div class="card center pad">${ic("lock")}<p>${esc(t("officeVerifyLead"))}</p><button class="btn primary" data-act="officePrompt">${esc(t("verify"))}</button></div>`, { back: "#/home", title: gname(g), sub: t("officeTitle") });
   const files = (D.files || []).filter((f) => f.group_id === gid);
@@ -2158,5 +2176,5 @@ const qs = new URLSearchParams(location.search);
   if (qs.get("demo") === "1" && api.mode === "local" && await api.needsSetup()) { await seedDemo(); }
   await render(); localReminders();
 })();
-document.addEventListener("visibilitychange", async () => { if (document.visibilityState === "visible" && D && api.hasSession()) { try { await refresh(); if (!$("#sheet").classList.contains("open")) render(); localReminders(); } catch {} } });
+document.addEventListener("visibilitychange", async () => { if (document.visibilityState === "visible" && D && !/^#\/login/.test(location.hash)) { try { await refresh(); if (!$("#sheet").classList.contains("open")) render(); localReminders(); } catch {} } });
 })();

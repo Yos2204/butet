@@ -239,7 +239,8 @@ details[open] summary { display: none; }
 
 /* login */
 .login { min-height: 100vh; display: flex; flex-direction: column; justify-content: center; padding: calc(24px + env(safe-area-inset-top)) 0 40px; text-align: center; }
-.login-top { position: absolute; top: calc(12px + env(safe-area-inset-top)); right: 16px; }
+.login-top { position: absolute; top: calc(12px + env(safe-area-inset-top)); left: 16px; right: 16px; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.login-top .langs { margin-left: auto; }
 .logo-xl { width: 132px; height: 132px; padding: 18px; object-fit: contain; margin: 0 auto 14px; border-radius: 32px; background: #fff; box-shadow: 0 16px 40px rgba(47,49,137,.25); }
 .login h1 { font-size: 32px; }
 .login .form { text-align: left; }

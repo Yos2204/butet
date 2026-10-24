@@ -131,6 +131,7 @@ window.HKBP_I18N = {
     f_question: "Question", f_options: "Answers (one per line)", f_optionsPh: "Yes\nNo\nNot sure", pollMulti: "Allow more than one answer", pollOpenNow: "Start the poll now (otherwise a teacher starts it in class)",
     vote: "Vote", changeVote: "Change my vote", voted: "Thank you, your vote is in", pollStarted: "Poll started", pollEnded: "Poll ended", pollVoteIn: "Vote in the HKBP app",
     err_poll_opts: "Write 2 to 12 answers, one per line.", err_poll_pick: "Choose an answer first.",
+    loginLeadCat: "Sign in once with your phone number and password to open your categories.", signInCat: "This part is for members. Sign in with your phone number and password to open it.", guestTitle: "Sign in for your categories", guestBody: "Daily bread, events, rosters and Tata Ibadah are open to everyone. Sign in to open your category (Youth, Sunday School, ...) and your duties.", signedOut: "Signed out",
   },
   id: {
     tagline: "Aplikasi untuk jemaat", tab_home: "Beranda", tab_groups: "Kategorial", tab_serve: "Jadwal", tab_calendar: "Kalender", tab_more: "Lainnya",
@@ -258,6 +259,7 @@ window.HKBP_I18N = {
     f_question: "Pertanyaan", f_options: "Jawaban (satu per baris)", f_optionsPh: "Ya\nTidak\nBelum tahu", pollMulti: "Boleh pilih lebih dari satu", pollOpenNow: "Mulai polling sekarang (atau guru memulainya di kelas)",
     vote: "Pilih", changeVote: "Ubah pilihan", voted: "Terima kasih, suara Anda masuk", pollStarted: "Polling dimulai", pollEnded: "Polling selesai", pollVoteIn: "Pilih di aplikasi HKBP",
     err_poll_opts: "Tulis 2 sampai 12 jawaban, satu per baris.", err_poll_pick: "Pilih jawaban dulu.",
+    loginLeadCat: "Masuk sekali dengan nomor HP dan kata sandi untuk membuka kategori Anda.", signInCat: "Bagian ini untuk anggota. Masuk dengan nomor HP dan kata sandi untuk membukanya.", guestTitle: "Masuk untuk kategori Anda", guestBody: "Renungan harian, acara, jadwal pelayanan dan Tata Ibadah terbuka untuk semua. Masuk untuk membuka kategori Anda (Naposo, Sekolah Minggu, ...) dan tugas Anda.", signedOut: "Sudah keluar",
   },
   bt: {
     tagline: "Aplikasi tu ruas", tab_home: "Jabu", tab_groups: "Kategorial", tab_serve: "Jadwal", tab_calendar: "Kalender", tab_more: "Na asing",
@@ -397,5 +399,6 @@ window.HKBP_I18N = {
     finAsk: "Pangido tu bendahara", finNeededTitle: "Warta Keuangan diparluhon", err_w_needFinance: "Warta Keuangan dope kosong. Pangido ma asa diisi bendahara jolo.",
     t_polls: "Polling", t_teachers: "Guru", role_tmaker: "Guru Maker", role_teacher: "Guru",
     newPoll: "Polling na imbaru", poll_draft: "Ready", poll_open: "Ungkap", poll_closed: "Sidung", vote: "Pillit", votes: (n) => `${n} soara`, pollStart: "Mulai polling", pollEnd: "Pasidung polling", addTeacher: "Tambai guru",
+    loginLeadCat: "Bongot sahali pake nomor HP dohot kata sandi laho mambuka kategori muna.", signInCat: "Bagian on di ruas. Bongot pake nomor HP dohot kata sandi.", guestTitle: "Bongot tu kategori muna", guestBody: "Renungan, ulaon, jadwal dohot Tata Ibadah tarbuka tu sude. Bongot laho mambuka kategori muna.", signedOut: "Nunga ruar",
   },
 };

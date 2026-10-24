@@ -190,6 +190,16 @@ begin
   return m;
 end $$;
 
+-- Like hk__me, but for pages anyone may open without signing in: returns an empty member (no rights) instead of an error.
+create or replace function hk__who(p_token text) returns hk_members language plpgsql stable security definer set search_path = public as $$
+declare m hk_members;
+begin
+  select mm.* into m from hk_sessions s join hk_members mm on mm.id = s.member_id
+   where s.token = p_token and s.expires_at > now() and mm.removed_at is null;
+  if m.id is null then m.groups := '{}'; m.is_admin := false; end if;
+  return m;
+end $$;
+
 create or replace function hk__chair(m hk_members, gid text) returns boolean language sql immutable as $$
   select m.is_admin or coalesce(m.groups ->> gid, '') = 'chair'
 $$;
@@ -333,6 +343,31 @@ begin
   );
 end $$;
 
+-- What anyone sees before signing in: daily bread, church-wide updates and events, Tata Ibadah and the service rosters.
+-- Categories (Youth, Sunday School, Mothers, ...), the office, member names, phones and birthdays need a sign-in.
+create or replace function hk_public() returns jsonb language plpgsql stable security definer set search_path = public as $$
+begin
+  return jsonb_build_object(
+    'me', null,
+    'groups', (select coalesce(jsonb_agg(to_jsonb(g) order by g.sort), '[]') from hk_groups g where g.removed_at is null and g.kind <> 'office'),
+    'posts', '[]'::jsonb, 'people', '[]'::jsonb, 'birthdays', '[]'::jsonb, 'files', '[]'::jsonb, 'polls', '[]'::jsonb,
+    'rosters', (select coalesce(jsonb_agg((to_jsonb(r) - 'file_b64') || jsonb_build_object('has_file', r.file_b64 is not null) order by r.month desc, r.created_at desc), '[]')
+               from hk_rosters r join hk_groups g on g.id = r.group_id and g.kind = 'service'
+               where r.removed_at is null and r.month >= to_char(now() - interval '12 months', 'YYYY-MM')),
+    'bread', (select coalesce(jsonb_agg(to_jsonb(b) order by b.day desc), '[]') from hk_bread b
+               where b.removed_at is null and b.day >= current_date - 90 and b.day <= (now() at time zone 'Asia/Singapore')::date),
+    'updates', (select coalesce(jsonb_agg(to_jsonb(u) order by u.pinned desc, u.created_at desc), '[]') from
+               (select * from hk_updates where removed_at is null and audience = 'all' order by created_at desc limit 150) u),
+    'events', (select coalesce(jsonb_agg(to_jsonb(e) order by e.starts_at), '[]') from hk_events e
+               where e.removed_at is null and e.starts_at > now() - interval '60 days'
+                 and (e.group_id is null or exists (select 1 from hk_groups g where g.id = e.group_id and g.kind = 'service'))),
+    'services', (select coalesce(jsonb_agg(jsonb_build_object('id', v.id, 'service_date', v.service_date, 'title', v.title, 'author_name', v.author_name,
+                  'created_at', v.created_at, 'size', length(v.html)) order by v.service_date desc nulls last, v.created_at desc), '[]')
+                  from (select * from hk_services where removed_at is null order by service_date desc nulls last, created_at desc limit 60) v),
+    'settings', (select coalesce(jsonb_object_agg(key, value), '{}') from hk_settings where key in ('bread_source', 'bread_lang', 'bread_hour', 'wa_group_link', 'setup_done', 'vapid_public'))
+  );
+end $$;
+
 -- Admin gives one person a role in one group by phone number (e.g. Multimedia "maker" or "checker").
 -- A phone that is not on the member list yet is added with the given name. p_role '' removes the role.
 create or replace function hk_set_role(p_token text, p_phone text, p_group text, p_role text, p_name text default null) returns jsonb language plpgsql security definer set search_path = public as $$
@@ -394,13 +429,13 @@ begin
 end $$;
 
 create or replace function hk_service_html(p_token text, p_id uuid) returns text language plpgsql security definer set search_path = public as $$
-declare m hk_members := hk__me(p_token);
+declare m hk_members := hk__who(p_token);
 begin
   return (select html from hk_services where id = p_id and removed_at is null);
 end $$;
 
 create or replace function hk_roster_file(p_token text, p_id uuid) returns jsonb language plpgsql security definer set search_path = public as $$
-declare m hk_members := hk__me(p_token);
+declare m hk_members := hk__who(p_token);
 begin
   return (select jsonb_build_object('file_b64', file_b64, 'mime', mime, 'file_name', file_name) from hk_rosters where id = p_id and removed_at is null and hk__sees(m, group_id));
 end $$;
@@ -640,4 +675,4 @@ revoke execute on all functions in schema public from public, anon, authenticate
 grant execute on function hk_login(text, text), hk_first_password(text, text), hk_logout(text), hk_set_password(text, text, text), hk_data(text),
   hk_roster_file(text, uuid), hk_save(text, text, jsonb), hk_remove(text, text, text), hk_members_upsert(text, jsonb),
   hk_push_save(text, jsonb), hk_push_remove(text, text), hk_birthdays_import(text, jsonb), hk_settings_save(text, jsonb), hk_service_html(text, uuid), hk_set_role(text, text, text, text, text), hk_file(text, uuid),
-  hk_set_teacher(text, text, text, text, text), hk_poll_state(text, uuid, text), hk_vote(text, uuid, jsonb) to anon;
+  hk_set_teacher(text, text, text, text, text), hk_poll_state(text, uuid, text), hk_vote(text, uuid, jsonb), hk_public() to anon;

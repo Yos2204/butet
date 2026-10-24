@@ -109,7 +109,22 @@ const Local = {
     if (m.pass_hash !== await sha(oldPw)) throw new AppError("bad_login");
     m.pass_hash = await sha(newPw); await this.commit();
   },
+  // Before signing in: the same public parts as hk_public() in backend/schema.sql.
+  async publicData() {
+    const db = await this.load(); const today = sgToday(); const svc = (gid) => { const g = db.groups.find((x) => x.id === gid); return !!g && g.kind === "service"; };
+    return {
+      me: null, posts: [], people: [], birthdays: [], files: [], polls: [],
+      groups: db.groups.filter((g) => g.kind !== "office").sort((a, b) => a.sort - b.sort),
+      rosters: db.rosters.filter((r) => svc(r.group_id)).map(({ file_b64, ...r }) => ({ ...r, has_file: !!file_b64 })).sort((a, b) => b.month.localeCompare(a.month) || b.created_at.localeCompare(a.created_at)),
+      bread: db.bread.filter((b) => b.day <= today).sort((a, b) => b.day.localeCompare(a.day)),
+      updates: db.updates.filter((u) => u.audience === "all").sort((a, b) => (b.pinned - a.pinned) || b.created_at.localeCompare(a.created_at)),
+      events: db.events.filter((e) => !e.group_id || svc(e.group_id)).sort((a, b) => a.starts_at.localeCompare(b.starts_at)),
+      services: db.services.map(({ html, ...v }) => ({ ...v, size: html.length })).sort((a, b) => (b.service_date || "").localeCompare(a.service_date || "") || b.created_at.localeCompare(a.created_at)),
+      settings: (({ claude_key, wa_senders, ...rest }) => rest)(db.settings),
+    };
+  },
   async data() {
+    if (!this.hasSession()) return this.publicData();
     const m = await this.me(); const db = this.dbo; const el = this.elder(m); const today = sgToday();
     const chairOf = Object.entries(m.groups || {}).filter(([, r]) => r === "chair" || r === "tmaker").map(([g]) => g);
     const since = new Date(Date.now() - 180 * 864e5).toISOString();
@@ -140,7 +155,7 @@ const Local = {
     };
   },
   async file(id) { const m = await this.me(); if (!this.office(m)) throw new AppError("not_allowed"); const f = this.dbo.files.find((x) => x.id === id); return f ? { file_b64: f.file_b64, mime: f.mime, file_name: f.file_name } : null; },
-  async rosterFile(id) { await this.me(); const r = this.dbo.rosters.find((x) => x.id === id); return r ? { file_b64: r.file_b64, mime: r.mime, file_name: r.file_name } : null; },
+  async rosterFile(id) { await this.load(); const r = this.dbo.rosters.find((x) => x.id === id); return r ? { file_b64: r.file_b64, mime: r.mime, file_name: r.file_name } : null; },
   async save(kind, d) {
     const m = await this.me(); const db = this.dbo; const now = new Date().toISOString(); const gid = d.group_id || null;
     const deny = () => { throw new AppError("not_allowed"); };
@@ -231,7 +246,7 @@ const Local = {
     await this.commit(); return out;
   },
   maker(m) { return m.is_admin || ["maker", "chair"].includes((m.groups || {}).multimedia); },
-  async serviceHtml(id) { await this.me(); const v = this.dbo.services.find((x) => x.id === id); return v ? v.html : null; },
+  async serviceHtml(id) { await this.load(); const v = this.dbo.services.find((x) => x.id === id); return v ? v.html : null; },
   async setRole(phone, group, role, name) {
     const m = await this.me(); if (!m.is_admin) throw new AppError("not_allowed");
     const ph = phone8(phone); if (!/^[3689]\d{7}$/.test(ph)) throw new AppError("bad_phone");
@@ -301,8 +316,18 @@ const Remote = {
   async logout() { const t = this.token; LS.set("remote.token", null); LS.set("remote.cache", null); try { await this.rpc("hk_logout", { p_token: t }); } catch {} },
   async setPassword(o, n) { return this.rpc("hk_set_password", { p_token: this.token, p_old: o, p_new: n }); },
   async data() {
+    if (!this.token) return this.publicData();
     try { const d = await this.rpc("hk_data", { p_token: this.token }); LS.set("remote.cache", d); return d; }
-    catch (e) { const c = LS.get("remote.cache"); if (e.code === "offline" && c) return { ...c, offline: true }; throw e; }
+    catch (e) {
+      const c = LS.get("remote.cache"); if (e.code === "offline" && c) return { ...c, offline: true };
+      if (e.code === "not_signed_in") return this.publicData(); // the sign-in ran out: show the public parts
+      throw e;
+    }
+  },
+  // Before signing in (see hk_public in backend/schema.sql).
+  async publicData() {
+    try { const d = await this.rpc("hk_public", {}); LS.set("remote.pubcache", d); return d; }
+    catch (e) { const c = LS.get("remote.pubcache"); if (e.code === "offline" && c) return { ...c, offline: true }; throw e; }
   },
   file(id) { return this.rpc("hk_file", { p_token: this.token, p_id: id }); },
   rosterFile(id) { return this.rpc("hk_roster_file", { p_token: this.token, p_id: id }); },

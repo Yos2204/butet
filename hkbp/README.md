@@ -18,10 +18,13 @@ Live at https://yos2204.github.io/butet/hkbp/ once merged to main. Try it with s
 
 | Who | Can |
 |---|---|
+| Anyone (not signed in) | Daily bread, church-wide updates and events, Tata Ibadah and service rosters. Opening a category or the office asks for phone number and password |
 | Member | Read their own groups, all service rosters, daily bread, updates, events, birthdays |
 | Chair of a group or section | The above, plus add and change that group's materials, news, events and rosters; sees phone numbers of that group |
 | Elder / pastor (member of Parhalado) | Read every group, write daily bread and elders' updates, add church-wide events |
 | Admin (maker) | Everything, including uploading the member list and adding sections |
+| Teacher Maker (Youth, Sunday School) | Posts materials, news, events and polls in that class and adds teachers (phone checked once per session). Starting Makers: Sunday School = YB, Dien Pasaribu; Youth = YB, Richard Siburian, St. Royen Gultom |
+| Teacher (Youth, Sunday School) | Reads everything in the class and starts or ends polls. In these two classes the chair no longer posts |
 
 ## Going live (free, about 20 minutes)
 
