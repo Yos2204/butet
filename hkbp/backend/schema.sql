@@ -131,6 +131,9 @@ alter table hk_posts add column if not exists removed_at timestamptz;
 alter table hk_rosters add column if not exists removed_at timestamptz;
 alter table hk_bread add column if not exists removed_at timestamptz;
 alter table hk_updates add column if not exists removed_at timestamptz;
+-- Berita Pelayanan (kind 'berita'): uploaded by the Secretary; other rows are elders' updates.
+alter table hk_updates add column if not exists kind text not null default 'update';
+alter table hk_updates add column if not exists day date;
 alter table hk_events add column if not exists removed_at timestamptz;
 alter table hk_push add column if not exists revoked boolean not null default false;
 
@@ -476,12 +479,19 @@ begin
     returning to_jsonb(hk_bread.*) into res;
 
   elsif p_kind = 'update' then
-    if not hk__elder(m) then raise exception 'not_allowed'; end if;
-    insert into hk_updates (id, title, body, audience, pinned, author_name)
-    values (coalesce(rid, gen_random_uuid()), d ->> 'title', d ->> 'body', coalesce(d ->> 'audience', 'all'), coalesce((d ->> 'pinned')::boolean, false), m.name)
-    on conflict (id) do update set title = excluded.title, body = excluded.body, audience = excluded.audience, pinned = excluded.pinned
+    if (d ->> 'kind') = 'berita' then
+      if not hk__chair(m, 'secretary') then raise exception 'not_allowed'; end if;
+      if exists (select 1 from hk_updates where id = rid and kind <> 'berita') then raise exception 'not_allowed'; end if;
+    else
+      if not hk__elder(m) then raise exception 'not_allowed'; end if;
+      if exists (select 1 from hk_updates where id = rid and kind = 'berita') then raise exception 'not_allowed'; end if;
+    end if;
+    insert into hk_updates (id, kind, day, title, body, audience, pinned, author_name)
+    values (coalesce(rid, gen_random_uuid()), case when d ->> 'kind' = 'berita' then 'berita' else 'update' end, nullif(d ->> 'day', '')::date, d ->> 'title', d ->> 'body',
+      case when d ->> 'kind' = 'berita' then 'all' else coalesce(d ->> 'audience', 'all') end, coalesce((d ->> 'pinned')::boolean, false), m.name)
+    on conflict (id) do update set title = excluded.title, body = excluded.body, audience = excluded.audience, pinned = excluded.pinned, day = excluded.day
     returning to_jsonb(hk_updates.*) into res;
-    if (d ->> 'notify')::boolean then insert into hk_outbox (audience, title, body, url) values (case when d ->> 'audience' = 'elders' then 'elders' else 'all' end, d ->> 'title', left(coalesce(d ->> 'body', ''), 180), '#/elders'); end if;
+    if (d ->> 'notify')::boolean then insert into hk_outbox (audience, title, body, url) values (case when d ->> 'audience' = 'elders' then 'elders' else 'all' end, d ->> 'title', left(coalesce(d ->> 'body', ''), 180), case when d ->> 'kind' = 'berita' then '#/berita' else '#/elders' end); end if;
 
   elsif p_kind = 'event' then
     if not (case when hk__teach(gid) then hk__poster(m, gid) else hk__elder(m) or (gid is not null and hk__chair(m, gid)) end) or (gid is not null and not hk__sees(m, gid)) then raise exception 'not_allowed'; end if;
@@ -560,7 +570,7 @@ begin
     if not hk__elder(m) then raise exception 'not_allowed'; end if;
     update hk_bread set removed_at = now() where day = p_id::date;
   elsif p_kind = 'update' then
-    if not hk__elder(m) then raise exception 'not_allowed'; end if;
+    if not (case when exists (select 1 from hk_updates where id = p_id::uuid and kind = 'berita') then hk__chair(m, 'secretary') else hk__elder(m) end) then raise exception 'not_allowed'; end if;
     update hk_updates set removed_at = now() where id = p_id::uuid;
   elsif p_kind = 'event' then
     select group_id into gid from hk_events where id = p_id::uuid;
