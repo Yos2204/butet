@@ -111,7 +111,9 @@ const canSee = (g) => (g.kind === "office" ? isOffice() : g.kind === "service" |
 // First-login profile (YB 2026-10-24): four questions pick which categories the member sees.
 // Everyone gets it except YB (super admin, sees everything). Categories a member leads (chair, teacher...) always show.
 const PROFILE_SKIP = ["85334780"];
-const profileOn = () => !!D && !isGuest() && !!me() && !PROFILE_SKIP.includes(S.phone8(me().phone));
+const pfSkipped = () => !!D && !isGuest() && !!me() && PROFILE_SKIP.includes(S.phone8(me().phone));
+// YB can try the questions on his own account (test mode, this phone only), then end the test to see everything again.
+const profileOn = () => !!D && !isGuest() && !!me() && (!pfSkipped() || !!LS.get("pfTest"));
 function profileCats(p) {
   if (!p) return null;
   if (p.confirmed === false) return ["remaja"];
@@ -473,7 +475,7 @@ R.groups = () => {
   return shell("#/groups", `
     <h2 class="page-h">${esc(t("groupsTitle"))}</h2>
     <p class="lead">${esc(t("groupsLead"))}</p>
-    ${pf ? `<div class="card row between pf-note"><span class="small muted">${esc(t(isAdmin() && LS.get("allCats") ? "pfAllShown" : "pfFiltered"))}</span><span class="row"><button class="btn sm ghost" data-act="profile">${esc(t("pfChange"))}</button>${isAdmin() ? `<button class="btn sm" data-act="allCats">${esc(t(LS.get("allCats") ? "pfMine" : "pfAll"))}</button>` : ""}</span></div>` : ""}
+    ${pf ? `<div class="card row between pf-note"><span class="small muted">${esc(t(isAdmin() && LS.get("allCats") ? "pfAllShown" : "pfFiltered"))}</span><span class="row"><button class="btn sm ghost" data-act="profile">${esc(t("pfChange"))}</button>${LS.get("pfTest") ? `<button class="btn sm" data-act="pfTest">${esc(t("pfTestEnd"))}</button>` : ""}${isAdmin() && !LS.get("pfTest") ? `<button class="btn sm" data-act="allCats">${esc(t(LS.get("allCats") ? "pfMine" : "pfAll"))}</button>` : ""}</span></div>` : ""}
     <div class="gcards">${list.map((g) => {
       const n = D.people.filter((p) => g.id in (p.groups || {})).length; const posts = D.posts.filter((p) => p.group_id === g.id).length; const ok = canSee(g);
       return `<a class="gcard ${ok ? "" : "locked"}" href="#/g/${g.id}" style="--gc:${g.color}">
@@ -786,6 +788,7 @@ R.more = () => {
       ${hasRights() ? `<button class="li" data-act="toggleView">${ic("people")}<span class="grow"><b>${esc(t("layout"))}: ${esc(t(manage() ? "viewAdmin" : "viewMember"))}</b><small>${esc(t(manage() ? "toMember" : "toAdmin"))}</small></span>${ic("chev", "chev")}</button>` : ""}
       ${isAdmin() ? `<button class="li" data-act="breadSetup">${ic("bread")}<span class="grow"><b>${esc(t("bs_title"))}</b><small>${esc(t("src_" + ((D.settings || {}).bread_source || "elders")))}</small></span>${ic("chev", "chev")}</button>` : ""}
       ${serveOn() ? `<button class="li" data-act="servePick">${ic("calendar")}<span class="grow"><b>${esc(t("svTitle"))}</b><small>${esc((me().profile || {}).serve ? me().profile.serve.map((id) => gname(G(id))).filter(Boolean).join(", ") || t("svNone") : t("pfNotYet"))}</small></span>${ic("chev", "chev")}</button>` : ""}
+      ${pfSkipped() ? `<button class="li" data-act="pfTest">${ic("spark")}<span class="grow"><b>${esc(t(LS.get("pfTest") ? "pfTestEnd" : "pfTestStart"))}</b><small>${esc(t(LS.get("pfTest") ? "pfTestOnSub" : "pfTestSub"))}</small></span>${ic("chev", "chev")}</button>` : ""}
       ${profileOn() ? `<button class="li" data-act="profile">${ic("people")}<span class="grow"><b>${esc(t("pfTitle"))}</b><small>${esc(me().profile ? profileCats(me().profile).map((id) => gname(G(id))).filter(Boolean).join(", ") : t("pfNotYet"))}</small></span>${ic("chev", "chev")}</button>` : ""}
       <button class="li" data-act="password">${ic("key")}<span class="grow"><b>${esc(t("changePw"))}</b></span>${ic("chev", "chev")}</button>
       <button class="li" data-act="install">${ic("phone")}<span class="grow"><b>${esc(t("installTitle"))}</b><small>${esc(standalone() ? t("installed") : t("installHint"))}</small></span>${ic("chev", "chev")}</button>
@@ -859,6 +862,10 @@ function profilePrompt() {
     <button class="btn primary block">${esc(t("save"))}</button></form>`);
 }
 A.profile = () => profilePrompt();
+A.pfTest = () => {
+  if (LS.get("pfTest")) { LS.set("pfTest", null); toast(t("pfTestDone")); render(); return; }
+  LS.set("pfTest", 1); LS.set("allCats", null); location.hash = "#/groups"; setTimeout(profilePrompt, 300);
+};
 A.allCats = () => { LS.set("allCats", LS.get("allCats") ? null : 1); render(); };
 F.profile = async (f) => {
   const v = (n) => f.querySelector(`input[name="${n}"]:checked`).value === "1";
