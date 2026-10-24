@@ -48,6 +48,6 @@ After changes, bump `?v=` in `index.html` and `CACHE` in `sw.js`.
 
 ## Notes
 
-- The logo is an HKBP-style emblem made for this app, not the official HKBP logo. To use the official logo, get permission from HKBP and replace `logo.svg` and the icons.
+- The app uses the official HKBP logo (`logo.png`, from YB). Home-screen icons are the logo on white (`icon-192.png`, `icon-512.png`, `apple-touch-icon.png`).
 - Personal data (birthdays, phone numbers) lives only in the church's Supabase database, never in this public repository. Members should agree to their data being used (PDPA).
 - Batak Toba texts in `i18n.js` should be checked by a fluent elder; missing Batak texts fall back to English.

@@ -244,7 +244,7 @@ function shell(active, inner, opts = {}) {
   const nav = TABS.map(([i, h, k]) => `<a href="${h}" class="${active === h ? "on" : ""}" ${active === h ? 'aria-current="page"' : ""}>${ic(i)}<span>${esc(t(k))}</span></a>`).join("");
   return `
   <header class="top">
-    ${opts.back ? `<a class="icon-btn" href="${opts.back}" aria-label="${esc(t("back"))}">${ic("back")}</a>` : `<img class="logo-sm" src="logo.svg" alt="">`}
+    ${opts.back ? `<a class="icon-btn" href="${opts.back}" aria-label="${esc(t("back"))}">${ic("back")}</a>` : `<img class="logo-sm" src="logo.png" alt="">`}
     <div class="brand"><b>${esc(opts.title || "HKBP Singapore")}</b>${opts.sub ? `<small>${esc(opts.sub)}</small>` : `<small>${esc(t("tagline"))}</small>`}</div>
     ${langSwitch()}
   </header>
@@ -267,7 +267,7 @@ R.login = async () => {
   const demo = api.mode === "local";
   view().innerHTML = `<div class="login">
     <div class="login-top">${langSwitch()}</div>
-    <img class="logo-xl" src="logo.svg" alt="HKBP">
+    <img class="logo-xl" src="logo.png" alt="HKBP">
     <h1>HKBP Singapore</h1>
     <p class="muted">${esc(t("loginLead"))}</p>
     ${setup ? `
