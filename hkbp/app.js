@@ -138,7 +138,7 @@ function breadText(b) { return `📖 *${t("breadTitle")} · HKBP Singapore*\n${f
 function ics(events) {
   const z = (d) => new Date(d).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
   const c = (s) => String(s || "").replace(/([,;\\])/g, "\\$1").replace(/\n/g, "\\n");
-  const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//HKBP Singapore//App//EN", "CALSCALE:GREGORIAN"];
+  const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//One HKBPS//App//EN", "CALSCALE:GREGORIAN"];
   events.forEach((e) => {
     const end = e.ends_at || new Date(new Date(e.starts_at).getTime() + 2 * 3600e3).toISOString();
     lines.push("BEGIN:VEVENT", `UID:${e.id}@hkbp-singapore`, `DTSTAMP:${z(Date.now())}`, `DTSTART:${z(e.starts_at)}`, `DTEND:${z(end)}`, `SUMMARY:${c(e.title)}`);
@@ -152,7 +152,7 @@ function ics(events) {
 }
 function icsBirthdays(list) {
   const c = (s) => String(s || "").replace(/([,;\\])/g, "\\$1"); const y = +today().slice(0, 4); const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
-  const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//HKBP Singapore//App//EN", "CALSCALE:GREGORIAN"];
+  const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//One HKBPS//App//EN", "CALSCALE:GREGORIAN"];
   list.forEach((b) => {
     const md = b.bday === "02-29" ? "02-28" : b.bday; const d = `${y}${md.replace("-", "")}`;
     lines.push("BEGIN:VEVENT", `UID:bday-${norm(b.name).replace(/ /g, "-")}-${b.bday}@hkbp-singapore`, `DTSTAMP:${stamp}`, `DTSTART;VALUE=DATE:${d}`, "RRULE:FREQ=YEARLY", `SUMMARY:${c("🎂 " + b.name)}`, "TRANSP:TRANSPARENT", "END:VEVENT");
@@ -241,7 +241,7 @@ async function enableNotifications(btn) {
     } catch (e) { console.warn(e); toast(t("pushFailed"), true); }
   }
   LS.set("notifyOn", true);
-  if (reg) reg.showNotification("HKBP Singapore", { body: t("notifyOk"), icon: "icon-192.png", badge: "icon-192.png", tag: "hkbp-test" });
+  if (reg) reg.showNotification("One HKBPS", { body: t("notifyOk"), icon: "icon-192.png", badge: "icon-192.png", tag: "hkbp-test" });
   render();
 }
 // Without the server job (demo mode, or before push is set up) the app shows today's reminders when it is opened.
@@ -304,7 +304,7 @@ function shell(active, inner, opts = {}) {
   return `
   <header class="top">
     ${opts.back ? `<a class="icon-btn" href="${opts.back}" aria-label="${esc(t("back"))}">${ic("back")}</a>` : `<img class="logo-sm" src="logo.png" alt="">`}
-    <div class="brand"><b>${esc(opts.title || "HKBP Singapore")}</b>${opts.sub ? `<small>${esc(opts.sub)}</small>` : `<small>${esc(t("tagline"))}</small>`}</div>
+    <div class="brand"><b>${esc(opts.title || "One HKBPS")}</b>${opts.sub ? `<small>${esc(opts.sub)}</small>` : `<small>${esc(t("tagline"))}</small>`}</div>
     ${langSwitch()}
   </header>
   ${D && D.offline ? `<div class="banner">${esc(t("offline"))}</div>` : ""}
@@ -327,7 +327,7 @@ R.login = async () => {
   view().innerHTML = `<div class="login">
     <div class="login-top">${!setup ? `<a class="btn sm ghost" href="${esc(LS.get("afterLogin", "#/home") || "#/home")}">${ic("back")} ${esc(t("back"))}</a>` : ""}${langSwitch()}</div>
     <img class="logo-xl" src="logo.png" alt="HKBP">
-    <h1>HKBP Singapore</h1>
+    <h1>One HKBPS</h1>
     <p class="muted">${esc(t(setup ? "loginLead" : "loginLeadCat"))}</p>
     ${setup ? `
       <form class="card form" data-form="setup">
@@ -701,7 +701,7 @@ async function render() {
     const map = { tata: R.tata, home: R.home, groups: R.groups, g: R.group, serve: R.serve, s: R.section, calendar: R.calendar, bread: R.bread, elders: R.elders, people: R.people, more: R.more, o: R.office, warta: R.warta };
     const html = (map[r] || R.notFound)(arg);
     if (typeof html === "string") view().innerHTML = html;
-    document.title = r === "home" ? "HKBP Singapore" : `${$(".brand b") ? $(".brand b").textContent : ""} · HKBP Singapore`;
+    document.title = r === "home" ? "One HKBPS" : `${$(".brand b") ? $(".brand b").textContent : ""} · One HKBPS`;
     hydrate();
   } catch (e) { console.error(e); view().innerHTML = `<div class="login">${empty(errMsg(e))}<button class="btn primary" data-act="retry">${esc(t("retry"))}</button></div>`; }
   finally { rendering = false; }

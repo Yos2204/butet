@@ -1,6 +1,6 @@
 // HKBP Singapore service worker: offline shell, push notifications, and opening the app from a notification.
-const CACHE = "hkbp-v15";
-const SHELL = ["./", "index.html", "config.js?v=15", "i18n.js?v=15", "store.js?v=15", "parse.js?v=15", "app.js?v=15", "manifest.webmanifest", "logo.png", "icon-192.png", "icon-512.png", "apple-touch-icon.png", "warta/head.jpg", "warta/banner.png", "warta/badan.png", "warta/corsiva.png", "warta/samb.png", "warta/wa.png", "fonts/LiberationSansNarrow-Regular.woff2", "fonts/LiberationSansNarrow-Bold.woff2", "fonts/LiberationSansNarrow-Italic.woff2", "fonts/LiberationSansNarrow-BoldItalic.woff2", "fonts/LiberationSans-Regular.woff2", "fonts/LiberationSans-Bold.woff2"];
+const CACHE = "hkbp-v16";
+const SHELL = ["./", "index.html", "config.js?v=16", "i18n.js?v=16", "store.js?v=16", "parse.js?v=16", "app.js?v=16", "manifest.webmanifest", "logo.png", "icon-192.png", "icon-512.png", "apple-touch-icon.png", "warta/head.jpg", "warta/banner.png", "warta/badan.png", "warta/corsiva.png", "warta/samb.png", "warta/wa.png", "fonts/LiberationSansNarrow-Regular.woff2", "fonts/LiberationSansNarrow-Bold.woff2", "fonts/LiberationSansNarrow-Italic.woff2", "fonts/LiberationSansNarrow-BoldItalic.woff2", "fonts/LiberationSans-Regular.woff2", "fonts/LiberationSans-Bold.woff2"];
 self.addEventListener("install", (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener("activate", (e) => { e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k.startsWith("hkbp-") && k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim())); });
 self.addEventListener("fetch", (e) => {
@@ -13,7 +13,7 @@ self.addEventListener("fetch", (e) => {
 // Push from the server job (backend/notify.mjs): { title, body, url, tag }
 self.addEventListener("push", (e) => {
   let d = {}; try { d = e.data ? e.data.json() : {}; } catch { d = { body: e.data && e.data.text() }; }
-  e.waitUntil(self.registration.showNotification(d.title || "HKBP Singapore", { body: d.body || "", icon: "icon-192.png", badge: "icon-192.png", tag: d.tag, data: { url: d.url || "#/home" } }));
+  e.waitUntil(self.registration.showNotification(d.title || "One HKBPS", { body: d.body || "", icon: "icon-192.png", badge: "icon-192.png", tag: d.tag, data: { url: d.url || "#/home" } }));
 });
 self.addEventListener("notificationclick", (e) => {
   e.notification.close();
