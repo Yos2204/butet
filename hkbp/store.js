@@ -131,7 +131,7 @@ const Local = {
     const off = this.office(m); const hide = off ? [] : this.officeIds();
     const strip = (gs) => Object.fromEntries(Object.entries(gs || {}).filter(([k]) => !hide.includes(k)));
     return {
-      me: { id: m.id, name: m.name, alias: m.alias, phone: m.phone, dob: m.dob, is_admin: m.is_admin, groups: m.groups, wa_optin: m.wa_optin },
+      me: { id: m.id, name: m.name, alias: m.alias, phone: m.phone, dob: m.dob, wed: m.wed || null, is_admin: m.is_admin, groups: m.groups, wa_optin: m.wa_optin },
       groups: db.groups.filter((g) => g.kind !== "office" || off).sort((a, b) => a.sort - b.sort),
       posts: db.posts.filter((p) => this.sees(m, p.group_id)).sort((a, b) => b.created_at.localeCompare(a.created_at)),
       rosters: db.rosters.filter((r) => this.sees(m, r.group_id)).map(({ file_b64, ...r }) => ({ ...r, has_file: !!file_b64 })).sort((a, b) => b.month.localeCompare(a.month) || b.created_at.localeCompare(a.created_at)),
@@ -139,9 +139,9 @@ const Local = {
       updates: db.updates.filter((u) => u.audience === "all" || el).sort((a, b) => (b.pinned - a.pinned) || b.created_at.localeCompare(a.created_at)),
       events: db.events.filter((e) => this.sees(m, e.group_id)).sort((a, b) => a.starts_at.localeCompare(b.starts_at)),
       people: db.members.map((x) => ({
-        id: x.id, name: x.name, alias: x.alias || null, bday: x.dob ? x.dob.slice(5) : null, groups: strip(x.groups), is_admin: x.is_admin,
+        id: x.id, name: x.name, alias: x.alias || null, bday: x.dob ? x.dob.slice(5) : null, anniv: x.wed ? x.wed.slice(5) : null, groups: strip(x.groups), is_admin: x.is_admin,
         phone: m.is_admin || chairOf.some((g) => g in (x.groups || {})) ? x.phone : null,
-        dob: m.is_admin ? x.dob : null, wa_optin: m.is_admin ? x.wa_optin : null, has_password: m.is_admin ? !!x.pass_hash : null,
+        dob: m.is_admin ? x.dob : null, wed: m.is_admin ? x.wed || null : null, wa_optin: m.is_admin ? x.wa_optin : null, has_password: m.is_admin ? !!x.pass_hash : null,
       })).sort((a, b) => a.name.localeCompare(b.name)),
       polls: db.polls.filter((p) => this.sees(m, p.group_id) && p.created_at > since && (p.status !== "draft" || this.teacher(m, p.group_id))).map((p) => {
         const vs = db.votes.filter((v) => v.poll_id === p.id); const mine = vs.find((v) => v.member_id === m.id);
@@ -226,7 +226,7 @@ const Local = {
       const ex = this.dbo.members.find((x) => x.phone === ph);
       // Office and teacher roles are only given in the app, so a member list upload keeps them.
       const keep = ex ? Object.fromEntries(Object.entries(ex.groups || {}).filter(([g, v]) => this.officeIds().includes(g) || v === "tmaker" || v === "teacher")) : {};
-      const row = { name: r.name, alias: r.alias || null, phone: ph, dob: r.dob || (ex && ex.dob) || null, is_admin: ex && ex.id === m.id ? true : !!r.is_admin, groups: { ...(r.groups || {}), ...keep }, wa_optin: !!r.wa_optin };
+      const row = { name: r.name, alias: r.alias || null, phone: ph, dob: r.dob || (ex && ex.dob) || null, wed: r.wed || (ex && ex.wed) || null, is_admin: ex && ex.id === m.id ? true : !!r.is_admin, groups: { ...(r.groups || {}), ...keep }, wa_optin: !!r.wa_optin };
       if (r.password) row.pass_hash = await sha(r.password);
       if (ex) Object.assign(ex, row); else this.dbo.members.push({ id: uid(), pass_hash: null, ...row });
       n++;
@@ -286,6 +286,12 @@ const Local = {
     for (const k of keys) if (k in o && !(k === "claude_key" && !o[k])) this.dbo.settings[k] = o[k];
     await this.commit();
   },
+  async groupWaLink(gid, link) {
+    const m = await this.me(); if (!(m.is_admin || ["chair", "tmaker"].includes((m.groups || {})[gid]))) throw new AppError("not_allowed");
+    const l = String(link || "").trim() || null; if (l && !/^https:\/\/(chat\.whatsapp\.com|wa\.me|whatsapp\.com)\//.test(l)) throw new AppError("bad_link");
+    const g = this.dbo.groups.find((x) => x.id === gid); if (g) g.wa_link = l; await this.commit();
+  },
+  async calToken() { throw new AppError("demo_only"); }, // a calendar feed needs the shared database
   async pushSave() { /* no server in local mode: reminders show when the app is opened */ },
 };
 
@@ -343,6 +349,9 @@ const Remote = {
   setTeacher(phone, group, role, name) { return this.rpc("hk_set_teacher", { p_token: this.token, p_phone: phone, p_group: group, p_role: role, p_name: name || null }); },
   pollState(id, status) { return this.rpc("hk_poll_state", { p_token: this.token, p_id: id, p_status: status }); },
   vote(id, choices) { return this.rpc("hk_vote", { p_token: this.token, p_id: id, p_choices: choices }); },
+  groupWaLink(gid, link) { return this.rpc("hk_group_walink", { p_token: this.token, p_group: gid, p_link: link || null }); },
+  calToken() { return this.rpc("hk_cal_token", { p_token: this.token }); },
+  calUrl(tok) { return `${this.cfg.supabaseUrl}/functions/v1/hkbp-cal?t=${tok}`; },
   pushSave(sub) { return this.rpc("hk_push_save", { p_token: this.token, p_sub: sub }); },
 };
 

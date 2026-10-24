@@ -4,7 +4,8 @@
 //  - daily bread at the hour the admin chose in the setup pop-up (default 06:00 Singapore time),
 //    drafted by Claude when the admin chose that and no elder wrote one;
 //    the members picked as WhatsApp senders also get a "tap to post it in the WhatsApp group" notification
-//  - 08:00: a happy-birthday notification to each member on their birthday (only to that member)
+//  - 08:00: birthday and wedding-anniversary wishes to the member, a "today in your category" notice to the rest of the category,
+//    and to each category leader a "tap to send the wishes to the WhatsApp group" notification
 //  - event reminders at each event's reminder time, to the event's category (or the whole church)
 //  - announcements queued from the app ("notify members now")
 // Every message is logged in hk_sent, so nothing is sent twice even if a run repeats.
@@ -52,7 +53,7 @@ async function run(S: Record<string, any>) {
   const pushOn = !!(S.vapid_public && S.vapid_private);
   if (pushOn) webpush.setVapidDetails("mailto:admin@hkbp-singapore.org", S.vapid_public, S.vapid_private);
 
-  const members = await db("hk_members?select=id,name,phone,dob,is_admin,groups&removed_at=is.null");
+  const members = await db("hk_members?select=id,name,phone,dob,wed,is_admin,groups&removed_at=is.null");
   const subs = await db("hk_push?select=endpoint,member_id,sub&revoked=is.false");
   const audience = (a: string) => {
     if (a === "all") return members;
@@ -120,13 +121,32 @@ async function run(S: Record<string, any>) {
       await push(who, { title: "📲 Kirim renungan ke grup WhatsApp", body: `${b.title || ""}: ketuk untuk membagikan ke grup "Daily Bread".`, url: `#/bread/${today}?wa=1`, tag: "bread-wa" });
     }
   }
-  // 2. Birthdays: only to the member who has the birthday
-  if (hour >= BDAY_HOUR) {
-    for (const m of members.filter((x: any) => x.dob && x.dob.slice(5) === today.slice(5))) {
-      if (await claim(`bday:${today}:${m.id}`)) {
-        const first = m.name.replace(/^(Pdt|St|Sintua|Bapak|Ibu|Kak|Bang|Ev|Dr)\.?\s+/i, "").split(/\s+/)[0];
-        await push([m], { title: `Selamat ulang tahun, ${first}! 🎉`, body: "Seluruh keluarga HKBP Singapore bersyukur untukmu. Tuhan memberkati dan melindungimu (Bil 6:24).", url: "#/home", tag: "bday" });
-      }
+  // 2. Birthdays and wedding anniversaries (08:00 to 21:00 only, so a late run never wakes anyone)
+  if (hour >= BDAY_HOUR && hour < 21) {
+    const md = today.slice(5);
+    const first = (n: string) => n.replace(/^(Pdt|St|Sintua|Bapak|Bpk|Ibu|Kak|Bang|Ev|Dr|Kel)\.?\s+/i, "").split(/\s+/)[0];
+    const isB = (m: any) => m.dob && m.dob.slice(5) === md, isA = (m: any) => m.wed && m.wed.slice(5) === md;
+    for (const m of members.filter(isB)) {
+      if (await claim(`bday:${today}:${m.id}`))
+        await push([m], { title: `Selamat ulang tahun, ${first(m.name)}! 🎉`, body: "Seluruh keluarga HKBP Singapore bersyukur untukmu. Tuhan memberkati dan melindungimu (Bil 6:24).", url: "#/home", tag: "bday" });
+    }
+    for (const m of members.filter(isA)) {
+      if (await claim(`anniv:${today}:${m.id}`))
+        await push([m], { title: `Selamat ulang tahun pernikahan, ${first(m.name)}! 💍`, body: "Kiranya Tuhan terus memberkati rumah tanggamu. \"Apa yang telah dipersatukan Allah, tidak boleh diceraikan manusia\" (Mat 19:6).", url: "#/home", tag: "anniv" });
+    }
+    // Each category: the other members get one notice, the leaders get the ready-made wishes for the WhatsApp group.
+    const cats = await db("hk_groups?kind=eq.sermon&removed_at=is.null&select=id,name_id");
+    for (const g of cats) {
+      const inG = members.filter((m: any) => g.id in (m.groups || {}));
+      const b = inG.filter(isB), a = inG.filter(isA);
+      if (!b.length && !a.length) continue;
+      if (!(await claim(`cat:${today}:${g.id}`))) continue;
+      const who = new Set([...b, ...a].map((m: any) => m.id));
+      const body = [b.length ? `🎂 Ulang tahun: ${b.map((m: any) => m.name).join(", ")}` : "", a.length ? `💍 Ulang tahun pernikahan: ${a.map((m: any) => m.name).join(", ")}` : ""].filter(Boolean).join("\n");
+      const leaders = inG.filter((m: any) => ["chair", "tmaker"].includes(m.groups[g.id]));
+      const lead = new Set(leaders.map((m: any) => m.id));
+      await push(inG.filter((m: any) => !who.has(m.id) && !lead.has(m.id)), { title: `Hari ini di ${g.name_id} 🎉`, body: body + "\nUcapkan selamat dan doakan mereka!", url: `#/g/${g.id}?wish=${today}`, tag: "cat-" + g.id });
+      await push(leaders, { title: `📲 Kirim ucapan ke grup WA ${g.name_id}`, body: body + "\nKetuk: ucapan sudah disiapkan, tinggal tempel dan kirim.", url: `#/g/${g.id}?wish=${today}`, tag: "catwa-" + g.id });
     }
   }
   // 3. Event reminders
