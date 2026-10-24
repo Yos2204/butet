@@ -471,10 +471,20 @@ R.group = (gid) => {
       <span class="gicon xl">${ic(g.icon)}</span>
       <div><h2>${esc(gname(g))}</h2><p>${esc(t("motto_" + g.id) !== "motto_" + g.id ? t("motto_" + g.id) : t("kindSermon"))}</p>${roleBadge(gid) ? `<div class="hero-role">${roleBadge(gid)} <small>${esc(edit ? t("canUpdate") : teach && canRunPoll(gid) ? t("teacherSub") : t("readOnly"))}</small></div>` : ""}</div>
     </section>
+    ${gid === "naposo" ? natalBlock(gid) : ""}
     ${ok && teach && manage() && isTMaker(gid) && !tmOk(gid) ? `<button class="card notify-ask" data-act="tmVerify" data-g="${gid}">${ic("lock")}<span><b>${esc(t("tmVerify"))}</b><small>${esc(t("tmNeedVerify"))}</small></span>${ic("chev", "chev")}</button>` : ""}
     ${ok ? `<div class="seg" role="tablist" style="--gc:${g.color}">${tabs.map(([k, l, n]) => `<a role="tab" aria-selected="${tab === k}" href="#/g/${gid}?tab=${k}">${esc(t(l))}${n ? ` <i>${n}</i>` : ""}</a>`).join("")}</div>` : ""}
     <div style="--gc:${g.color}">${body}</div>`, { back: "#/groups", title: gname(g), sub: t("kindSermon") });
 };
+// Natal Naposo: the youth Christmas app (../natal/) opens inside the Youth page.
+const NATAL_TABS = [["advent", "star"], ["schedule", "calendar"], ["program", "screen"], ["kado", "heart"], ["quiz", "check"], ["batak", "book"]];
+function natalBlock(gid) {
+  const lead = canEdit(gid) || canRunPoll(gid);
+  return `<div class="card natal"><div class="kicker">🎄 ${esc(t("natalTitle"))}</div><p class="small muted">${esc(t("natalLead"))}</p>
+    <div class="natal-tiles">${NATAL_TABS.map(([k, i]) => `<button class="btn" data-act="openNatal" data-tab="${k}">${ic(i)} ${esc(t("natal_" + k))}</button>`).join("")}</div>
+    <button class="btn primary block" data-act="openNatal" data-tab="home">${ic("chev")} ${esc(t("natalOpen"))}</button>
+    ${lead ? `<button class="btn block" data-act="openNatal" data-live="1" style="margin-top:8px">${ic("screen")} ${esc(t("natalLive"))}</button>` : ""}</div>`;
+}
 function postCard(p, edit) {
   return `<article class="card post" style="--gc:${(G(p.group_id) || {}).color}">
     <div class="meta">${esc(p.day ? fmtDay(p.day) : fmt(p.created_at, { day: "numeric", month: "long", year: "numeric" }))} · ${esc(p.author_name || "")}</div>
@@ -796,6 +806,12 @@ A.openWorkbench = () => {
   if (!(mmRole() === "maker" && isMMMaker())) { toast(t("notMaker"), true); return; }
   const el = document.createElement("div"); el.id = "wb";
   el.innerHTML = `<div class="wb-bar"><button class="icon-btn" data-act="closeWb" aria-label="${esc(t("close"))}">${ic("x")}</button><b>${esc(t("tataTitle"))} · Workbench</b><button class="btn primary sm" data-act="publishWb">${ic("upload")} ${esc(t("publish"))}</button></div><iframe src="../workbench/index.html" title="Workbench"></iframe>`;
+  document.body.appendChild(el); document.body.classList.add("noscroll");
+};
+A.openNatal = (d) => {
+  const url = d.live ? "../youth/?kit=../natal/christmas-quiz.json" : `../natal/?lang=${lang}#${d.tab || "home"}`;
+  const el = document.createElement("div"); el.id = "wb";
+  el.innerHTML = `<div class="wb-bar"><button class="icon-btn" data-act="closeWb" aria-label="${esc(t("close"))}">${ic("x")}</button><b>🎄 ${esc(d.live ? t("natalLive") : t("natalTitle"))}</b><a class="btn sm" href="${url}" target="_blank" rel="noopener">${ic("link")} ${esc(t("natalNewTab"))}</a></div><iframe src="${url}" title="Natal Naposo" allow="fullscreen; autoplay"></iframe>`;
   document.body.appendChild(el); document.body.classList.add("noscroll");
 };
 A.closeWb = () => { const el = $("#wb"); if (el) el.remove(); document.body.classList.remove("noscroll"); };
@@ -1706,6 +1722,12 @@ const wUp = (name) => `<button type="button" class="w-up" data-act="wImp" data-f
 const wLab = (name, label, src) => `<span class="w-lab"><span>${esc(label)}${src ? ` <span class="src-tag">${esc(src)}</span>` : ""}</span>${wUp(name)}</span>`;
 const wTa = (name, label, val, rows = 4, src = "") => `<label>${wLab(name, label, src)}<textarea name="${name}" rows="${rows}">${esc(val || "")}</textarea></label>`;
 const wIn = (name, label, val, src = "") => `<label>${wLab(name, label, src)}<input name="${name}" value="${esc(val || "")}"></label>`;
+// Sections filled from one file: one upload button for the whole section instead of one per field.
+const W_SECS = { "@head": ["minggu", "theme", "verse", "timeThis", "timeNext"], "@ren": ["renTitle", "renVerse", "renungan", "renunganBy"] };
+const wPlainLab = (label, src) => `<span class="w-lab"><span>${esc(label)}${src ? ` <span class="src-tag">${esc(src)}</span>` : ""}</span></span>`;
+const wIn0 = (name, label, val, src = "") => `<label>${wPlainLab(label, src)}<input name="${name}" value="${esc(val || "")}"></label>`;
+const wTa0 = (name, label, val, rows = 4, src = "") => `<label>${wPlainLab(label, src)}<textarea name="${name}" rows="${rows}">${esc(val || "")}</textarea></label>`;
+const wSecUp = (key, extra = "") => `<div class="row two w-secup"><button type="button" class="btn sm primary" data-act="wImp" data-f="${key}">${ic("upload")} ${esc(t("w_upSec"))}</button>${extra}</div>`;
 R.warta = (day) => {
   if (!isOffice() || !offOk()) { location.replace("#/o/secretary"); return ""; }
   day = /^\d{4}-\d{2}-\d{2}$/.test(day || "") ? day : nextSunday();
@@ -1724,9 +1746,9 @@ R.warta = (day) => {
       <p class="small muted" style="margin:6px 2px 10px">${esc(t("w_upAllHint"))}</p>` : ""}
       <div class="row two"><button class="btn" data-act="wartaPreview">${ic("screen")} ${esc(t("preview"))}</button><button class="btn" data-act="wartaRefill">${ic("check")} ${esc(t("wartaRefill"))}</button></div></div>
     <form class="form" id="warta-form" data-form="warta" data-day="${day}">
-      ${sec(t("w_head"), `${wIn("minggu", "Minggu", W.minggu, "Tata Ibadah")}${wIn("theme", t("w_theme"), W.theme, "Tata Ibadah")}${wIn("verse", t("f_verse"), W.verse, "Tata Ibadah")}
-        <div class="row two">${wIn("timeThis", t("w_timeThis"), W.timeThis)}${wIn("timeNext", t("w_timeNext"), W.timeNext)}</div>`, true)}
-      ${sec(t("w_renungan"), `<p class="small muted">${esc(t("w_renHint"))}</p>${wIn("renTitle", t("w_renTitle"), W.renTitle, t("bread"))}${wIn("renVerse", t("f_verse"), W.renVerse, t("bread"))}${wTa("renungan", t("w_renunganBody"), W.renungan, 12, t("bread"))}${wIn("renunganBy", t("w_by"), W.renunganBy)}`, !W.renungan)}
+      ${sec(t("w_head"), `${can ? wSecUp("@head") : ""}${wIn0("minggu", "Minggu", W.minggu, "Tata Ibadah")}${wIn0("theme", t("w_theme"), W.theme, "Tata Ibadah")}${wIn0("verse", t("f_verse"), W.verse, "Tata Ibadah")}
+        <div class="row two">${wIn0("timeThis", t("w_timeThis"), W.timeThis)}${wIn0("timeNext", t("w_timeNext"), W.timeNext)}</div>`, true)}
+      ${sec(t("w_renungan"), `<p class="small muted">${esc(t("w_renHint"))}</p>${can ? wSecUp("@ren", `<button type="button" class="btn sm" data-act="wFromBread">${ic("bread")} ${esc(t("w_fromBread"))}</button>`) : ""}${wIn0("renTitle", t("w_renTitle"), W.renTitle, t("bread"))}${wIn0("renVerse", t("f_verse"), W.renVerse, t("bread"))}${wTa0("renungan", t("w_renunganBody"), W.renungan, 12, t("bread"))}${wIn0("renunganBy", t("w_by"), W.renunganBy)}`, !W.renungan)}
       ${sec(t("birthdays"), `${wTa("bdays", t("w_bdays"), W.bdays, 4, t("src_bdays"))}${wTa("bdayVerse", t("w_verseGift"), W.bdayVerse, 2)}${wTa("anniv", t("w_anniv"), W.anniv, 3)}${wTa("annivVerse", t("w_verseGift"), W.annivVerse, 2)}`)}
       ${sec("Warta Keuangan", wFinBox(day), !finFor(day))}
       ${sec(t("w_team"), `<label>${wLab("rosterLink", t("w_rosterLink"))}<input name="rosterLink" type="url" inputmode="url" placeholder="https://docs.google.com/spreadsheets/…" value="${esc(W.rosterLink || "")}"></label>
@@ -1794,7 +1816,7 @@ F.warta = async (f) => {
 const W_LABEL = () => ({ minggu: "Minggu", theme: t("w_theme"), verse: t("f_verse"), timeThis: t("w_timeThis"), timeNext: t("w_timeNext"), renTitle: t("w_renTitle"), renVerse: t("f_verse"), renungan: t("w_renunganBody"), renunganBy: t("w_by"), rosterLink: t("w_rosterLink"), bdays: t("w_bdays"), bdayVerse: t("w_verseGift"), anniv: t("w_anniv"), annivVerse: t("w_verseGift"), team: t("w_team"), berita: "Berita Pelayanan", jadwalTitle: t("w_jadwalTitle"), jadwal: t("w_jadwal"), doa: "Pokok Doa", info: t("w_info"), attDate: t("w_attDate"), att: t("w_att"), org: t("w_org"), resort: "Resort", address: t("w_address"), email: "Email", closing: t("w_closing") });
 const W_ACCEPT = ".docx,.doc,.pdf,.xlsx,.xls,.xlsm,.csv,.ods";
 A.wImp = (d) => {
-  const name = d.f; const lab = W_LABEL()[name] || name;
+  const name = d.f; const lab = name === "@head" ? t("w_head") : name === "@ren" ? t("w_renungan") : W_LABEL()[name] || name;
   sheet(t("w_upload") + " · " + lab, `<p class="small muted">${esc(t("w_upLead"))}</p>
     <button class="btn primary block" data-act="wImpFile" data-f="${name}">${ic("upload")} ${esc(t("chooseFile"))}</button>
     <p class="small muted" style="text-align:center;margin:8px 0">.docx · .doc · .pdf · .xlsx · .xls</p>
@@ -1807,7 +1829,48 @@ A.wImpFile = (d) => {
 };
 F.wimplink = async (f) => { const r = await P.link(f.link.value.trim()); if (!(r.lines || []).some(Boolean) && !r.tables.length) throw new S.AppError(r.note === "link_folder" ? "link_folder" : r.note === "link_private" ? "link_private" : "read"); wPut(f.dataset.f, r, "link"); };
 const linesOfRes = (res) => (res.lines && res.lines.length ? res.lines : String(res.text || "").split(/\n/)).map((l) => String(l).replace(/\s+/g, " ").trim());
+// One file for a whole section: the Tata Ibadah part (Sunday name, theme, passage, times) or the reflection.
+function wPutSec(key, res) {
+  const f = $("#warta-form"); if (!f) return;
+  const W = wartaCollect(f); const parts = { ...wartaFromFile(res, W.day, W.team), ...(key === "@ren" ? renFromFile(res) : headFromFile(res)) };
+  if (key === "@ren") { const full = wartaFromFile(res, W.day, W.team); ["renTitle", "renVerse", "renungan", "renunganBy"].forEach((k) => { if (full[k]) parts[k] = full[k]; }); }
+  const got = W_SECS[key].filter((k) => parts[k]);
+  if (!got.length) { toast(t("w_noMatch"), true); return; }
+  got.forEach((k) => (f[k].value = parts[k]));
+  const det = f[got[0]].closest("details"); if (det) det.open = true;
+  closeSheet(); toast(t("w_filledN", got.map((k) => W_LABEL()[k]).join(", ")));
+}
+// A daily bread or reflection file: title, Bible passage, text and who wrote it.
+function renFromFile(res) {
+  const L = linesOfRes(res).map(plain); while (L.length && !L[0]) L.shift(); while (L.length && !L[L.length - 1]) L.pop();
+  const out = {}; const isRef = (x) => x.length < 60 && /\d+\s*[:.]\s*\d+/.test(x) && /[A-Za-z]/.test(x);
+  if (L[0] && /^(renungan|daily bread|saat teduh)\b/i.test(L[0]) && L[0].length < 40) L.shift();
+  let head = 0;
+  for (let i = 0; i < Math.min(4, L.length) && head < 2; i++) {
+    const x = L[i]; if (!x) continue;
+    const rv = x.replace(/^(bacaan|nas|ayat|firman|verse|passage|text)\s*:?\s*/i, "").replace(/^\((.+)\)$/, "$1");
+    if (!out.renVerse && isRef(rv)) { out.renVerse = rv; L[i] = ""; head++; continue; }
+    if (!out.renTitle && x.split(/\s+/).length <= 12 && !/[.!?]$/.test(x.replace(/["”]$/, ""))) { out.renTitle = x.replace(/^(judul|title)\s*:?\s*/i, "").replace(/^[“"]|[”"]$/g, ""); L[i] = ""; head++; continue; }
+    break;
+  }
+  const last = L[L.length - 1] || ""; const by = last.match(/^\(?\s*(?:oleh|by|penulis|ditulis oleh)?\s*:?\s*((?:pdt|st|ev|sintua|cst|dr|bpk|ibu)\.?\s[^()]{1,30}|[^()]{2,30})\s*\)?$/i);
+  if (by && last.length < 40 && (/^\(.*\)$/.test(last) || /^(oleh|by|penulis|pdt|st|ev)\b/i.test(last))) { out.renunganBy = by[1].trim(); L.pop(); }
+  const body = L.join("\n").replace(/^\n+/, "").replace(/\n{3,}/g, "\n\n").trim(); if (body.split(/\s+/).length > 15) out.renungan = body;
+  return out;
+}
+// Tata Ibadah part: Sunday name, theme and passage come from wartaFromFile; service times from "13.00 - 14.30".
+function headFromFile(res) {
+  const all = linesOfRes(res).join("\n"); const out = {};
+  const tm = all.match(/\b(\d{1,2}[.:]\d{2})\s*(?:-|–|s\/d|sampai)\s*(\d{1,2}[.:]\d{2})\b/); if (tm) out.timeThis = `${tm[1].replace(":", ".")} - ${tm[2].replace(":", ".")}`;
+  return out;
+}
+A.wFromBread = () => {
+  const f = $("#warta-form"); if (!f) return; const b = breadFor(f.dataset.day);
+  if (!b) { toast(t("w_noBread"), true); return; }
+  f.renTitle.value = b.title || ""; f.renVerse.value = b.verse || ""; f.renungan.value = b.body || ""; toast(t("w_filledN", t("bread")));
+};
 function wPut(name, res, src) {
+  if (W_SECS[name]) return wPutSec(name, res);
   const f = $("#warta-form"); if (!f) return;
   const W = wartaCollect(f); const parts = wartaFromFile(res, W.day, W.team, name);
   let v = parts[name];

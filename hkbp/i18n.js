@@ -132,6 +132,8 @@ window.HKBP_I18N = {
     vote: "Vote", changeVote: "Change my vote", voted: "Thank you, your vote is in", pollStarted: "Poll started", pollEnded: "Poll ended", pollVoteIn: "Vote in the HKBP app",
     err_poll_opts: "Write 2 to 12 answers, one per line.", err_poll_pick: "Choose an answer first.",
     loginLeadCat: "Sign in once with your phone number and password to open your categories.", signInCat: "This part is for members. Sign in with your phone number and password to open it.", guestTitle: "Sign in for your categories", guestBody: "Daily bread, events, rosters and Tata Ibadah are open to everyone. Sign in to open your category (Youth, Sunday School, ...) and your duties.", signedOut: "Signed out",
+    w_upSec: "Upload for this section", w_fromBread: "Use the daily bread", w_filledN: (x) => `Filled: ${x}`, w_noBread: "No daily bread for this Sunday yet.",
+    natalTitle: "Natal Naposo 2026", natalLead: "Advent calendar, schedule, the Christmas evening programme, Kado Silang, quiz and Batak words.", natalOpen: "Open Natal Naposo", natalLive: "Live Christmas quiz (projector)", natalNewTab: "New tab", natal_advent: "Advent", natal_schedule: "Schedule", natal_program: "Evening", natal_kado: "Kado Silang", natal_quiz: "Quiz", natal_batak: "Batak words",
   },
   id: {
     tagline: "Aplikasi untuk jemaat", tab_home: "Beranda", tab_groups: "Kategorial", tab_serve: "Jadwal", tab_calendar: "Kalender", tab_more: "Lainnya",
@@ -260,6 +262,8 @@ window.HKBP_I18N = {
     vote: "Pilih", changeVote: "Ubah pilihan", voted: "Terima kasih, suara Anda masuk", pollStarted: "Polling dimulai", pollEnded: "Polling selesai", pollVoteIn: "Pilih di aplikasi HKBP",
     err_poll_opts: "Tulis 2 sampai 12 jawaban, satu per baris.", err_poll_pick: "Pilih jawaban dulu.",
     loginLeadCat: "Masuk sekali dengan nomor HP dan kata sandi untuk membuka kategori Anda.", signInCat: "Bagian ini untuk anggota. Masuk dengan nomor HP dan kata sandi untuk membukanya.", guestTitle: "Masuk untuk kategori Anda", guestBody: "Renungan harian, acara, jadwal pelayanan dan Tata Ibadah terbuka untuk semua. Masuk untuk membuka kategori Anda (Naposo, Sekolah Minggu, ...) dan tugas Anda.", signedOut: "Sudah keluar",
+    w_upSec: "Unggah untuk bagian ini", w_fromBread: "Pakai renungan harian", w_filledN: (x) => `Terisi: ${x}`, w_noBread: "Belum ada renungan harian untuk Minggu ini.",
+    natalTitle: "Natal Naposo 2026", natalLead: "Kalender Adven, jadwal, acara malam Natal, Kado Silang, kuis dan kata-kata Batak.", natalOpen: "Buka Natal Naposo", natalLive: "Kuis Natal langsung (proyektor)", natalNewTab: "Tab baru", natal_advent: "Adven", natal_schedule: "Jadwal", natal_program: "Acara", natal_kado: "Kado Silang", natal_quiz: "Kuis", natal_batak: "Hata Batak",
   },
   bt: {
     tagline: "Aplikasi tu ruas", tab_home: "Jabu", tab_groups: "Kategorial", tab_serve: "Jadwal", tab_calendar: "Kalender", tab_more: "Na asing",
@@ -400,5 +404,7 @@ window.HKBP_I18N = {
     t_polls: "Polling", t_teachers: "Guru", role_tmaker: "Guru Maker", role_teacher: "Guru",
     newPoll: "Polling na imbaru", poll_draft: "Ready", poll_open: "Ungkap", poll_closed: "Sidung", vote: "Pillit", votes: (n) => `${n} soara`, pollStart: "Mulai polling", pollEnd: "Pasidung polling", addTeacher: "Tambai guru",
     loginLeadCat: "Bongot sahali pake nomor HP dohot kata sandi laho mambuka kategori muna.", signInCat: "Bagian on di ruas. Bongot pake nomor HP dohot kata sandi.", guestTitle: "Bongot tu kategori muna", guestBody: "Renungan, ulaon, jadwal dohot Tata Ibadah tarbuka tu sude. Bongot laho mambuka kategori muna.", signedOut: "Nunga ruar",
+    w_upSec: "Unggah tu bagian on", w_fromBread: "Pake renungan", w_filledN: (x) => `Nunga diisi: ${x}`,
+    natalTitle: "Natal Naposo 2026", natalLead: "Kalender Advent, jadwal, ulaon borngin Natal, Kado Silang, kuis dohot hata Batak.", natalOpen: "Buka Natal Naposo", natalLive: "Kuis Natal (proyektor)", natalNewTab: "Tab na imbaru", natal_advent: "Advent", natal_schedule: "Jadwal", natal_program: "Ulaon", natal_kado: "Kado Silang", natal_quiz: "Kuis", natal_batak: "Hata Batak",
   },
 };
