@@ -239,7 +239,8 @@ details[open] summary { display: none; }
 
 /* login */
 .login { min-height: 100vh; display: flex; flex-direction: column; justify-content: center; padding: calc(24px + env(safe-area-inset-top)) 0 40px; text-align: center; }
-.login-top { position: absolute; top: calc(12px + env(safe-area-inset-top)); right: 16px; }
+.login-top { position: absolute; top: calc(12px + env(safe-area-inset-top)); left: 16px; right: 16px; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.login-top .langs { margin-left: auto; }
 .logo-xl { width: 132px; height: 132px; padding: 18px; object-fit: contain; margin: 0 auto 14px; border-radius: 32px; background: #fff; box-shadow: 0 16px 40px rgba(47,49,137,.25); }
 .login h1 { font-size: 32px; }
 .login .form { text-align: left; }
@@ -339,6 +340,89 @@ details.wsec[open] summary { margin-bottom: 10px; }
 .warta-prev .wp-scroll { flex: 1; overflow: auto; padding: 8px; background: #64748b; }
 .warta-prev .wp-zoom { transform-origin: top left; width: 1123px; }
 .warta-prev .wp { box-shadow: 0 4px 18px rgba(0,0,0,.35); }
+.pdf-view .pdf-pages { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.pdf-view .pdf-pages canvas { background: #fff; box-shadow: 0 4px 18px rgba(0,0,0,.35); }
+.pdf-view .wb-bar .row { display: flex; gap: 6px; }
+.poll h3 { margin: 6px 0 10px; }
+.poll.closed { opacity: .92; }
+.poll-form { margin-bottom: 8px; }
+.poll-res { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; }
+.poll-res .pr { position: relative; display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-radius: 10px; background: var(--brand-soft); overflow: hidden; }
+.poll-res .pr > * { position: relative; z-index: 1; }
+.poll-res .pr i { position: absolute; z-index: 0; left: 0; top: 0; bottom: 0; background: color-mix(in srgb, var(--gc, var(--brand)) 28%, transparent); border-radius: 10px; }
+.poll-res .pr.mine b::after { content: " ✓"; }
+.poll-res .pr small { min-width: 22px; text-align: right; opacity: .75; }
+.ts-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+@media (max-width: 420px) { .ts-row { grid-template-columns: 1fr; } }
+/* Warta builder: an upload button beside every field */
+.w-lab { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.w-up { flex: none; width: 34px; height: 34px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); color: var(--brand); display: inline-grid; place-items: center; padding: 0; }
+.w-up svg { width: 17px; height: 17px; }
+.notice { display: flex; gap: 8px; align-items: flex-start; padding: 10px 12px; border-radius: 12px; background: var(--surface-2); font-size: 14px; margin: 6px 0 10px; }
+.notice.warn { background: #fff4e5; color: #8a4b00; border: 1px solid #ffd8a8; }
+.notice svg { width: 18px; height: 18px; flex: none; margin-top: 1px; }
+.notice-card { display: flex; align-items: center; gap: 12px; text-decoration: none; color: inherit; border: 1px solid #ffd8a8; background: #fff8ee; }
+.notice-card .grow { display: flex; flex-direction: column; } .notice-card small { color: var(--muted); }
+.notice-card > svg:first-child { width: 26px; height: 26px; color: #b45309; flex: none; }
+@media (prefers-color-scheme: dark) { .notice.warn, .notice-card { background: #3a2a12; color: #ffd8a8; border-color: #6b4a1a; } }
+
+/* Warta Jemaat print layout: A4 landscape at 96 px per inch, positions in points as in the Word file */
+@font-face { font-family: WNarrow; font-weight: 400; font-style: normal; src: local("Arial Narrow"), local("ArialNarrow"), url(fonts/LiberationSansNarrow-Regular.woff2) format("woff2"); }
+@font-face { font-family: WNarrow; font-weight: 700; font-style: normal; src: local("Arial Narrow Bold"), local("ArialNarrow-Bold"), url(fonts/LiberationSansNarrow-Bold.woff2) format("woff2"); }
+@font-face { font-family: WNarrow; font-weight: 400; font-style: italic; src: local("Arial Narrow Italic"), local("ArialNarrow-Italic"), url(fonts/LiberationSansNarrow-Italic.woff2) format("woff2"); }
+@font-face { font-family: WNarrow; font-weight: 700; font-style: italic; src: local("Arial Narrow Bold Italic"), local("ArialNarrow-BoldItalic"), url(fonts/LiberationSansNarrow-BoldItalic.woff2) format("woff2"); }
+@font-face { font-family: WArial; font-weight: 400; src: local("Arial"), local("ArialMT"), url(fonts/LiberationSans-Regular.woff2) format("woff2"); }
+@font-face { font-family: WArial; font-weight: 700; src: local("Arial Bold"), local("Arial-BoldMT"), url(fonts/LiberationSans-Bold.woff2) format("woff2"); }
+.wp { --wn: WNarrow, "Arial Narrow", sans-serif; --wa: WArial, Arial, sans-serif; position: relative; width: 1123px; height: 794px; background: #fff; color: #000; font: 400 9.96pt/1.15 var(--wn); margin: 0 0 20px; overflow: hidden; -webkit-font-smoothing: antialiased; }
+.wp * { box-sizing: border-box; }
+.wp b { font-weight: 700; }
+.wp img { display: block; max-width: none; }
+.wp .wr { position: absolute; overflow: hidden; line-height: 1.15; letter-spacing: -.008em; }
+.wp .wp-p { text-align: justify; text-align-last: left; hyphens: manual; }
+.wp .gap { height: 1.15em; }
+.wp .wi { display: flex; padding-left: var(--p, 0); text-align: justify; text-align-last: left; }
+.wp .wi .wn { flex: none; width: var(--n); }
+.wp .wi .wt { flex: 1; min-width: 0; }
+.wp .names .wi { line-height: 1.325; }
+.wp .fin { line-height: 1.15; }
+.wp .fin .gap { height: 1.15em; }
+.wp .whead { position: absolute; }
+.wp .ln { position: absolute; background: #000; display: block; }
+.wp .hl { position: absolute; left: 435.8pt; width: 399pt; text-align: center; line-height: 1; white-space: nowrap; }
+.wp .hl-a { font-family: var(--wn); font-weight: 400; letter-spacing: .037em; color: #2f5496; text-shadow: 0.60pt 0.00pt 0 #000, -0.60pt 0.00pt 0 #000, 0.00pt 0.60pt 0 #000, 0.00pt -0.60pt 0 #000, 0.42pt 0.42pt 0 #000, -0.42pt 0.42pt 0 #000, 0.42pt -0.42pt 0 #000, -0.42pt -0.42pt 0 #000, 0 0 2.2pt #fff, 0 0 2.2pt #fff; }
+.wp .hl-b { font-family: var(--wa); font-weight: 700; color: #000; letter-spacing: .06em; text-shadow: 0.28pt 0.00pt 0 #000, -0.28pt 0.00pt 0 #000, 0.00pt 0.28pt 0 #000, 0.00pt -0.28pt 0 #000, 0.20pt 0.20pt 0 #000, -0.20pt 0.20pt 0 #000, 0.20pt -0.20pt 0 #000, -0.20pt -0.20pt 0 #000, 0 0 2pt #fff, 0 0 2pt #fff; }
+.wp .hl-c { font-family: var(--wa); font-weight: 400; color: #2f5496; text-shadow: 0.55pt 0.00pt 0 #000, -0.55pt 0.00pt 0 #000, 0.00pt 0.55pt 0 #000, 0.00pt -0.55pt 0 #000, 0.39pt 0.39pt 0 #000, -0.39pt 0.39pt 0 #000, 0.39pt -0.39pt 0 #000, -0.39pt -0.39pt 0 #000, 0 0 2.2pt #fff, 0 0 2.2pt #fff; }
+.wp .wbox { position: absolute; border: .45pt solid #000; font-size: 11.04pt; line-height: 1; text-align: center; }
+.wp .wbox > div { position: absolute; left: 0; right: 0; }
+.wp .org { line-height: 1.157; font-style: italic; }
+.wp .org .og.p { display: flex; white-space: nowrap; }
+.wp .org .og.p > span:first-child { flex: none; width: 62.7pt; overflow: visible; }
+.wp .org .og .ph { display: inline-flex; align-items: center; gap: 2.2pt; font-style: italic; }
+.wp .org .og .ph img { width: 6.6pt; height: 6.3pt; }
+.wp .org .og .ph.solo { padding-left: 1.2pt; }
+.wp .ren { line-height: 1.157; display: flex; flex-direction: column; }
+.wp .ren > * { flex: none; }
+.wp .ren .rt { text-align: center; font-size: .79em; line-height: 1.46; margin-bottom: .2em; }
+.wp .ren .wi .wt { text-align: justify; }
+.wp .ren .wp-p[style*="padding-left"] { line-height: 1.33; }
+.wp .ren .rf { text-align: center; margin-top: auto; padding-top: .3em; }
+.wp .samb { position: absolute; border: 2pt solid #000; }
+.wp .samb .sb { position: absolute; left: 12pt; right: 12pt; text-align: center; font-weight: 700; line-height: 1.15; }
+.wp .samb .sb .gap { height: 1.15em; }
+.wp .bar { background: #f00; color: #fff; font-size: .902em; line-height: 1.13; padding: 0 0 0 0; margin: 1.25em -1.5pt .1em -1.5pt; padding-left: 1.5pt; }
+.wp .bar + .info { margin-top: 1.15em; }
+.wp .info .wp-p { text-align: justify; letter-spacing: -.012em; word-spacing: -.02em; }
+.wp .jad .wi { line-height: 1.31; }
+.wp .jad { padding-left: 21.3pt; }
+.wp table.att, .wp table.team { position: absolute; border-collapse: collapse; table-layout: fixed; }
+.wp table.att td { border: .5pt solid #000; text-align: center; font-size: 11.04pt; line-height: 1; height: 13.1pt; padding: 0 2pt; white-space: nowrap; }
+.wp table.team td { border: .5pt solid #000; font-size: 8.04pt; line-height: 1.13; padding: .4pt 4.5pt .4pt 5.2pt; vertical-align: top; height: 9.6pt; }
+.wp table.team td:first-child { font-weight: 700; vertical-align: middle; }
+.wp table.team tr.th td { background: #2e74b5; color: #fff; font-weight: 700; text-align: center; vertical-align: middle; height: 19.2pt; }
+.wp table.team tr.th td:first-child { text-align: left; }
+.wp .ber { line-height: 1.31; }
+.wp .ber .wi.l1 .wn b, .wp .ber .wi.l1 .wn { font-weight: 700; }
+.wp .ber .wi.l1 { margin-top: 0; }
 /* Fit every phone (iPhone and Android, upright and sideways).
    iPhones zoom in when a text box with letters smaller than 16px is tapped, and an installed app stays zoomed,
    which pushes the page past the right edge. Text boxes are therefore 16px, and nothing may be wider than the screen. */
@@ -368,10 +452,10 @@ p, h1, h2, h3, h4, li, label, small, b { overflow-wrap: break-word; }
 <div id="view"><div class="login"><img class="logo-xl" src="logo.png" alt="HKBP"><h1>HKBP Singapore</h1></div></div>
 <div id="sheet" hidden></div>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
-<script src="config.js?v=8"></script>
-<script src="i18n.js?v=8"></script>
-<script src="store.js?v=8"></script>
-<script src="parse.js?v=8"></script>
-<script src="app.js?v=8"></script>
+<script src="config.js?v=10"></script>
+<script src="i18n.js?v=10"></script>
+<script src="store.js?v=10"></script>
+<script src="parse.js?v=10"></script>
+<script src="app.js?v=10"></script>
 </body>
 </html>

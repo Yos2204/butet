@@ -134,9 +134,25 @@ alter table hk_updates add column if not exists removed_at timestamptz;
 alter table hk_events add column if not exists removed_at timestamptz;
 alter table hk_push add column if not exists revoked boolean not null default false;
 
+-- Polls for the Youth and Sunday School classes. Teacher Makers write them; any teacher opens and closes them; members vote.
+create table if not exists hk_polls (
+  id uuid primary key default gen_random_uuid(),
+  group_id text not null references hk_groups,
+  question text not null, options jsonb not null default '[]', multi boolean not null default false,
+  status text not null default 'draft' check (status in ('draft','open','closed')),
+  author_name text, created_at timestamptz default now(),
+  opened_by text, opened_at timestamptz, removed_at timestamptz
+);
+create table if not exists hk_votes (
+  poll_id uuid not null references hk_polls,
+  member_id uuid not null references hk_members,
+  choices int[] not null, at timestamptz default now(),
+  primary key (poll_id, member_id)
+);
+
 -- Lock every table: only the functions (and the server's service key) may touch them.
 do $$ declare t text; begin
-  foreach t in array array['hk_groups','hk_members','hk_sessions','hk_posts','hk_rosters','hk_bread','hk_updates','hk_events','hk_push','hk_outbox','hk_sent','hk_settings','hk_birthdays','hk_services','hk_files'] loop
+  foreach t in array array['hk_groups','hk_members','hk_sessions','hk_posts','hk_rosters','hk_bread','hk_updates','hk_events','hk_push','hk_outbox','hk_sent','hk_settings','hk_birthdays','hk_services','hk_files','hk_polls','hk_votes'] loop
     execute format('alter table %I enable row level security', t);
     execute format('revoke all on %I from anon, authenticated', t);
   end loop;
@@ -174,6 +190,16 @@ begin
   return m;
 end $$;
 
+-- Like hk__me, but for pages anyone may open without signing in: returns an empty member (no rights) instead of an error.
+create or replace function hk__who(p_token text) returns hk_members language plpgsql stable security definer set search_path = public as $$
+declare m hk_members;
+begin
+  select mm.* into m from hk_sessions s join hk_members mm on mm.id = s.member_id
+   where s.token = p_token and s.expires_at > now() and mm.removed_at is null;
+  if m.id is null then m.groups := '{}'; m.is_admin := false; end if;
+  return m;
+end $$;
+
 create or replace function hk__chair(m hk_members, gid text) returns boolean language sql immutable as $$
   select m.is_admin or coalesce(m.groups ->> gid, '') = 'chair'
 $$;
@@ -198,6 +224,21 @@ $$;
 -- Multimedia "maker" (or its chair, or an admin) may publish a Tata Ibadah. A "checker" and everyone else only read it.
 create or replace function hk__maker(m hk_members) returns boolean language sql immutable as $$
   select m.is_admin or coalesce(m.groups ->> 'multimedia', '') in ('maker', 'chair')
+$$;
+
+-- Youth and Sunday School are run by their teachers. A Teacher Maker ("tmaker") posts materials, news, events and polls;
+-- a Teacher ("teacher") reads everything and opens or closes polls in class. Only Makers (and the admin) add teachers.
+create or replace function hk__teach(gid text) returns boolean language sql immutable as $$
+  select coalesce(gid in ('naposo', 'sekolah-minggu'), false)
+$$;
+
+create or replace function hk__teacher(m hk_members, gid text) returns boolean language sql immutable as $$
+  select m.is_admin or coalesce(m.groups ->> gid, '') in ('tmaker', 'teacher')
+$$;
+
+-- Who may post in a category: the Teacher Makers in Youth and Sunday School, the chair elsewhere, and the admin.
+create or replace function hk__poster(m hk_members, gid text) returns boolean language sql immutable as $$
+  select case when hk__teach(gid) then m.is_admin or coalesce(m.groups ->> gid, '') = 'tmaker' else hk__chair(m, gid) end
 $$;
 
 create or replace function hk__json(r anyelement) returns jsonb language sql immutable as $$ select to_jsonb(r) $$;
@@ -269,17 +310,26 @@ begin
     'rosters', (select coalesce(jsonb_agg((to_jsonb(r) - 'file_b64') || jsonb_build_object('has_file', r.file_b64 is not null) order by r.month desc, r.created_at desc), '[]')
                from hk_rosters r where r.removed_at is null and hk__sees(m, r.group_id) and r.month >= to_char(now() - interval '12 months', 'YYYY-MM')),
     'bread', (select coalesce(jsonb_agg(to_jsonb(b) order by b.day desc), '[]') from hk_bread b
-               where b.removed_at is null and b.day >= current_date - 90 and (el or b.day <= (now() at time zone 'Asia/Singapore')::date)),
+               where b.removed_at is null and b.day >= current_date - 90 and (el or off or b.day <= (now() at time zone 'Asia/Singapore')::date)),
     'updates', (select coalesce(jsonb_agg(to_jsonb(u) order by u.pinned desc, u.created_at desc), '[]') from
                (select * from hk_updates where removed_at is null and (audience = 'all' or el) order by created_at desc limit 150) u),
     'events', (select coalesce(jsonb_agg(to_jsonb(e) order by e.starts_at), '[]') from hk_events e
                where e.removed_at is null and e.starts_at > now() - interval '60 days' and hk__sees(m, e.group_id)),
     'people', (select coalesce(jsonb_agg(jsonb_build_object(
                   'id', x.id, 'name', x.name, 'alias', x.alias, 'bday', to_char(x.dob, 'MM-DD'), 'groups', x.groups - hide, 'is_admin', x.is_admin,
-                  'phone', case when m.is_admin or exists (select 1 from jsonb_each_text(m.groups) g where g.value = 'chair' and x.groups ? g.key) then x.phone end,
+                  'phone', case when m.is_admin or exists (select 1 from jsonb_each_text(m.groups) g where g.value in ('chair', 'tmaker') and x.groups ? g.key) then x.phone end,
                   'dob', case when m.is_admin then x.dob end,
                   'wa_optin', case when m.is_admin then x.wa_optin end,
                   'has_password', case when m.is_admin then x.pass_hash is not null end) order by x.name), '[]') from hk_members x where x.removed_at is null),
+    'polls', (select coalesce(jsonb_agg(jsonb_build_object('id', p.id, 'group_id', p.group_id, 'question', p.question, 'options', p.options, 'multi', p.multi,
+                  'status', p.status, 'author_name', p.author_name, 'created_at', p.created_at, 'opened_by', p.opened_by, 'opened_at', p.opened_at,
+                  'mine', (select to_jsonb(v.choices) from hk_votes v where v.poll_id = p.id and v.member_id = m.id),
+                  'voters', (select count(*) from hk_votes v where v.poll_id = p.id),
+                  'counts', case when hk__teacher(m, p.group_id) or p.status = 'closed' or exists (select 1 from hk_votes v where v.poll_id = p.id and v.member_id = m.id)
+                    then (select coalesce(jsonb_agg((select count(*) from hk_votes v where v.poll_id = p.id and (i - 1) = any (v.choices)) order by i), '[]')
+                          from generate_series(1, jsonb_array_length(p.options)) i) end) order by p.created_at desc), '[]')
+                from hk_polls p where p.removed_at is null and hk__sees(m, p.group_id) and p.created_at > now() - interval '180 days'
+                  and (p.status <> 'draft' or hk__teacher(m, p.group_id))),
     'services', (select coalesce(jsonb_agg(jsonb_build_object('id', v.id, 'service_date', v.service_date, 'title', v.title, 'author_name', v.author_name,
                   'created_at', v.created_at, 'size', length(v.html)) order by v.service_date desc nulls last, v.created_at desc), '[]')
                   from (select * from hk_services where removed_at is null order by service_date desc nulls last, created_at desc limit 60) v),
@@ -293,6 +343,31 @@ begin
   );
 end $$;
 
+-- What anyone sees before signing in: daily bread, church-wide updates and events, Tata Ibadah and the service rosters.
+-- Categories (Youth, Sunday School, Mothers, ...), the office, member names, phones and birthdays need a sign-in.
+create or replace function hk_public() returns jsonb language plpgsql stable security definer set search_path = public as $$
+begin
+  return jsonb_build_object(
+    'me', null,
+    'groups', (select coalesce(jsonb_agg(to_jsonb(g) order by g.sort), '[]') from hk_groups g where g.removed_at is null and g.kind <> 'office'),
+    'posts', '[]'::jsonb, 'people', '[]'::jsonb, 'birthdays', '[]'::jsonb, 'files', '[]'::jsonb, 'polls', '[]'::jsonb,
+    'rosters', (select coalesce(jsonb_agg((to_jsonb(r) - 'file_b64') || jsonb_build_object('has_file', r.file_b64 is not null) order by r.month desc, r.created_at desc), '[]')
+               from hk_rosters r join hk_groups g on g.id = r.group_id and g.kind = 'service'
+               where r.removed_at is null and r.month >= to_char(now() - interval '12 months', 'YYYY-MM')),
+    'bread', (select coalesce(jsonb_agg(to_jsonb(b) order by b.day desc), '[]') from hk_bread b
+               where b.removed_at is null and b.day >= current_date - 90 and b.day <= (now() at time zone 'Asia/Singapore')::date),
+    'updates', (select coalesce(jsonb_agg(to_jsonb(u) order by u.pinned desc, u.created_at desc), '[]') from
+               (select * from hk_updates where removed_at is null and audience = 'all' order by created_at desc limit 150) u),
+    'events', (select coalesce(jsonb_agg(to_jsonb(e) order by e.starts_at), '[]') from hk_events e
+               where e.removed_at is null and e.starts_at > now() - interval '60 days'
+                 and (e.group_id is null or exists (select 1 from hk_groups g where g.id = e.group_id and g.kind = 'service'))),
+    'services', (select coalesce(jsonb_agg(jsonb_build_object('id', v.id, 'service_date', v.service_date, 'title', v.title, 'author_name', v.author_name,
+                  'created_at', v.created_at, 'size', length(v.html)) order by v.service_date desc nulls last, v.created_at desc), '[]')
+                  from (select * from hk_services where removed_at is null order by service_date desc nulls last, created_at desc limit 60) v),
+    'settings', (select coalesce(jsonb_object_agg(key, value), '{}') from hk_settings where key in ('bread_source', 'bread_lang', 'bread_hour', 'wa_group_link', 'setup_done', 'vapid_public'))
+  );
+end $$;
+
 -- Admin gives one person a role in one group by phone number (e.g. Multimedia "maker" or "checker").
 -- A phone that is not on the member list yet is added with the given name. p_role '' removes the role.
 create or replace function hk_set_role(p_token text, p_phone text, p_group text, p_role text, p_name text default null) returns jsonb language plpgsql security definer set search_path = public as $$
@@ -300,7 +375,7 @@ declare m hk_members := hk__me(p_token); ph text := hk__phone(p_phone); x hk_mem
 begin
   if not m.is_admin then raise exception 'not_allowed'; end if;
   if ph !~ '^[3689][0-9]{7}$' then raise exception 'bad_phone'; end if;
-  if coalesce(p_role, '') not in ('', 'member', 'chair', 'maker', 'checker') or not exists (select 1 from hk_groups where id = p_group) then raise exception 'unknown_kind'; end if;
+  if coalesce(p_role, '') not in ('', 'member', 'chair', 'maker', 'checker', 'tmaker', 'teacher') or not exists (select 1 from hk_groups where id = p_group) then raise exception 'unknown_kind'; end if;
   select * into x from hk_members where phone = ph;
   if x.id is null then
     if coalesce(trim(p_name), '') = '' then raise exception 'need_name'; end if;
@@ -312,14 +387,55 @@ begin
   return jsonb_build_object('id', x.id, 'name', x.name, 'phone', x.phone, 'groups', x.groups);
 end $$;
 
+-- Teacher Makers (or the admin) add or remove teachers in Youth or Sunday School by phone number.
+-- p_role 'tmaker' = Maker, 'teacher' = reads and opens polls, '' = no longer a teacher (stays a member of the class).
+create or replace function hk_set_teacher(p_token text, p_phone text, p_group text, p_role text, p_name text default null) returns jsonb language plpgsql security definer set search_path = public as $$
+declare m hk_members := hk__me(p_token); ph text := hk__phone(p_phone); x hk_members;
+begin
+  if not hk__teach(p_group) or not hk__poster(m, p_group) then raise exception 'not_allowed'; end if;
+  if ph !~ '^[3689][0-9]{7}$' then raise exception 'bad_phone'; end if;
+  if coalesce(p_role, '') not in ('', 'tmaker', 'teacher') then raise exception 'unknown_kind'; end if;
+  select * into x from hk_members where phone = ph;
+  if x.id is null then
+    if coalesce(trim(p_name), '') = '' then raise exception 'need_name'; end if;
+    insert into hk_members (name, phone, groups) values (trim(p_name), ph, '{}') returning * into x;
+  end if;
+  update hk_members set removed_at = null,
+    groups = groups || jsonb_build_object(p_group, case when coalesce(p_role, '') = '' then 'member' else p_role end)
+  where id = x.id returning * into x;
+  return jsonb_build_object('id', x.id, 'name', x.name, 'phone', x.phone, 'groups', x.groups);
+end $$;
+
+-- A teacher opens a poll in class ('open') or ends it ('closed').
+create or replace function hk_poll_state(p_token text, p_id uuid, p_status text) returns void language plpgsql security definer set search_path = public as $$
+declare m hk_members := hk__me(p_token); gid text;
+begin
+  select group_id into gid from hk_polls where id = p_id and removed_at is null;
+  if gid is null or not hk__teacher(m, gid) or p_status not in ('open', 'closed') then raise exception 'not_allowed'; end if;
+  update hk_polls set status = p_status, opened_by = case when p_status = 'open' then m.name else opened_by end,
+    opened_at = case when p_status = 'open' then now() else opened_at end where id = p_id;
+end $$;
+
+-- A member of the class votes (or changes their vote) while the poll is open. p_choices: option numbers from 0.
+create or replace function hk_vote(p_token text, p_id uuid, p_choices jsonb) returns void language plpgsql security definer set search_path = public as $$
+declare m hk_members := hk__me(p_token); p hk_polls; c int[];
+begin
+  select * into p from hk_polls where id = p_id and removed_at is null;
+  if p.id is null or p.status <> 'open' or not hk__sees(m, p.group_id) then raise exception 'not_allowed'; end if;
+  select array_agg(distinct v::int) into c from jsonb_array_elements_text(p_choices) v;
+  if c is null or (not p.multi and array_length(c, 1) <> 1) or exists (select 1 from unnest(c) i where i < 0 or i >= jsonb_array_length(p.options)) then raise exception 'unknown_kind'; end if;
+  insert into hk_votes (poll_id, member_id, choices) values (p.id, m.id, c)
+  on conflict (poll_id, member_id) do update set choices = excluded.choices, at = now();
+end $$;
+
 create or replace function hk_service_html(p_token text, p_id uuid) returns text language plpgsql security definer set search_path = public as $$
-declare m hk_members := hk__me(p_token);
+declare m hk_members := hk__who(p_token);
 begin
   return (select html from hk_services where id = p_id and removed_at is null);
 end $$;
 
 create or replace function hk_roster_file(p_token text, p_id uuid) returns jsonb language plpgsql security definer set search_path = public as $$
-declare m hk_members := hk__me(p_token);
+declare m hk_members := hk__who(p_token);
 begin
   return (select jsonb_build_object('file_b64', file_b64, 'mime', mime, 'file_name', file_name) from hk_rosters where id = p_id and removed_at is null and hk__sees(m, group_id));
 end $$;
@@ -337,7 +453,7 @@ create or replace function hk_save(p_token text, p_kind text, p_data jsonb) retu
 declare m hk_members := hk__me(p_token); d jsonb := p_data; rid uuid := nullif(p_data ->> 'id', '')::uuid; res jsonb; gid text := nullif(p_data ->> 'group_id', '');
 begin
   if p_kind = 'post' then
-    if not hk__chair(m, gid) then raise exception 'not_allowed'; end if;
+    if not hk__poster(m, gid) then raise exception 'not_allowed'; end if;
     insert into hk_posts (id, group_id, kind, title, verse, body, day, author_name)
     values (coalesce(rid, gen_random_uuid()), gid, coalesce(d ->> 'kind', 'news'), d ->> 'title', d ->> 'verse', d ->> 'body', nullif(d ->> 'day', '')::date, m.name)
     on conflict (id) do update set kind = excluded.kind, title = excluded.title, verse = excluded.verse, body = excluded.body, day = excluded.day
@@ -368,7 +484,7 @@ begin
     if (d ->> 'notify')::boolean then insert into hk_outbox (audience, title, body, url) values (case when d ->> 'audience' = 'elders' then 'elders' else 'all' end, d ->> 'title', left(coalesce(d ->> 'body', ''), 180), '#/elders'); end if;
 
   elsif p_kind = 'event' then
-    if not (hk__elder(m) or (gid is not null and hk__chair(m, gid))) or (gid is not null and not hk__sees(m, gid)) then raise exception 'not_allowed'; end if;
+    if not (case when hk__teach(gid) then hk__poster(m, gid) else hk__elder(m) or (gid is not null and hk__chair(m, gid)) end) or (gid is not null and not hk__sees(m, gid)) then raise exception 'not_allowed'; end if;
     insert into hk_events (id, group_id, title, starts_at, ends_at, place, notes, remind_min, author_name)
     values (coalesce(rid, gen_random_uuid()), gid, d ->> 'title', (d ->> 'starts_at')::timestamptz, nullif(d ->> 'ends_at', '')::timestamptz, d ->> 'place', d ->> 'notes', coalesce((d ->> 'remind_min')::int, 1440), m.name)
     on conflict (id) do update set group_id = excluded.group_id, title = excluded.title, starts_at = excluded.starts_at, ends_at = excluded.ends_at, place = excluded.place, notes = excluded.notes, remind_min = excluded.remind_min
@@ -377,6 +493,17 @@ begin
       insert into hk_outbox (audience, title, body, url) values (case when gid is null then 'all' else 'group:' || gid end, '🗓 ' || (d ->> 'title'),
         to_char((d ->> 'starts_at')::timestamptz at time zone 'Asia/Singapore', 'DD/MM/YYYY HH24:MI') || coalesce(' · ' || nullif(d ->> 'place', ''), ''), '#/calendar');
     end if;
+
+  elsif p_kind = 'poll' then
+    if not hk__poster(m, gid) then raise exception 'not_allowed'; end if;
+    if jsonb_typeof(d -> 'options') <> 'array' or jsonb_array_length(d -> 'options') not between 2 and 12 or coalesce(trim(d ->> 'question'), '') = '' then raise exception 'unknown_kind'; end if;
+    insert into hk_polls (id, group_id, question, options, multi, status, author_name)
+    values (coalesce(rid, gen_random_uuid()), gid, trim(d ->> 'question'), d -> 'options', coalesce((d ->> 'multi')::boolean, false),
+            case when d ->> 'status' = 'open' then 'open' else 'draft' end, m.name)
+    on conflict (id) do update set question = excluded.question, options = excluded.options, multi = excluded.multi
+      where hk_polls.group_id = gid and not exists (select 1 from hk_votes v where v.poll_id = hk_polls.id)
+    returning to_jsonb(hk_polls.*) into res;
+    if (d ->> 'notify')::boolean then insert into hk_outbox (audience, title, body, url) values ('group:' || gid, '📊 ' || (d ->> 'question'), '', '#/g/' || gid || '?tab=polls'); end if;
 
   elsif p_kind = 'service' then
     if not hk__maker(m) then raise exception 'not_allowed'; end if;
@@ -423,7 +550,7 @@ declare m hk_members := hk__me(p_token); gid text;
 begin
   if p_kind = 'post' then
     select group_id into gid from hk_posts where id = p_id::uuid;
-    if not hk__chair(m, gid) then raise exception 'not_allowed'; end if;
+    if not hk__poster(m, gid) then raise exception 'not_allowed'; end if;
     update hk_posts set removed_at = now() where id = p_id::uuid;
   elsif p_kind = 'roster' then
     select group_id into gid from hk_rosters where id = p_id::uuid;
@@ -437,8 +564,12 @@ begin
     update hk_updates set removed_at = now() where id = p_id::uuid;
   elsif p_kind = 'event' then
     select group_id into gid from hk_events where id = p_id::uuid;
-    if not (hk__elder(m) or (gid is not null and hk__chair(m, gid))) then raise exception 'not_allowed'; end if;
+    if not (case when hk__teach(gid) then hk__poster(m, gid) else hk__elder(m) or (gid is not null and hk__chair(m, gid)) end) then raise exception 'not_allowed'; end if;
     update hk_events set removed_at = now() where id = p_id::uuid;
+  elsif p_kind = 'poll' then
+    select group_id into gid from hk_polls where id = p_id::uuid;
+    if not hk__poster(m, gid) then raise exception 'not_allowed'; end if;
+    update hk_polls set removed_at = now() where id = p_id::uuid;
   elsif p_kind = 'service' then
     if not hk__maker(m) then raise exception 'not_allowed'; end if;
     update hk_services set removed_at = now() where id = p_id::uuid;
@@ -478,9 +609,9 @@ begin
       name = excluded.name, alias = excluded.alias, dob = coalesce(excluded.dob, hk_members.dob),
       pass_hash = coalesce(excluded.pass_hash, hk_members.pass_hash),
       is_admin = case when hk_members.id = m.id then true else excluded.is_admin end,
-      -- Office roles (Secretary, Treasurer, Chairman) are only given in the app, so a member list upload keeps them.
+      -- Office roles (Secretary, Treasurer, Chairman) and teacher roles are only given in the app, so a member list upload keeps them.
       groups = excluded.groups || coalesce((select jsonb_object_agg(e.key, e.value) from jsonb_each(hk_members.groups) e
-                 join hk_groups g on g.id = e.key and g.kind = 'office'), '{}'), wa_optin = excluded.wa_optin, removed_at = null;
+                 join hk_groups g on g.id = e.key and (g.kind = 'office' or e.value #>> '{}' in ('tmaker', 'teacher'))), '{}'), wa_optin = excluded.wa_optin, removed_at = null;
     n := n + 1;
   end loop;
   return n;
@@ -543,4 +674,5 @@ end $$;
 revoke execute on all functions in schema public from public, anon, authenticated;
 grant execute on function hk_login(text, text), hk_first_password(text, text), hk_logout(text), hk_set_password(text, text, text), hk_data(text),
   hk_roster_file(text, uuid), hk_save(text, text, jsonb), hk_remove(text, text, text), hk_members_upsert(text, jsonb),
-  hk_push_save(text, jsonb), hk_push_remove(text, text), hk_birthdays_import(text, jsonb), hk_settings_save(text, jsonb), hk_service_html(text, uuid), hk_set_role(text, text, text, text, text), hk_file(text, uuid) to anon;
+  hk_push_save(text, jsonb), hk_push_remove(text, text), hk_birthdays_import(text, jsonb), hk_settings_save(text, jsonb), hk_service_html(text, uuid), hk_set_role(text, text, text, text, text), hk_file(text, uuid),
+  hk_set_teacher(text, text, text, text, text), hk_poll_state(text, uuid, text), hk_vote(text, uuid, jsonb), hk_public() to anon;

@@ -18,10 +18,13 @@ Live at https://yos2204.github.io/butet/hkbp/ once merged to main. Try it with s
 
 | Who | Can |
 |---|---|
+| Anyone (not signed in) | Daily bread, church-wide updates and events, Tata Ibadah and service rosters. Opening a category or the office asks for phone number and password |
 | Member | Read their own groups, all service rosters, daily bread, updates, events, birthdays |
 | Chair of a group or section | The above, plus add and change that group's materials, news, events and rosters; sees phone numbers of that group |
 | Elder / pastor (member of Parhalado) | Read every group, write daily bread and elders' updates, add church-wide events |
 | Admin (maker) | Everything, including uploading the member list and adding sections |
+| Teacher Maker (Youth, Sunday School) | Posts materials, news, events and polls in that class and adds teachers (phone checked once per session). Starting Makers: Sunday School = YB, Dien Pasaribu; Youth = YB, Richard Siburian, St. Royen Gultom |
+| Teacher (Youth, Sunday School) | Reads everything in the class and starts or ends polls. In these two classes the chair no longer posts |
 
 ## Going live (free, about 20 minutes)
 
@@ -57,3 +60,12 @@ After changes, bump `?v=` in `index.html` and `CACHE` in `sw.js`.
 Private categories: only the office holders (added by the admin by phone number in the app) and the admin see them, enforced in the database (`hk__office`, `hk__sees`). Opening one asks for the phone number once per session. Holders upload files (up to 10 MB, `hk_files`) and share them to WhatsApp through a pop-up.
 
 The Treasurer writes the weekly Warta Keuangan. The Secretary's Warta Jemaat builder (`#/warta`) fills in birthdays, finance, the Tata Ibadah theme, the service team (last week's next-Sunday column plus rosters), elders' updates and calendar events, carries the organisation list and offering info from the previous Warta, and makes a 2-page A4 landscape PDF (html2canvas + jsPDF, loaded on demand) that is saved in the Secretary files and shared to WhatsApp.
+
+## Warta Jemaat builder (Secretary)
+
+- The PDF copies the secretary's Word layout (A4 landscape, Arial Narrow, letterhead art in `warta/`, fonts in `fonts/`).
+- Preview shows the real PDF pages.
+- Every field has an upload button (.docx, .doc, .pdf, .xlsx, .xls or an online link). "Upload all relevant files from a folder" reads many files at once, fills each part it recognises and opens the preview.
+- Weekly roster: paste the Google Sheets link once in "Service team"; each week the jobs for this and next Sunday are read from it.
+- The cover reflection is filled from the daily bread of that Sunday.
+- Warta Keuangan is typed by the treasurer only (parts A, B and C). The PDF cannot be made until it is in; the treasurer sees a reminder on the home page.
