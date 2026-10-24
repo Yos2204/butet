@@ -169,7 +169,7 @@ insert into hk_groups (id, kind, name_id, name_bt, name_en, color, icon, sort) v
   ('sekolah-minggu','sermon','Sekolah Minggu','Sikola Minggu','Sunday School','#e8913a','child',1),
   ('remaja','sermon','Remaja','Remaja','Teens','#9333ea','star',2),
   ('naposo','sermon','Naposobulung (Pemuda)','Naposobulung','Youth','#4f6bed','spark',3),
-  ('ina','sermon','Ina (Kaum Ibu)','Parompuan / Ina','Mothers','#c94f8a','heart',4),
+  ('ina','sermon','Ina (Kaum Perempuan)','Parompuan / Ina','Mothers','#c94f8a','heart',4),
   ('ama','sermon','Ama (Kaum Bapak)','Ama','Fathers','#1f8a70','shield',5),
   ('pelaut','sermon','Pelaut & Pekerja','Parlayar dohot Pangula','Sailors & Workers','#2a7fb8','anchor',6),
   ('multimedia','service','Multimedia','Multimedia','Multimedia','#7c5cff','screen',11),
@@ -182,6 +182,7 @@ insert into hk_groups (id, kind, name_id, name_bt, name_en, color, icon, sort) v
   ('treasurer','office','Bendahara','Bendahara','Treasurer','#15803d','coins',22),
   ('chairman','office','Ketua','Ketua','Chairman','#9f1239','gavel',23)
 on conflict (id) do nothing;
+update hk_groups set name_id = 'Ina (Kaum Perempuan)' where id = 'ina' and name_id = 'Ina (Kaum Ibu)'; -- renamed (YB 2026-10-25)
 
 -- ---------- helpers (not callable from the app) ----------
 create or replace function hk__phone(p text) returns text language sql immutable as $$
