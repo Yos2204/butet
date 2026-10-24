@@ -1,0 +1,9 @@
+{
+  "name": "hkbp-notify",
+  "private": true,
+  "type": "module",
+  "description": "Sends HKBP Singapore phone notifications and WhatsApp daily bread (run by GitHub Actions).",
+  "dependencies": {
+    "web-push": "3.6.7"
+  }
+}
