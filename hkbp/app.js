@@ -255,6 +255,7 @@ async function localReminders() {
   const b = D.bread.find((x) => x.day === day);
   if (b && once("bread:" + day)) reg.showNotification(`📖 ${t("breadTitle")}: ${b.title || ""}`, { body: `${b.verse || ""}\n${(b.body || "").slice(0, 140)}`, icon: "icon-192.png", tag: "bread", data: { url: "#/bread" } });
   if (me().dob && me().dob.slice(5) === day.slice(5) && once("bday:" + day)) reg.showNotification(t("hbdTitle", firstName(me().name)), { body: t("hbdBody"), icon: "icon-192.png", tag: "bday" });
+  if (me().wed && me().wed.slice(5) === day.slice(5) && once("anniv:" + day)) reg.showNotification(t("annivTitle", firstName(me().name)), { body: t("annivBody"), icon: "icon-192.png", tag: "anniv" });
   const now = Date.now();
   D.events.forEach((e) => { const st = new Date(e.starts_at).getTime(); if (st > now && st - e.remind_min * 60e3 <= now && once("ev:" + e.id)) reg.showNotification(`🗓 ${e.title}`, { body: `${fmtDay(sgParts(e.starts_at).date)} · ${fmtTime(e.starts_at)}${e.place ? " · " + e.place : ""}`, icon: "icon-192.png", tag: "ev-" + e.id, data: { url: "#/calendar" } }); });
   Object.keys(shown).forEach((k) => { if (shown[k] < addDays(day, -40)) delete shown[k]; });
@@ -363,6 +364,7 @@ R.home = () => {
   const bn = beritaLatest();
   const myGroups = D.groups.filter((g) => roleIn(g.id) && g.kind !== "office");
   const hour = +new Intl.DateTimeFormat("en-GB", { timeZone: TZ, hour: "numeric", hour12: false }).format(new Date());
+  const annivToday = isGuest() ? [] : D.people.filter((p) => p.anniv && p.anniv === day.slice(5));
   const notifyAsk = "Notification" in window ? Notification.permission === "default" || !LS.get("notifyOn") : /iP(hone|ad)/.test(navigator.userAgent) && !standalone();
   return shell("#/home", `
     <section class="hello">
@@ -371,6 +373,8 @@ R.home = () => {
     </section>
     ${isGuest() ? `<button class="card notify-ask" data-act="signIn">${ic("lock")}<span><b>${esc(t("guestTitle"))}</b><small>${esc(t("guestBody"))}</small></span>${ic("chev", "chev")}</button>` : ""}
     ${mine ? `<div class="card hbd">${ic("cake")}<div><h2>${esc(t("hbdTitle", firstName(m.name)))}</h2><p>${esc(t("hbdBody"))}</p></div></div>` : ""}
+    ${m.wed && m.wed.slice(5) === day.slice(5) ? `<div class="card hbd">💍<div><h2>${esc(t("annivTitle", firstName(m.name)))}</h2><p>${esc(t("annivBody"))}</p></div></div>` : ""}
+    ${annivToday.length ? `<article class="card"><div class="card-h"><h3>💍 ${esc(t("annivs"))}</h3></div>${annivToday.map((p) => `<div class="li"><span class="avatar">${esc(initials(p.name))}</span><span class="grow"><b>${esc(p.name)}</b><small>${esc(t("today"))}</small></span>${p.phone && p.id !== m.id ? `<a class="icon-btn wa" href="${wa(t("annivWish", firstName(p.name)), p.phone)}" target="_blank" rel="noopener" aria-label="WhatsApp">${ic("wa")}</a>` : `<span class="party">🎉</span>`}</div>`).join("")}</article>` : ""}
     ${notifyAsk ? `<button class="card notify-ask" data-act="notify">${ic("bell")}<span><b>${esc(t("notifyAskTitle"))}</b><small>${esc(standalone() || !/iP(hone|ad)/.test(navigator.userAgent) ? t("notifyAskBody") : t("iosInstallFirst"))}</small></span>${ic("chev", "chev")}</button>` : ""}
 
     ${(D.services || []).length ? `<a class="card li tata-home" href="#/tata/${D.services[0].id}">${ic("book")}<span class="grow"><b>${esc(t("tataTitle"))}</b><small>${esc(D.services[0].title || "")}${D.services[0].service_date ? " · " + esc(fmtDay(D.services[0].service_date)) : ""}</small></span>${ic("chev", "chev")}</a>` : ""}
@@ -473,11 +477,35 @@ R.group = (gid) => {
       <span class="gicon xl">${ic(g.icon)}</span>
       <div><h2>${esc(gname(g))}</h2><p>${esc(t("motto_" + g.id) !== "motto_" + g.id ? t("motto_" + g.id) : t("kindSermon"))}</p>${roleBadge(gid) ? `<div class="hero-role">${roleBadge(gid)} <small>${esc(edit ? t("canUpdate") : teach && canRunPoll(gid) ? t("teacherSub") : t("readOnly"))}</small></div>` : ""}</div>
     </section>
+    ${ok ? wishCard(g, people) : ""}
     ${gid === "naposo" ? natalBlock(gid) : ""}
     ${ok && teach && manage() && isTMaker(gid) && !tmOk(gid) ? `<button class="card notify-ask" data-act="tmVerify" data-g="${gid}">${ic("lock")}<span><b>${esc(t("tmVerify"))}</b><small>${esc(t("tmNeedVerify"))}</small></span>${ic("chev", "chev")}</button>` : ""}
     ${ok ? `<div class="seg" role="tablist" style="--gc:${g.color}">${tabs.map(([k, l, n]) => `<a role="tab" aria-selected="${tab === k}" href="#/g/${gid}?tab=${k}">${esc(t(l))}${n ? ` <i>${n}</i>` : ""}</a>`).join("")}</div>` : ""}
     <div style="--gc:${g.color}">${body}</div>`, { back: "#/groups", title: gname(g), sub: t("kindSermon") });
 };
+// Birthday and wedding anniversary wishes for a category. The leader saves the category's WhatsApp group link once;
+// after that one tap copies the ready-made wishes and opens that group, and the leader pastes and sends.
+const isGLead = (gid) => !!D && !isGuest() && (D.me.is_admin || ["chair", "tmaker"].includes(roleIn(gid)));
+const wishDay = () => { const q = new URLSearchParams(location.hash.split("?")[1] || "").get("wish"); return /^\d{4}-\d{2}-\d{2}$/.test(q || "") ? q : today(); };
+function celebrants(people, day) {
+  const md = day.slice(5);
+  return { bday: people.filter((p) => p.bday === md), anniv: people.filter((p) => p.anniv === md) };
+}
+function wishText(g, c) {
+  const nm = (l) => l.map((p) => p.alias || p.name).join(", ");
+  return [c.bday.length ? `🎂 ${t("wishBday", nm(c.bday))}` : "", c.anniv.length ? `💍 ${t("wishAnniv", nm(c.anniv))}` : "", t("wishBless"), `– ${gname(g)}, HKBP Singapore`].filter(Boolean).join("\n\n");
+}
+function wishCard(g, people) {
+  const day = wishDay(); const c = celebrants(people, day); const lead = isGLead(g.id);
+  if (!c.bday.length && !c.anniv.length) return lead && !g.wa_link && g.kind === "sermon" ? `<button class="card notify-ask" data-act="waLink" data-g="${g.id}">${ic("wa")}<span><b>${esc(t("waLinkSet"))}</b><small>${esc(t("waLinkWhy"))}</small></span>${ic("chev", "chev")}</button>` : "";
+  const list = [...c.bday.map((p) => `🎂 ${esc(p.name)}`), ...c.anniv.map((p) => `💍 ${esc(p.name)}`)].join("<br>");
+  return `<div class="card wish"><div class="kicker">🎉 ${esc(day === today() ? t("wishToday") : fmtDay(day))}</div><p>${list}</p>
+    ${lead ? `<button class="btn wa block" data-act="sendWish" data-g="${g.id}" data-day="${day}">${ic("wa")} ${esc(t(g.wa_link ? "wishSendGroup" : "wishSendPick"))}</button>
+      <p class="small muted">${esc(t(g.wa_link ? "wishHowGroup" : "wishHowPick"))}</p>
+      <button class="btn sm ghost" data-act="waLink" data-g="${g.id}">${ic("edit")} ${esc(t(g.wa_link ? "waLinkChange" : "waLinkSet"))}</button>`
+    : `<a class="btn wa block" href="${wa(wishText(g, c))}" target="_blank" rel="noopener">${ic("wa")} ${esc(t("wishShare"))}</a>`}</div>`;
+}
+
 // Natal Naposo: the youth Christmas app (../natal/) opens inside the Youth page.
 const NATAL_TABS = [["advent", "star"], ["schedule", "calendar"], ["program", "screen"], ["kado", "heart"], ["quiz", "check"], ["batak", "book"]];
 function natalBlock(gid) {
@@ -575,6 +603,7 @@ R.calendar = () => {
     <h2 class="page-h">${esc(t("calendarTitle"))}</h2>
     <p class="lead">${esc(t("calendarLead"))}</p>
     <div class="row two">${canAdd ? `<button class="btn primary" data-act="newEvent">${ic("plus")} ${esc(t("newEvent"))}</button>` : ""}<button class="btn" data-act="icsAll" ${evs.length ? "" : "disabled"}>${ic("download")} ${esc(t("addAllCal"))}</button></div>
+    <button class="card li" data-act="calSub">${ic("calendar")}<span class="grow"><b>${esc(t("calSub"))}</b><small>${esc(t("calSubSub"))}</small></span>${ic("chev", "chev")}</button>
     <div class="row two">${isElder() ? `<button class="btn" data-act="addBday">${ic("cake")} ${esc(t("addBday"))}</button><button class="btn" data-act="importBdays">${ic("upload")} ${esc(t("importBdays"))}</button>` : ""}<button class="btn ghost" data-act="icsBdays" ${all.length ? "" : "disabled"}>${ic("cake")} ${esc(t("bdaysToCal"))}</button></div>
     ${months.length ? months.map((k) => `<h3 class="sec-h">${esc(monthName(k))}</h3><div class="card">${byMonth[k].sort((a, c) => a.k.localeCompare(c.k)).map((x) => x.html).join("")}</div>`).join("") : empty(t("noEvents"), "calendar")}
     <p class="center"><button class="btn sm ghost" data-act="calPast">${esc(t(show ? "hidePast" : "showPast"))}</button></p>`);
@@ -1199,6 +1228,7 @@ A.editMember = (d) => {
     <label>${esc(t("f_alias"))}<input name="alias" value="${esc(p.alias || "")}" placeholder="Rina, Kak Rina"></label>
     <label>${esc(t("f_phone"))}<div class="phone-in"><span>+65</span><input name="phone" inputmode="numeric" required value="${esc(p.phone || "")}"></div></label>
     <label>${esc(t("f_dob"))}<input type="date" name="dob" value="${esc(p.dob || "")}"></label>
+    <label>${esc(t("f_wed"))}<input type="date" name="wed" value="${esc(p.wed || "")}"></label>
     <label>${esc(t(d.id ? "f_pwKeep" : "f_password"))}<input name="password" ${d.id ? "" : "required"} autocomplete="off"></label>
     <h4>${esc(t("groupsRoles"))}</h4>
     <div class="roles">${D.groups.map((g) => `<label class="role-row" style="--gc:${g.color}"><span>${ic(g.icon)} ${esc(gname(g))}</span><select name="g_${g.id}"><option value="">—</option><option value="member" ${p.groups[g.id] === "member" ? "selected" : ""}>${esc(t("role_member"))}</option><option value="chair" ${p.groups[g.id] === "chair" ? "selected" : ""}>${esc(t("role_chair"))}</option>${g.id === "multimedia" ? ["maker", "checker"].map((r) => `<option value="${r}" ${p.groups[g.id] === r ? "selected" : ""}>${esc(t("role_" + r))}</option>`).join("") : ""}</select></label>`).join("")}</div>
@@ -1212,7 +1242,7 @@ A.editMember = (d) => {
 // Member list file → rows. Column names are matched loosely (English, Indonesian or Batak headers).
 const COLS = [
   ["alias", /nick|panggil|alias|call ?name/i], ["wa_optin", /^(whats ?app|wa)( ?opt.?in| daily ?bread| ?ya\/tidak)?$/i],
-  ["phone", /phone|hp|telp|telepon|mobile|handphone|nomor|no\.? ?wa|contact|kontak/i], ["dob", /birth|lahir|dob|tgl|tanggal|ulang/i],
+  ["phone", /phone|hp|telp|telepon|mobile|handphone|nomor|no\.? ?wa|contact|kontak/i], ["wed", /nikah|wedding|anniv|kawin|marri|pernikahan|perkawinan|pesta ?adat/i], ["dob", /birth|lahir|dob|tgl|tanggal|ulang/i],
   ["password", /pass|sandi|pin/i], ["chair", /chair|ketua|pangulu|leader/i], ["groups", /group|kategor|seksi|section|pelayanan|ministry|kelompok/i],
   ["is_admin", /admin|maker|pengelola/i], ["name", /name|nama|goar/i],
 ];
@@ -1246,9 +1276,9 @@ function memberRows(tables) {
       const groups = {}; const unknown = [];
       get("groups").split(/[;,\/\n]+/).forEach((tok) => { if (!tok.trim()) return; const g = matchGroup(tok); if (g) groups[g.id] = /chair|ketua/i.test(tok) ? "chair" : /maker|pembuat/i.test(tok) ? "maker" : /checker|pemeriksa/i.test(tok) ? "checker" : groups[g.id] || "member"; else unknown.push(tok.trim()); });
       get("chair").split(/[;,\/\n]+/).forEach((tok) => { if (!tok.trim() || /^(no|tidak|-)$/i.test(tok.trim())) return; const g = matchGroup(tok); if (g) groups[g.id] = "chair"; else unknown.push(tok.trim()); });
-      const rawDob = get("dob"); const dob = parseDob(rawDob);
-      const row = { name: get("name"), alias: get("alias"), phone: S.phone8(get("phone")), dob, password: get("password"), groups, is_admin: yes(get("is_admin")), wa_optin: yes(get("wa_optin")) };
-      row.problems = [!row.name && t("p_name"), !validPhone(row.phone) && t("p_phone"), rawDob && !dob && t("p_dob"), unknown.length && t("p_group", unknown.join(", "))].filter(Boolean);
+      const rawDob = get("dob"); const dob = parseDob(rawDob); const rawWed = get("wed"); const wed = parseDob(rawWed);
+      const row = { name: get("name"), alias: get("alias"), phone: S.phone8(get("phone")), dob, wed, password: get("password"), groups, is_admin: yes(get("is_admin")), wa_optin: yes(get("wa_optin")) };
+      row.problems = [!row.name && t("p_name"), !validPhone(row.phone) && t("p_phone"), rawDob && !dob && t("p_dob"), rawWed && !wed && t("p_wed"), unknown.length && t("p_group", unknown.join(", "))].filter(Boolean);
       return row;
     }).filter((r) => r.name || r.phone);
   }
@@ -1259,7 +1289,7 @@ function membersPreview(rows, fname) {
   const good = rows.filter((r) => r.name && validPhone(r.phone));
   sheet(t("memberUpload"), `<p class="small muted">${esc(fname)} · ${esc(t("rowsFound", rows.length))}</p>
     <div class="tbl-wrap"><table class="tbl"><tr><th>${esc(t("f_name"))}</th><th>${esc(t("f_phone"))}</th><th>${esc(t("f_dob"))}</th><th>${esc(t("f_password"))}</th><th>${esc(t("groupsRoles"))}</th><th></th></tr>
-    ${rows.map((r) => `<tr class="${r.problems.length ? "bad" : ""}"><td>${esc(r.name)}${r.alias ? `<br><small>${esc(r.alias)}</small>` : ""}${r.is_admin ? ` <span class="badge admin">${esc(t("role_admin"))}</span>` : ""}</td><td>${esc(fmtPhone(r.phone))}</td><td>${esc(r.dob || "")}</td><td>${r.password ? "••••" : `<small>${esc(t("keep"))}</small>`}</td><td>${esc(Object.entries(r.groups).map(([g, x]) => gname(G(g)) + (x === "chair" ? " ★" : "")).join(", "))}</td><td><small class="warn">${esc(r.problems.join("; "))}</small></td></tr>`).join("")}</table></div>
+    ${rows.map((r) => `<tr class="${r.problems.length ? "bad" : ""}"><td>${esc(r.name)}${r.alias ? `<br><small>${esc(r.alias)}</small>` : ""}${r.is_admin ? ` <span class="badge admin">${esc(t("role_admin"))}</span>` : ""}</td><td>${esc(fmtPhone(r.phone))}</td><td>${esc(r.dob || "")}${r.wed ? `<br><small>💍 ${esc(r.wed)}</small>` : ""}</td><td>${r.password ? "••••" : `<small>${esc(t("keep"))}</small>`}</td><td>${esc(Object.entries(r.groups).map(([g, x]) => gname(G(g)) + (x === "chair" ? " ★" : "")).join(", "))}</td><td><small class="warn">${esc(r.problems.join("; "))}</small></td></tr>`).join("")}</table></div>
     <p class="small muted">${esc(t("uploadNote"))}</p>
     <button class="btn primary block" data-act="saveMembers" ${good.length ? "" : "disabled"}>${esc(t("saveMembers", good.length))}</button>`, () => { A.saveMembers._rows = good; });
 }
@@ -1344,9 +1374,40 @@ F.settings = async (f) => {
 F.member = async (f) => {
   if (!validPhone(f.phone.value)) throw new S.AppError("bad_phone");
   const groups = {}; D.groups.forEach((g) => { const v = f["g_" + g.id].value; if (v) groups[g.id] = v; });
-  await api.membersUpsert([{ name: f.name.value.trim(), alias: f.alias.value.trim(), phone: f.phone.value, dob: f.dob.value || null, password: f.password.value, groups, is_admin: f.is_admin.checked, wa_optin: f.wa_optin.checked }]);
+  await api.membersUpsert([{ name: f.name.value.trim(), alias: f.alias.value.trim(), phone: f.phone.value, dob: f.dob.value || null, wed: f.wed.value || null, password: f.password.value, groups, is_admin: f.is_admin.checked, wa_optin: f.wa_optin.checked }]);
   closeSheet(); await refresh(); toast(t("saved"));
 };
+A.waLink = (d) => {
+  const g = G(d.g); if (!g) return;
+  sheet(t("waLinkSet"), `<form class="form" data-form="walink" data-g="${g.id}">
+    <p class="muted">${esc(t("waLinkLead", gname(g)))}</p>
+    <ol class="small steps"><li>${esc(t("waLinkStep1"))}</li><li>${esc(t("waLinkStep2"))}</li><li>${esc(t("waLinkStep3"))}</li></ol>
+    <label>${esc(t("waLinkField"))}<input name="link" type="url" inputmode="url" placeholder="https://chat.whatsapp.com/…" value="${esc(g.wa_link || "")}"></label>
+    <button class="btn primary block">${esc(t("save"))}</button></form>`);
+};
+F.walink = async (f) => {
+  const l = f.link.value.trim();
+  if (l && !/^https:\/\/(chat\.whatsapp\.com|wa\.me|whatsapp\.com)\//.test(l)) throw new S.AppError("bad_link");
+  await api.groupWaLink(f.dataset.g, l); closeSheet(); await refresh(); toast(t("saved"));
+};
+A.sendWish = (d) => {
+  const g = G(d.g); if (!g) return;
+  const people = D.people.filter((p) => g.id in (p.groups || {})); const text = wishText(g, celebrants(people, d.day || today()));
+  if (!g.wa_link) { window.open(wa(text), "_blank", "noopener"); return; }
+  // Both calls stay inside the tap, so the phone allows them.
+  try { navigator.clipboard.writeText(text).catch(() => {}); } catch {}
+  window.open(g.wa_link, "_blank", "noopener"); toast(t("wishCopied"));
+};
+A.calSub = async () => {
+  if (api.mode !== "remote" || isGuest()) { sheet(t("calSub"), `<p class="muted">${esc(t(isGuest() ? "signInCat" : "calSubDemo"))}</p>`); return; }
+  const url = api.calUrl(await api.calToken()); const hook = url.replace(/^https:/, "webcal:");
+  sheet(t("calSub"), `<div class="form"><p class="muted">${esc(t("calSubLead"))}</p>
+    <a class="btn primary block" href="${esc(hook)}">${ic("calendar")} ${esc(t("calSubIos"))}</a>
+    <button class="btn block" data-act="calCopy" data-url="${esc(url)}">${ic("share")} ${esc(t("calSubCopy"))}</button>
+    <ol class="small steps"><li>${esc(t("calSubAnd1"))}</li><li>${esc(t("calSubAnd2"))}</li><li>${esc(t("calSubAnd3"))}</li></ol>
+    <p class="small muted">${esc(t("calSubNote"))}</p></div>`);
+};
+A.calCopy = async (d) => { try { await navigator.clipboard.writeText(d.url); toast(t("copied")); } catch { toast(d.url); } };
 // ---------- auto-save: typed text is kept on this phone until the form is sent ----------
 const DRAFT_FORMS = new Set(["post", "update", "event", "bread", "berita", "beritalink", "poll", "member", "group", "roster", "bday", "bdaylink", "holder", "teacher", "offfile", "wimplink", "wimpalllink"]);
 const DRAFT_DAYS = 14;
@@ -1395,7 +1456,7 @@ async function seedDemo() {
   const people = [
     { name: "Pdt. Jonathan Sitompul", alias: "Amang Pandita", phone: "80000002", dob: "1975-" + md(3), password: "demo", groups: { parhalado: "chair", ama: "member", chairman: "chair" } },
     { name: "St. Bonar Hutapea", alias: "Amang Bonar", phone: "80000003", dob: "1968-" + md(0), password: "demo", groups: { parhalado: "member", ama: "chair", "song-leader": "member", secretary: "chair" } },
-    { name: "Ruth Sinaga", alias: "Inang Ruth", phone: "80000004", dob: "1980-" + md(12), password: "demo", groups: { ina: "chair", "song-leader": "chair", treasurer: "chair" } },
+    { name: "Ruth Sinaga", alias: "Inang Ruth", phone: "80000004", dob: "1980-" + md(12), wed: "2005-" + md(0), password: "demo", groups: { ina: "chair", "song-leader": "chair", treasurer: "chair" } },
     { name: "Rina Simanjuntak", alias: "Rina", phone: "80000005", dob: "1999-" + md(5), password: "demo", groups: { naposo: "tmaker", band: "member", multimedia: "member" } },
     { name: "Josua Pardede", alias: "Josua", phone: "80000006", dob: "2001-" + md(20), password: "demo", groups: { naposo: "teacher", multimedia: "chair", band: "chair" } },
     { name: "Grace Tobing", alias: "Grace", phone: "80000007", dob: "1995-" + md(40), password: "demo", groups: { "sekolah-minggu": "tmaker", musik: "member" } },

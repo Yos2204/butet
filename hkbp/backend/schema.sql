@@ -35,6 +35,9 @@ alter table hk_members add column if not exists alias text;
 alter table hk_groups add column if not exists removed_at timestamptz;
 alter table hk_members add column if not exists removed_at timestamptz;
 alter table hk_members add column if not exists setup_code_hash text; -- one-time code to set a first password in the app
+alter table hk_members add column if not exists wed date;            -- wedding date (anniversary wishes)
+alter table hk_members add column if not exists cal_token text unique; -- secret part of the member's calendar feed link
+alter table hk_groups add column if not exists wa_link text;          -- the category's WhatsApp group invite link
 
 create table if not exists hk_sessions (
   token text primary key,
@@ -306,7 +309,7 @@ declare m hk_members := hk__me(p_token); el boolean := hk__elder(m); off boolean
   hide text[] := case when hk__office(m) then '{}' else (select coalesce(array_agg(id), '{}') from hk_groups where kind = 'office') end;
 begin
   return jsonb_build_object(
-    'me', jsonb_build_object('id', m.id, 'name', m.name, 'alias', m.alias, 'phone', m.phone, 'dob', m.dob, 'is_admin', m.is_admin, 'groups', m.groups, 'wa_optin', m.wa_optin),
+    'me', jsonb_build_object('id', m.id, 'name', m.name, 'alias', m.alias, 'phone', m.phone, 'dob', m.dob, 'wed', m.wed, 'is_admin', m.is_admin, 'groups', m.groups, 'wa_optin', m.wa_optin),
     'groups', (select coalesce(jsonb_agg(to_jsonb(g) order by g.sort), '[]') from hk_groups g where g.removed_at is null and (g.kind <> 'office' or off)),
     'posts', (select coalesce(jsonb_agg(to_jsonb(p) order by p.created_at desc), '[]') from
                (select * from hk_posts where removed_at is null and hk__sees(m, group_id) order by created_at desc limit 300) p),
@@ -319,9 +322,10 @@ begin
     'events', (select coalesce(jsonb_agg(to_jsonb(e) order by e.starts_at), '[]') from hk_events e
                where e.removed_at is null and e.starts_at > now() - interval '60 days' and hk__sees(m, e.group_id)),
     'people', (select coalesce(jsonb_agg(jsonb_build_object(
-                  'id', x.id, 'name', x.name, 'alias', x.alias, 'bday', to_char(x.dob, 'MM-DD'), 'groups', x.groups - hide, 'is_admin', x.is_admin,
+                  'id', x.id, 'name', x.name, 'alias', x.alias, 'bday', to_char(x.dob, 'MM-DD'), 'anniv', to_char(x.wed, 'MM-DD'), 'groups', x.groups - hide, 'is_admin', x.is_admin,
                   'phone', case when m.is_admin or exists (select 1 from jsonb_each_text(m.groups) g where g.value in ('chair', 'tmaker') and x.groups ? g.key) then x.phone end,
                   'dob', case when m.is_admin then x.dob end,
+                  'wed', case when m.is_admin then x.wed end,
                   'wa_optin', case when m.is_admin then x.wa_optin end,
                   'has_password', case when m.is_admin then x.pass_hash is not null end) order by x.name), '[]') from hk_members x where x.removed_at is null),
     'polls', (select coalesce(jsonb_agg(jsonb_build_object('id', p.id, 'group_id', p.group_id, 'question', p.question, 'options', p.options, 'multi', p.multi,
@@ -611,12 +615,12 @@ begin
   for r in select * from jsonb_array_elements(p_rows) loop
     ph := hk__phone(r ->> 'phone');
     if length(ph) <> 8 then continue; end if;
-    insert into hk_members (name, alias, phone, dob, pass_hash, is_admin, groups, wa_optin)
-    values (r ->> 'name', nullif(r ->> 'alias', ''), ph, nullif(r ->> 'dob', '')::date,
+    insert into hk_members (name, alias, phone, dob, wed, pass_hash, is_admin, groups, wa_optin)
+    values (r ->> 'name', nullif(r ->> 'alias', ''), ph, nullif(r ->> 'dob', '')::date, nullif(r ->> 'wed', '')::date,
             case when coalesce(r ->> 'password', '') <> '' then crypt(r ->> 'password', gen_salt('bf')) end,
             coalesce((r ->> 'is_admin')::boolean, false), coalesce(r -> 'groups', '{}'), coalesce((r ->> 'wa_optin')::boolean, false))
     on conflict (phone) do update set
-      name = excluded.name, alias = excluded.alias, dob = coalesce(excluded.dob, hk_members.dob),
+      name = excluded.name, alias = excluded.alias, dob = coalesce(excluded.dob, hk_members.dob), wed = coalesce(excluded.wed, hk_members.wed),
       pass_hash = coalesce(excluded.pass_hash, hk_members.pass_hash),
       is_admin = case when hk_members.id = m.id then true else excluded.is_admin end,
       -- Office roles (Secretary, Treasurer, Chairman) and teacher roles are only given in the app, so a member list upload keeps them.
@@ -680,9 +684,39 @@ begin
   return (select coalesce(jsonb_object_agg(key, value), '{}') from hk_settings where key not in ('claude_key', 'vapid_private', 'cron_key'));
 end $$;
 
+-- A category's WhatsApp group link: set by the admin or the category's chair / Teacher Maker.
+create or replace function hk_group_walink(p_token text, p_group text, p_link text) returns void language plpgsql security definer set search_path = public as $$
+declare m hk_members := hk__me(p_token); l text := nullif(trim(coalesce(p_link, '')), '');
+begin
+  if not (m.is_admin or coalesce(m.groups ->> p_group, '') in ('chair', 'tmaker')) then raise exception 'not_allowed'; end if;
+  if l is not null and l !~ '^https://(chat\.whatsapp\.com|wa\.me|whatsapp\.com)/' then raise exception 'bad_link'; end if;
+  update hk_groups set wa_link = l where id = p_group;
+end $$;
+
+-- The member's calendar feed link (made once, kept). Phones subscribe to it and update by themselves.
+create or replace function hk_cal_token(p_token text) returns text language plpgsql security definer set search_path = public, extensions as $$
+declare m hk_members := hk__me(p_token);
+begin
+  if m.id is null then raise exception 'not_signed_in'; end if;
+  if m.cal_token is null then update hk_members set cal_token = encode(gen_random_bytes(18), 'hex') where id = m.id returning cal_token into m.cal_token; end if;
+  return m.cal_token;
+end $$;
+
+-- Events for a calendar feed (used only by the hkbp-cal Edge Function with the server key).
+create or replace function hk_cal_feed(p_cal text) returns jsonb language plpgsql stable security definer set search_path = public as $$
+declare m hk_members;
+begin
+  select * into m from hk_members where cal_token = p_cal and removed_at is null;
+  if m.id is null then return null; end if;
+  return (select coalesce(jsonb_agg(jsonb_build_object('id', e.id, 'title', e.title, 'starts_at', e.starts_at, 'ends_at', e.ends_at, 'place', e.place, 'notes', e.notes,
+            'remind_min', e.remind_min, 'group', coalesce(g.name_id, 'HKBP Singapore'), 'updated', coalesce(e.created_at, now())) order by e.starts_at), '[]')
+          from hk_events e left join hk_groups g on g.id = e.group_id
+          where e.removed_at is null and e.starts_at > now() - interval '60 days' and e.starts_at < now() + interval '400 days' and hk__sees(m, e.group_id));
+end $$;
+
 -- Only these functions are open to the app's public key.
 revoke execute on all functions in schema public from public, anon, authenticated;
 grant execute on function hk_login(text, text), hk_first_password(text, text), hk_logout(text), hk_set_password(text, text, text), hk_data(text),
   hk_roster_file(text, uuid), hk_save(text, text, jsonb), hk_remove(text, text, text), hk_members_upsert(text, jsonb),
   hk_push_save(text, jsonb), hk_push_remove(text, text), hk_birthdays_import(text, jsonb), hk_settings_save(text, jsonb), hk_service_html(text, uuid), hk_set_role(text, text, text, text, text), hk_file(text, uuid),
-  hk_set_teacher(text, text, text, text, text), hk_poll_state(text, uuid, text), hk_vote(text, uuid, jsonb), hk_public() to anon;
+  hk_set_teacher(text, text, text, text, text), hk_poll_state(text, uuid, text), hk_vote(text, uuid, jsonb), hk_public(), hk_group_walink(text, text, text), hk_cal_token(text) to anon;
