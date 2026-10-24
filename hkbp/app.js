@@ -117,6 +117,7 @@ function profileCats(p) {
   if (p.confirmed === false) return ["remaja"];
   const c = [p.married ? (p.male ? "ama" : "ina") : "naposo"];
   if (p.pelaut) c.push("pelaut");
+  if (p.married) c.push("sekolah-minggu"); // parents see Sunday School too (YB)
   return c;
 }
 const catShown = (g) => { if (g.kind !== "sermon" || !profileOn() || LS.get("allCats")) return true; const c = profileCats(me().profile); return !c || c.includes(g.id); };
