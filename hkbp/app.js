@@ -103,6 +103,7 @@ const isTeacherIn = (gid) => !!D && (D.me.is_admin || ["tmaker", "teacher"].incl
 let tmPass = null;
 const tmOk = (gid) => !!D && !!tmPass && tmPass.phone === D.me.phone && (!gid || tmPass.g === gid);
 const setTmOk = (g) => { tmPass = g ? { g, phone: D.me.phone } : null; };
+window.addEventListener("hashchange", () => { try { wAutoFlush(false); draftFlush(); } catch (e) { console.warn(e); } });
 window.addEventListener("hashchange", () => { const g = (location.hash.match(/^#\/g\/([\w-]+)/) || [])[1]; if (tmPass && g !== tmPass.g) tmPass = null; if (g !== hydrate.tmAsked) hydrate.tmAsked = null; });
 const canEdit = (gid) => manage() && (isTeachG(gid) ? isTMaker(gid) && tmOk(gid) : D.me.is_admin || roleIn(gid) === "chair");
 const canRunPoll = (gid) => manage() && isTeacherIn(gid);
@@ -120,6 +121,7 @@ function sheet(title, body, onMount) {
   el.hidden = false; document.body.classList.add("noscroll");
   requestAnimationFrame(() => el.classList.add("open"));
   if (onMount) onMount(el);
+  if (typeof draftRestore === "function") draftRestore(el);
 }
 // First sign-in: the member has no password yet, so a pop-up asks them to create one.
 function firstPwSheet(phone) {
@@ -745,6 +747,7 @@ async function render() {
     const map = { tata: R.tata, home: R.home, groups: R.groups, g: R.group, serve: R.serve, s: R.section, calendar: R.calendar, bread: R.bread, elders: R.elders, berita: R.berita, people: R.people, more: R.more, o: R.office, warta: R.warta };
     const html = (map[r] || R.notFound)(arg);
     if (typeof html === "string") view().innerHTML = html;
+    draftRestore(view()); wAutoBase();
     document.title = r === "home" ? "Sada HKBPS" : `${$(".brand b") ? $(".brand b").textContent : ""} · Sada HKBPS`;
     hydrate();
   } catch (e) { console.error(e); view().innerHTML = `<div class="login">${empty(errMsg(e))}<button class="btn primary" data-act="retry">${esc(t("retry"))}</button></div>`; }
@@ -1344,10 +1347,44 @@ F.member = async (f) => {
   await api.membersUpsert([{ name: f.name.value.trim(), alias: f.alias.value.trim(), phone: f.phone.value, dob: f.dob.value || null, password: f.password.value, groups, is_admin: f.is_admin.checked, wa_optin: f.wa_optin.checked }]);
   closeSheet(); await refresh(); toast(t("saved"));
 };
+// ---------- auto-save: typed text is kept on this phone until the form is sent ----------
+const DRAFT_FORMS = new Set(["post", "update", "event", "bread", "berita", "beritalink", "poll", "member", "group", "roster", "bday", "bdaylink", "holder", "teacher", "offfile", "wimplink", "wimpalllink"]);
+const DRAFT_DAYS = 14;
+const draftKey = (f) => "draft:" + Object.keys(f.dataset).sort().map((k) => k + "=" + f.dataset[k]).join("&") + (f.closest("#sheet") ? "" : "@" + location.hash.split("?")[0]);
+const draftFields = (f) => [...f.elements].filter((el) => el.name && !/^(file|password|hidden|submit|button)$/.test(el.type));
+function draftSave(f) {
+  if (f.dataset.form === "finance") return finDraftSave(f);
+  if (!DRAFT_FORMS.has(f.dataset.form)) return;
+  const vals = draftFields(f).map((el) => [el.name, el.type === "checkbox" || el.type === "radio" ? el.checked : el.value]);
+  LS.set(draftKey(f), { at: Date.now(), vals });
+}
+function draftRestore(root) {
+  let restored = false;
+  (root || document).querySelectorAll("form[data-form]").forEach((f) => {
+    if (!DRAFT_FORMS.has(f.dataset.form)) return;
+    const d = LS.get(draftKey(f), null); if (!d || !d.vals) return;
+    if (Date.now() - (d.at || 0) > DRAFT_DAYS * 864e5) { LS.set(draftKey(f), null); return; }
+    const els = draftFields(f); let changed = false;
+    d.vals.forEach(([n, v], i) => { const el = els[i]; if (!el || el.name !== n) return;
+      if (el.type === "checkbox" || el.type === "radio") { if (el.checked !== v) { el.checked = v; changed = true; } }
+      else if (el.value !== v) { el.value = v; changed = true; } });
+    if (changed) restored = true;
+  });
+  if (restored) toast(t("draftRestored"));
+}
+const draftClear = (f) => { if (f.dataset.form === "finance") LS.set(finDraftKey(f), null); else LS.set(draftKey(f), null); };
+const draftLater = (e) => { const f = e.target.closest && e.target.closest("form[data-form]"); if (!f) return; draftSave.last = f; draftSave(f); };
+document.addEventListener("input", draftLater); document.addEventListener("change", draftLater);
+// Save right away when leaving: another page, closing the pop-up, or switching apps.
+const draftFlush = () => { const f = draftSave.last; if (f && f.isConnected) draftSave(f); };
+window.addEventListener("pagehide", draftFlush); document.addEventListener("visibilitychange", () => { if (document.hidden) draftFlush(); });
+document.addEventListener("click", (e) => { if (e.target.closest && e.target.closest("[data-act=closeSheet], #sheet .sheet-backdrop")) draftFlush(); }, true);
+
 document.addEventListener("submit", async (e) => {
   const f = e.target.closest("[data-form]"); if (!f) return; e.preventDefault();
   const btn = f.querySelector("button:not([type=button])");
-  await busy(btn, async () => { try { await F[f.dataset.form](f); render(); } catch (err) { console.error(err); toast(errMsg(err), true); } });
+  draftFlush(); const key = f.dataset.form === "finance" ? finDraftKey(f) : draftKey(f);
+  await busy(btn, async () => { try { await F[f.dataset.form](f); LS.set(key, null); render(); } catch (err) { console.error(err); toast(errMsg(err), true); } });
 });
 
 // ---------- demo data (this phone only) ----------
@@ -1634,11 +1671,14 @@ A.shareFile = async (d, btn) => {
 function shareSheet(file, title, gid) {
   Object.assign(shareSheet, { file, title, gid });
   const canFiles = !!(navigator.canShare && navigator.canShare({ files: [file] }));
+  const isPdf = /pdf$/i.test(file.type || "") || /\.pdf$/i.test(file.name || "");
   sheet(t("waShareTitle"), `<p class="muted">${esc(t("waShareLead", title))}</p><div class="stack">
+    ${isPdf ? `<button class="opt-card" data-act="pdfPeek">${ic("screen")}<span><b>${esc(t("pdfPeek"))}</b><small>${esc(t("pdfPeekSub"))}</small></span>${ic("chev", "chev")}</button>` : ""}
     <button class="opt-card" data-act="waSendFile">${ic("wa")}<span><b>${esc(t("waSendFile"))}</b><small>${esc(t(canFiles ? "waSendFileSub" : "waSendFileDl"))}</small></span>${ic("chev", "chev")}</button>
     <a class="opt-card" href="${wa(`📎 *${title}*\n${gname(G(gid))} · HKBP Singapore\n${appUrl()}#/o/${gid}`)}" target="_blank" rel="noopener">${ic("link")}<span><b>${esc(t("waSendLink"))}</b><small>${esc(t("waSendLinkSub"))}</small></span>${ic("chev", "chev")}</a>
     <button class="btn ghost block" data-act="closeSheet">${esc(t("notNow"))}</button></div>`);
 }
+A.pdfPeek = (d, btn) => busy(btn, async () => { try { await showPdf(shareSheet.file, shareSheet.title, true); } catch (e) { console.warn(e); toast(errMsg(e), true); } });
 A.waSendFile = async () => {
   const f = shareSheet.file; if (!f) return; const text = `${shareSheet.title} · HKBP Singapore`;
   if (navigator.canShare && navigator.canShare({ files: [f] })) {
@@ -1713,17 +1753,19 @@ const finSec = (sx, i, date, prevSun) => `<fieldset class="fin-sec" data-type="$
     <button type="button" class="btn sm" data-act="finAdd">${ic("plus")} ${esc(t(sx.type === "amt" ? "finAddOffering" : "finAddRow"))}</button></fieldset>`;
 A.financeForm = (d) => {
   const sun = d && d.day || nextSunday(); const p = finFor(sun); const prevSun = addDays(sun, -7);
-  const x = p ? finParse(p.body) : { date: fmtID(prevSun), secs: [] };
+  let x = p ? finParse(p.body) : { date: fmtID(prevSun), secs: [] };
+  const dr = LS.get("draft:finance:" + sun, null);
+  if (dr && dr.secs && Date.now() - (dr.at || 0) < DRAFT_DAYS * 864e5 && (!p || (dr.at || 0) > Date.parse(p.updated_at || p.created_at || 0))) { x = { date: dr.fdate || x.date, secs: dr.secs.map((sx, i) => ({ ...sx, custom: i >= 3 })) }; setTimeout(() => toast(t("draftRestored")), 300); }
   FIN_DEFAULT.forEach((df, i) => { if (!x.secs[i]) x.secs[i] = { ...df, items: [] }; });
   if (!x.secs[0].items.length) x.secs[0].items = FIN_A.map((name) => ({ name, amts: [{ cur: "SGD" }] }));
   ["B", "C"].forEach((_, j) => { if (!x.secs[j + 1].items.length) x.secs[j + 1].items = [{}]; });
-  sheet(t("financeTitle"), `<form class="form fin-form" data-form="finance" data-id="${p ? p.id : ""}">
+  sheet(t("financeTitle"), `<form class="form fin-form" data-form="finance" data-id="${p ? p.id : ""}" data-dkey="${esc(sun)}">
     <label>${esc(t("financeFor"))}<input type="date" name="day" value="${esc(sun)}" required></label>
     <div class="fin-secs">${x.secs.map((sx, i) => finSec(sx, i, x.date, prevSun)).join("")}</div>
     <button type="button" class="btn block" data-act="finAddSec" style="margin-top:12px">${ic("plus")} ${esc(t("finAddSec"))}</button>
     <details class="fin-prev"><summary>${esc(t("preview"))}</summary><p class="pre small" id="fin-prev"></p></details>
     <button class="btn primary block">${esc(t("save"))}</button></form>`);
-  finPreview();
+  finPreview(false);
 };
 const finRelabel = () => document.querySelectorAll(".fin-secs .fin-sec .fin-l").forEach((el, i) => (el.textContent = (LETTERS[i] || "+") + "."));
 A.finAddSec = () => { const box = $(".fin-secs"); const i = box.children.length; box.insertAdjacentHTML("beforeend", finSec({ title: "", type: "amt", custom: true, items: [{ amts: [{ cur: "SGD" }] }] }, i, "", "")); const n = box.lastElementChild.querySelector(".fin-title"); if (n) n.focus(); finPreview(); };
@@ -1752,7 +1794,9 @@ function finCollect(f) {
       ? { name: row.querySelector("[name=n]").value.trim(), amts: [...row.querySelectorAll(".cur-row")].map((c) => ({ cur: c.querySelector("[name=cur]").value, amt: c.querySelector("[name=amt]").value.trim() })) }
       : { name: row.querySelector("[name=n]").value.trim(), when: row.querySelector("[name=when]").value.trim() }) }));
 }
-function finPreview() { const f = document.querySelector(".fin-form"); const el = document.getElementById("fin-prev"); if (f && el) el.textContent = "WARTA KEUANGAN\n" + finBuild(f.fdate ? f.fdate.value.trim() : "", finCollect(f)); }
+const finDraftKey = (f) => "draft:finance:" + (f.dataset.dkey || "");
+function finDraftSave(f) { LS.set(finDraftKey(f), { at: Date.now(), fdate: f.fdate ? f.fdate.value.trim() : "", secs: finCollect(f) }); }
+function finPreview(touch = true) { const f = document.querySelector(".fin-form"); const el = document.getElementById("fin-prev"); if (f && el) el.textContent = "WARTA KEUANGAN\n" + finBuild(f.fdate ? f.fdate.value.trim() : "", finCollect(f)); if (touch && f) finDraftSave(f); }
 document.addEventListener("input", (e) => { if (e.target.closest && e.target.closest(".fin-form")) finPreview(); });
 F.finance = async (f) => {
   const secs = finCollect(f);
@@ -1865,7 +1909,10 @@ const wSecUp = (key, extra = "") => `<div class="row two w-secup"><button type="
 R.warta = (day) => {
   if (!isOffice() || !offOk()) { location.replace("#/o/secretary"); return ""; }
   day = /^\d{4}-\d{2}-\d{2}$/.test(day || "") ? day : nextSunday();
-  const W = wartaLoad(day); const can = canUpload("secretary"); R.warta._W = W;
+  let W = wartaLoad(day); const can = canUpload("secretary");
+  const dw = LS.get("draft:warta:" + day, null); R.warta._restored = false;
+  if (can && dw && dw.W && Date.now() - (dw.at || 0) < DRAFT_DAYS * 864e5) { W = { ...W, ...dw.W, day, _id: W._id }; R.warta._restored = true; }
+  R.warta._W = W;
   if (!W._id && (!W.minggu || !W.theme)) tataMeta(day).then((m) => {
     const f = $("#warta-form"); if (!m || !f || f.dataset.day !== day) return;
     const th = String(m.theme || "").match(/^(.*?)\s*\(([^)]+)\)\s*$/);
@@ -1880,7 +1927,7 @@ R.warta = (day) => {
       <p class="small muted" style="margin:6px 2px 10px">${esc(t("w_upAllHint"))}</p>` : ""}
       <div class="row two"><button class="btn" data-act="wartaPreview">${ic("screen")} ${esc(t("preview"))}</button><button class="btn" data-act="wartaRefill">${ic("check")} ${esc(t("wartaRefill"))}</button></div></div>
     <form class="form" id="warta-form" data-form="warta" data-day="${day}">
-      ${sec(t("w_head"), `${can ? wSecUp("@head") : ""}${wIn0("minggu", "Minggu", W.minggu, "Tata Ibadah")}${wIn0("theme", t("w_theme"), W.theme, "Tata Ibadah")}${wIn0("verse", t("f_verse"), W.verse, "Tata Ibadah")}
+      ${sec(t("w_head"), `${can ? `<div class="row two w-secup"><button type="button" class="btn sm primary" data-act="wImp" data-f="@all">${ic("upload")} ${esc(t("w_upEvery"))}</button></div>` : ""}${wIn0("minggu", "Minggu", W.minggu, "Tata Ibadah")}${wIn0("theme", t("w_theme"), W.theme, "Tata Ibadah")}${wIn0("verse", t("f_verse"), W.verse, "Tata Ibadah")}
         ${wTime("timeThis", t("w_timeThis"), W.timeThis)}${wTime("timeNext", t("w_timeNext"), W.timeNext)}${wTimeList()}`, true)}
       ${sec(t("w_renungan"), `<p class="small muted">${esc(t("w_renHint"))}</p>${can ? wSecUp("@ren", `<button type="button" class="btn sm" data-act="wFromBread">${ic("bread")} ${esc(t("w_fromBread"))}</button>`) : ""}${wIn0("renTitle", t("w_renTitle"), W.renTitle, t("bread"))}${wIn0("renVerse", t("f_verse"), W.renVerse, t("bread"))}${wTa0("renungan", t("w_renunganBody"), W.renungan, 12, t("bread"))}${wIn0("renunganBy", t("w_by"), W.renunganBy)}`, !W.renungan)}
       ${sec(t("birthdays"), `${wTa("bdays", t("w_bdays"), W.bdays, 4, t("src_bdays"))}${wTa("bdayVerse", t("w_verseGift"), W.bdayVerse, 2)}${wTa("anniv", t("w_anniv"), W.anniv, 3)}${wTa("annivVerse", t("w_verseGift"), W.annivVerse, 2)}`)}
@@ -1923,8 +1970,20 @@ function wartaCollect(f) {
 }
 async function wartaSaveDraft(W) {
   const res = await api.save("post", { id: R.warta._W._id || undefined, group_id: "secretary", kind: "warta", title: "Warta Jemaat " + fmtID(W.day), body: JSON.stringify(W), day: W.day });
-  R.warta._W = { ...W, _id: res.id }; return res;
+  if ((R.warta._W || {}).day === W.day) R.warta._W = { ...W, _id: res.id };
+  wBase = JSON.stringify(W); return res;
 }
+// Warta auto-save: a few seconds after typing stops, and always when leaving the page or the app.
+let wBase = null, wTimer = null, wSaving = null;
+function wAutoBase() { const f = $("#warta-form"); wBase = f && canUpload("secretary") ? JSON.stringify(wartaCollect(f)) : null; if (f && R.warta._restored) { R.warta._restored = false; wBase = ""; toast(t("draftRestored")); } }
+function wAutoFlush(quiet) {
+  clearTimeout(wTimer); const f = $("#warta-form"); if (!f || wBase === null || !canUpload("secretary")) return;
+  const W = wartaCollect(f); const js = JSON.stringify(W); if (js === wBase) return;
+  wBase = js; LS.set("draft:warta:" + W.day, { at: Date.now(), W });
+  wSaving = (wSaving || Promise.resolve()).then(() => wartaSaveDraft(W)).then(() => { LS.set("draft:warta:" + W.day, null); if (!quiet) toast(t("autoSaved")); return refresh(); }).catch((e) => console.warn("warta autosave", e));
+}
+document.addEventListener("input", (e) => { if (e.target.closest && e.target.closest("#warta-form")) { clearTimeout(wTimer); wTimer = setTimeout(() => wAutoFlush(true), 3000); } });
+window.addEventListener("pagehide", () => wAutoFlush(true)); document.addEventListener("visibilitychange", () => { if (document.hidden) wAutoFlush(true); });
 A.wartaSave = (d, btn) => busy(btn, async () => { try { await wartaSaveDraft(wartaCollect($("#warta-form"))); await refresh(); toast(t("saved")); } catch (e) { toast(errMsg(e), true); } });
 A.wartaRefill = () => {
   const f = $("#warta-form"); const W = wartaCollect(f); const a = wartaAutoParts(W.day, W.team);
@@ -1950,7 +2009,7 @@ F.warta = async (f) => {
 const W_LABEL = () => ({ minggu: "Minggu", theme: t("w_theme"), verse: t("f_verse"), timeThis: t("w_timeThis"), timeNext: t("w_timeNext"), renTitle: t("w_renTitle"), renVerse: t("f_verse"), renungan: t("w_renunganBody"), renunganBy: t("w_by"), rosterLink: t("w_rosterLink"), bdays: t("w_bdays"), bdayVerse: t("w_verseGift"), anniv: t("w_anniv"), annivVerse: t("w_verseGift"), team: t("w_team"), berita: "Berita Pelayanan", jadwalTitle: t("w_jadwalTitle"), jadwal: t("w_jadwal"), doa: "Pokok Doa", info: t("w_info"), attDate: t("w_attDate"), att: t("w_att"), org: t("w_org"), resort: "Resort", address: t("w_address"), email: "Email", closing: t("w_closing") });
 const W_ACCEPT = ".docx,.doc,.pdf,.xlsx,.xls,.xlsm,.csv,.ods";
 A.wImp = (d) => {
-  const name = d.f; const lab = name === "@head" ? t("w_head") : name === "@ren" ? t("w_renungan") : W_LABEL()[name] || name;
+  const name = d.f; const lab = name === "@all" ? t("w_upEveryLab") : name === "@head" ? t("w_head") : name === "@ren" ? t("w_renungan") : W_LABEL()[name] || name;
   sheet(t("w_upload") + " · " + lab, `<p class="small muted">${esc(t("w_upLead"))}</p>
     <button class="btn primary block" data-act="wImpFile" data-f="${name}">${ic("upload")} ${esc(t("chooseFile"))}</button>
     <p class="small muted" style="text-align:center;margin:8px 0">.docx · .doc · .pdf · .xlsx · .xls</p>
@@ -2004,6 +2063,7 @@ A.wFromBread = () => {
   f.renTitle.value = b.title || ""; f.renVerse.value = b.verse || ""; f.renungan.value = b.body || ""; toast(t("w_filledN", t("bread")));
 };
 function wPut(name, res, src) {
+  if (name === "@all") return wApplyAll([{ name: src === "link" ? t("w_upLink") : src, res }], true);
   if (W_SECS[name]) return wPutSec(name, res);
   const f = $("#warta-form"); if (!f) return;
   const W = wartaCollect(f); const parts = wartaFromFile(res, W.day, W.team, name);
@@ -2069,11 +2129,13 @@ F.wimpalllink = async (f) => {
   const got = []; for (const u of urls) { try { const r = await P.link(u); got.push({ name: u.replace(/^https?:\/\/(www\.)?/, "").slice(0, 40), res: r, err: !(r.lines || []).some(Boolean) && !r.tables.length }); } catch { got.push({ name: u, err: 1 }); } }
   wApplyAll(got);
 };
-function wApplyAll(got) {
+function wApplyAll(got, full) {
   const f = $("#warta-form"); if (!f) return; const W = wartaCollect(f); const L = W_LABEL(); const report = [];
   got.forEach((g) => {
     if (g.err) { report.push([g.name, t("w_couldNotRead")]); return; }
     const parts = wartaFromFile(g.res, W.day, W.team, null); const done = [];
+    // One file for the whole Warta: also read the Tata Ibadah header (Sunday, theme, passage, times).
+    if (full) { const h = headFromFile(g.res) || {}; W_SECS["@head"].forEach((k) => { if (!parts[k] && h[k]) parts[k] = h[k]; }); }
     Object.entries(parts).forEach(([k, v]) => {
       if (v == null || v === "" || (Array.isArray(v) && !v.length)) return;
       if (k === "team") { wSetTeam(f, v); done.push(L.team); return; }
@@ -2089,11 +2151,11 @@ function wApplyAll(got) {
 }
 A.wImpPreview = () => { closeSheet(); setTimeout(() => A.wartaPreview({}, $('[data-act="wartaPreview"]')), 200); };
 // PDF viewer: draws each page of the PDF with pdf.js, so the phone shows the file itself.
-async function showPdf(file, title) {
+async function showPdf(file, title, viewOnly) {
   await P.load(P.LIBS.pdf); pdfjsLib.GlobalWorkerOptions.workerSrc = P.LIBS.pdfWorker;
   const doc = await pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
   A.closeWb(); const el = document.createElement("div"); el.id = "wb"; el.className = "warta-prev pdf-view";
-  el.innerHTML = `<div class="wb-bar"><button class="icon-btn" data-act="closeWb" aria-label="${esc(t("close"))}">${ic("x")}</button><b>${esc(title)}</b><span class="row"><button class="icon-btn" data-act="pdfShare" aria-label="${esc(t("share"))}">${ic("share")}</button><button class="icon-btn" data-act="pdfSave" aria-label="${esc(t("download"))}">${ic("download")}</button></span></div><div class="wp-scroll"><div class="pdf-pages"></div></div>`;
+  el.innerHTML = `<div class="wb-bar"><button class="icon-btn" data-act="closeWb" aria-label="${esc(t("close"))}">${ic("x")}</button><b>${esc(title)}</b>${viewOnly ? "<span></span>" : `<span class="row"><button class="icon-btn" data-act="pdfShare" aria-label="${esc(t("share"))}">${ic("share")}</button><button class="icon-btn" data-act="pdfSave" aria-label="${esc(t("download"))}">${ic("download")}</button></span>`}</div><div class="wp-scroll"><div class="pdf-pages"></div></div>`;
   document.body.appendChild(el); document.body.classList.add("noscroll"); showPdf.file = file;
   const box = el.querySelector(".pdf-pages"); const w = Math.max(320, el.clientWidth - 16);
   for (let i = 1; i <= doc.numPages; i++) {
