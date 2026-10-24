@@ -875,6 +875,27 @@ else if (!settings.apiKey) caption("Welcome. Open Settings (SET) and add your Cl
 if (settings.wake && settings.apiKey) caption("Tap WAKE to turn the mic on again.", true);
 settings.wake = false; syncWake();
 
+// Other apps (e.g. the Natal app) can open Jarvis with a question ready: ?ask=<text>&lang=id|bt|en.
+// Browsers need a tap before Jarvis may speak, so the question is sent on the first tap anywhere.
+{
+  const q = new URLSearchParams(location.search);
+  const pending = (q.get("ask") || "").trim().slice(0, 500);
+  const l = q.get("lang");
+  if (l === "en" || l === "id" || l === "bt") { settings.listenLang = l === "en" ? "en-US" : "id-ID"; syncLang(); }
+  if (q.has("ask") || q.has("lang")) window.history.replaceState(null, "", location.pathname + location.hash); // a reload won't ask again
+  if (pending) {
+    addMsg("sys", (l === "en" ? "Tap anywhere to ask: " : "Ketuk di mana saja untuk bertanya: ") + pending);
+    caption(l === "en" ? "Tap anywhere and I'll answer." : "Ketuk layar, Jarvis akan menjawab.", true);
+    const go = (e) => {
+      if (e.target.closest && e.target.closest("#sheet, #scrim, #openSettings")) return; // let Settings work normally
+      document.removeEventListener("click", go, true);
+      e.preventDefault(); e.stopPropagation();
+      ask(pending);
+    };
+    document.addEventListener("click", go, true);
+  }
+}
+
 
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
 window.__jarvisOK = true;
