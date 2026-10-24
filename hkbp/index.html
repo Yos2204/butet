@@ -104,6 +104,9 @@ main { padding-top: 8px; }
 .li { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); color: var(--ink); width: 100%; background: none; border-left: 0; border-right: 0; border-top: 0; text-align: left; }
 .li:last-child { border-bottom: 0; }
 .li .grow, .grow { flex: 1; min-width: 0; }
+.w-hist .grow-link { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; color: inherit; }
+.icon-btn.danger { color: var(--danger); }
+.icon-btn.sure { background: var(--danger); color: #fff; width: auto; padding: 0 10px; font-size: 12px; }
 .li b { display: block; font-weight: 700; }
 .li small { display: block; color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; }
 .li .chev, .chev { color: var(--muted); width: 18px; height: 18px; }
@@ -366,11 +369,22 @@ details.wsec[open] summary { margin-bottom: 10px; }
 .fin-sec legend { font-weight: 800; font-size: 14px; padding: 0 6px; }
 .fin-sec .small.muted { margin: 0 0 6px; }
 .fin-row { display: grid; grid-template-columns: 1fr 9.5em auto; gap: 6px; align-items: center; margin: 8px 0 0; }
-.fin-row.fa { grid-template-columns: 1fr auto; }
-.fin-row.fa > input { grid-column: 1; }
-.fin-row.fa .fin-amt { grid-column: 1; grid-row: 2; display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
-.fin-row.fa .icon-btn { grid-column: 2; grid-row: 1; }
-.fin-amt label { margin: 0 !important; font-size: 11.5px !important; font-weight: 700; color: var(--muted); }
+.fin-row.fa { display: block; }
+.fin-head { display: grid; grid-template-columns: 1fr auto; gap: 6px; align-items: center; }
+.cur-rows { margin: 6px 0 6px; display: grid; gap: 6px; }
+.cur-row { position: relative; display: grid; grid-template-columns: 5.6em 1fr auto; gap: 6px; align-items: center; }
+.cur-row input[name=amt] { text-align: right; font-variant-numeric: tabular-nums; }
+.cur-btn { font: inherit; font-weight: 800; letter-spacing: .04em; padding: 10px 8px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface-2); color: inherit; cursor: pointer; }
+.cur-pop { position: absolute; z-index: 30; left: 0; top: calc(100% + 4px); width: min(280px, 86vw); background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 10px 30px rgba(0,0,0,.18); padding: 8px; }
+.cur-pop input[type=search] { width: 100%; margin: 0 0 6px; }
+.cur-list { max-height: 240px; overflow-y: auto; display: grid; }
+.cur-list button { display: flex; gap: 10px; align-items: baseline; text-align: left; font: inherit; background: none; border: 0; color: inherit; padding: 8px 6px; border-radius: 8px; cursor: pointer; }
+.cur-list button:hover, .cur-list button:focus { background: var(--line); }
+.cur-list small { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fin-sec legend { display: flex; gap: 6px; align-items: center; }
+.fin-l { color: var(--muted); }
+.fin-title { font-weight: 800; min-width: 0; }
+.fin-sec .row.end { display: flex; justify-content: flex-end; gap: 6px; margin: 0 0 6px; }
 .fin-row { padding-bottom: 8px; border-bottom: 1px dashed var(--line); }
 .fin-rows .fin-row:last-child { border-bottom: 0; }
 .fin-date { margin-top: 2px !important; }
@@ -478,10 +492,10 @@ p, h1, h2, h3, h4, li, label, small, b { overflow-wrap: break-word; }
 <div id="view"><div class="login"><img class="logo-xl" src="logo.png" alt="HKBP"><h1>HKBP Singapore</h1></div></div>
 <div id="sheet" hidden></div>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
-<script src="config.js?v=20"></script>
-<script src="i18n.js?v=20"></script>
-<script src="store.js?v=20"></script>
-<script src="parse.js?v=20"></script>
-<script src="app.js?v=20"></script>
+<script src="config.js?v=22"></script>
+<script src="i18n.js?v=22"></script>
+<script src="store.js?v=22"></script>
+<script src="parse.js?v=22"></script>
+<script src="app.js?v=22"></script>
 </body>
 </html>
