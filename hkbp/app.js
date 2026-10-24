@@ -54,6 +54,7 @@ const IC = {
   cake: '<path d="M4 21h16v-8H4zM4 16c2 1.5 4 1.5 6 0s4-1.5 6 0 3 1 4 .5"/><path d="M12 13V9M12 6.5c-.8 0-1.3-.6-1.3-1.3S12 3 12 3s1.3 1.5 1.3 2.2-.5 1.3-1.3 1.3z"/>',
   download: '<path d="M12 3v12M7 10l5 5 5-5M4 21h16"/>',
   upload: '<path d="M12 16V4M7 9l5-5 5 5M4 21h16"/>',
+  folder: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
   edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>',
   trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
   coins: '<ellipse cx="9" cy="6" rx="6" ry="2.5"/><path d="M3 6v4c0 1.4 2.7 2.5 6 2.5s6-1.1 6-2.5V6"/><path d="M3 10v4c0 1.4 2.7 2.5 6 2.5"/><ellipse cx="15" cy="14" rx="6" ry="2.5"/><path d="M9 14v4c0 1.4 2.7 2.5 6 2.5s6-1.1 6-2.5v-4"/>',
@@ -1290,7 +1291,7 @@ const lastPost = (gid, kind) => D.posts.filter((p) => p.group_id === gid && p.ki
 
 function officeHome() {
   if (!isOffice()) return "";
-  return `<h3 class="sec-h">${ic("lock")} ${esc(t("officeTitle"))}</h3><div class="glist">${officeGroups().map((g) => groupTile(g, esc(t("officeSub")))).join("")}</div>`;
+  return `${finPrompt()}<h3 class="sec-h">${ic("lock")} ${esc(t("officeTitle"))}</h3><div class="glist">${officeGroups().map((g) => groupTile(g, esc(t("officeSub")))).join("")}</div>`;
 }
 
 R.office = (gid) => {
@@ -1382,7 +1383,7 @@ F.offfile = async (f) => {
   toast(t("saved")); setTimeout(() => shareSheet(file, res.title, res.group_id), 50);
 };
 A.openOffFile = (d, btn) => busy(btn, async () => {
-  try { const f = await offFile(d.id); if (/pdf|image/.test(f.type)) window.open(URL.createObjectURL(f), "_blank"); else download(f.name, f); }
+  try { const f = await offFile(d.id); if (/pdf/.test(f.type) || /\.pdf$/i.test(f.name)) await showPdf(f, f.name); else if (/image/.test(f.type)) window.open(URL.createObjectURL(f), "_blank"); else download(f.name, f); }
   catch (e) { toast(errMsg(e), true); }
 });
 A.shareFile = async (d, btn) => {
@@ -1408,24 +1409,54 @@ A.waSendFile = async () => {
 };
 
 // ---------- Treasurer: Warta Keuangan (used by the Secretary's Warta Jemaat) ----------
+// Warta Keuangan: the treasurer types each part by hand every week. The Warta PDF cannot be made without it.
+const finFor = (day) => D.posts.find((p) => p.group_id === "treasurer" && p.kind === "finance" && p.day === day);
+const FIN_PARTS = [["A", "PERSEMBAHAN"], ["B", "PERSEMBAHAN BULANAN"], ["C", "DANA PEMBANGUNAN GEREJA"]];
+function finSplit(body) {
+  const out = { date: "", parts: ["", "", ""] }; let k = -1;
+  String(body || "").split(/\n/).forEach((l) => {
+    const h = l.trim().match(/^([ABC])[.)]\s*(.*)$/);
+    if (h && FIN_PARTS.some(([x]) => x === h[1]) && /PERSEMBAHAN|DANA/i.test(h[2])) { k = "ABC".indexOf(h[1]); if (k === 0) out.date = h[2].replace(/^PERSEMBAHAN\s*/i, "").trim(); return; }
+    if (k >= 0 && l.trim()) out.parts[k] += (out.parts[k] ? "\n" : "") + l.trim().replace(/^\d{1,2}[.)]\s*/, "");
+  });
+  return out;
+}
+function finJoin(date, parts) {
+  return FIN_PARTS.map(([x, name], i) => {
+    const items = String(parts[i] || "").split(/\n/).map((l) => l.trim().replace(/^\d{1,2}[.)]\s*/, "")).filter(Boolean);
+    const body = items.length === 1 && /^[-–]$/.test(items[0]) ? "-" : items.map((l, j) => `${j + 1}. ${l}`).join("\n");
+    return `${x}. ${name}${i === 0 && date ? " " + date : ""}\n${body}`;
+  }).join("\n\n");
+}
 function financeBlock() {
-  const p = lastPost("treasurer", "finance");
-  return `<div class="card"><div class="card-h"><h3>${ic("coins")} ${esc(t("financeTitle"))}</h3>${canUpload("treasurer") ? `<button class="btn sm primary" data-act="financeForm">${ic("edit")} ${esc(t("financeNew"))}</button>` : ""}</div>
+  const sun = nextSunday(); const cur = finFor(sun); const p = cur || lastPost("treasurer", "finance");
+  return `<div class="card"><div class="card-h"><h3>${ic("coins")} ${esc(t("financeTitle"))}</h3>${canUpload("treasurer") ? `<button class="btn sm primary" data-act="financeForm">${ic("edit")} ${esc(t(cur ? "financeEdit" : "financeNew"))}</button>` : ""}</div>
+    ${cur ? "" : `<div class="notice warn">${ic("bell")} <span>${esc(t("finNeeded", fmtID(sun)))}</span></div>`}
     <p class="small muted">${esc(t("financeLead"))}</p>
     ${p ? `<p class="small"><b>Warta ${esc(fmtID(p.day))}</b> · ${esc(p.author_name || "")}</p><p class="pre small">${esc(p.body)}</p>` : `<p class="muted small">${esc(t("noFinance"))}</p>`}</div>`;
 }
-const finTemplate = (sun) => `A. PERSEMBAHAN ${fmtID(addDays(sun, -7))}\n1. Persembahan Ibadah Umum: SGD 0.00\n2. Sekolah Minggu: SGD 0.00\n3. Remaja: SGD 0.00\n\nB. PERSEMBAHAN BULANAN\n1. \n\nC. DANA PEMBANGUNAN GEREJA\n1. `;
-A.financeForm = () => {
-  const sun = nextSunday(); const p = lastPost("treasurer", "finance"); const same = p && p.day === sun;
-  sheet(t("financeTitle"), `<form class="form" data-form="finance" data-id="${same ? p.id : ""}">
+function finPrompt() {
+  if (!isOffice() || !canUpload("treasurer") || !(D.me.is_admin || "treasurer" in (D.me.groups || {}))) return "";
+  const sun = nextSunday(); if (finFor(sun)) return "";
+  return `<a class="card notice-card" href="#/o/treasurer">${ic("coins")}<span class="grow"><b>${esc(t("finNeededTitle"))}</b><small>${esc(t("finNeeded", fmtID(sun)))}</small></span>${ic("chev", "chev")}</a>`;
+}
+A.financeForm = (d) => {
+  const sun = d && d.day || nextSunday(); const p = finFor(sun); const x = p ? finSplit(p.body) : { date: fmtID(addDays(sun, -7)), parts: ["", "", ""] };
+  const hint = [t("finHintA"), t("finHintB"), t("finHintC")];
+  sheet(t("financeTitle"), `<form class="form" data-form="finance" data-id="${p ? p.id : ""}">
     <label>${esc(t("financeFor"))}<input type="date" name="day" value="${esc(sun)}" required></label>
-    <label>${esc(t("financeBody"))}<textarea name="body" rows="14" required>${esc(same ? p.body : finTemplate(sun))}</textarea></label>
+    <p class="small muted">${esc(t("finManual"))}</p>
+    ${FIN_PARTS.map(([k, name], i) => `<label><b>${k}. ${esc(name)}</b>${i === 0 ? `<input name="fdate" value="${esc(x.date)}" placeholder="11 Oktober 2026" required style="margin-bottom:6px">` : ""}
+      <textarea name="fp${i}" rows="${i ? 3 : 5}" required placeholder="${esc(hint[i])}">${esc(x.parts[i])}</textarea></label>`).join("")}
     <p class="small muted">${esc(t("financeHint"))}</p>
     <button class="btn primary block">${esc(t("save"))}</button></form>`);
 };
 F.finance = async (f) => {
-  await api.save("post", { id: f.dataset.id || undefined, group_id: "treasurer", kind: "finance", title: "Warta Keuangan " + f.day.value, body: f.body.value.trim(), day: f.day.value });
+  const parts = [0, 1, 2].map((i) => f["fp" + i].value.trim());
+  if (parts.some((x) => !x) || !f.fdate.value.trim()) throw new S.AppError("fin_parts");
+  await api.save("post", { id: f.dataset.id || undefined, group_id: "treasurer", kind: "finance", title: "Warta Keuangan " + f.day.value, body: finJoin(f.fdate.value.trim(), parts), day: f.day.value });
   closeSheet(); await refresh(); toast(t("saved"));
+  const wf = $("#warta-form .wfin"); if (wf) wf.outerHTML = wFinBox($("#warta-form").dataset.day);
 };
 
 // ---------- Secretary: Warta Jemaat (weekly bulletin, 2 pages A4 landscape, folded) ----------
@@ -1438,17 +1469,19 @@ F.finance = async (f) => {
 //  - Badan Organisasi, Pokok Doa, offering info, address: carried over from the previous Warta
 const TEAM_ROLES = ["Bahasa", "Pengkhotbah", "Liturgist", "St. Sekolah Minggu", "Pembaca Warta", "Tally Counter", "Penerima Tamu", "Pemain Musik", "Song Leader", "Sekolah Minggu", "Remaja", "Multimedia"];
 const TEAM_ROSTER = { "Pemain Musik": "musik", "Song Leader": "song-leader", "Multimedia": "multimedia" };
+// Other names the weekly roster sheet uses for the same job.
+const ROLE_ALIAS = { agenda: "Liturgist", liturgis: "Liturgist", warta: "Pembaca Warta", "pembaca warta": "Pembaca Warta", "penerima tamu": "Penerima Tamu", "usher": "Penerima Tamu", "pemain musik": "Pemain Musik", musik: "Pemain Musik", "song leader": "Song Leader", "songleader": "Song Leader", "st sekolah minggu": "St. Sekolah Minggu", "st. sekolah minggu": "St. Sekolah Minggu", pengkhotbah: "Pengkhotbah", "pemimpin ibadah": "Liturgist", "tally counter": "Tally Counter", bahasa: "Bahasa", "sekolah minggu": "Sekolah Minggu", remaja: "Remaja", multimedia: "Multimedia" };
 const WARTA_BASE = {
   resort: "Resort Singapore - Distrik XX Kepulauan Riau", address: "8 Short Street Singapore 188214", email: "hkbpsingapura@gmail.com",
-  timeThis: "13.30 - 15.00", timeNext: "13.30 - 15.00", minggu: "", theme: "", verse: "", renungan: "", renunganBy: "",
+  timeThis: "13.30 - 15.00", timeNext: "13.30 - 15.00", minggu: "", theme: "", verse: "", renTitle: "", renVerse: "", renungan: "", renunganBy: "", rosterLink: "",
   bdays: "", anniv: "", bdayVerse: "Mazmur 22: 11: “Kepada-Mu aku diserahkan sejak aku lahir, sejak dalam kandungan ibuku Engkaulah Allahku.”",
   annivVerse: "Mazmur 128: 1: “Berbahagialah setiap orang yang takut akan TUHAN, yang hidup menurut jalan yang ditunjukkan-Nya!”",
-  finance: "", org: "BADAN ORGANISASI\nHKBP SINGAPORE\n", doa: "1. Pelayanan gereja sesuai dengan warta jemaat & yang berulang tahun.\n2. Kesehatan seluruh jemaat HKBP Singapore dan se-Resort Singapore, termasuk para siswa, mahasiswa, Pekerja dan Pelaut di Singapore dan keluarga.\n3. Pemulihan jemaat yang sakit.",
-  info: "1. PERSEMBAHAN\nSelain dari Persembahan dalam Ibadah minggu, segala bentuk persembahan lainnya dapat disampaikan melalui rekening gereja.",
+  finance: "", org: "Spiritual Committee\nPreacher : Pdt. Catherina N Hutasoit\n88176835\nDeacons :\n1. St Ratna Silitonga\n2. St Johnny Tobing\nOrdinary Com.-Administration\nKetua (Chairman)\nSt Royen Gultom 97355376\nAnggota :\nSekretaris (Hon. Secretary)\nRichard Siburian 9842-9041\nBendahara (Hon. Treasurer)\nDwita Situmorang 90106487\nAnggota Biasa (Admin)\n1. Nurani Simatupang\n2. Maria Tobing\nAnggota Biasa (Auditors)\n1. Sondang Simbolon\n2. Petra Sibuea\nDewan Koinonia (Koinonia Council)\nSt Farinton Nainggolan\nAnggota :\n1. Dien Pasaribu (S Minggu)\n2. St Yosafat Bangun (Remaja)\n3. Naomi Lubis (Pemuda)\n4. Dearni Purba (Kaum Perempuan)\n5. Toga Sihombing (Kaum Bapak)\n6. Reynold Limbong (Pelaut/pekerja)\nDewan Marturia (Marturia Council)\nSt. Helmi Sihombing\nAnggota :\n1. St Royen Gultom (Zending)\n2. Richard Siburian (Musik)\n3. Mira Nainggolan (Musik-Vocal)\nDewan Diakonia (Diaconia Council)\nSt. Ratna Silitonga\nAnggota :\n1. St. Harry Sianturi (Sosial Kem.)\n2. Sophia Siagian (Kesehatan)\n3. Marcus Simanjuntak (Pendidikan)\n4. Andrew Butarbutar (Perlengkapan)\nSintua (Elders)\nSt Royen Gultom; St. Alston Manik; St Johnny Tobing; St Helmi Sihombing; St Ratna Silitonga; St Jannes Sibuea; St Sabar Butarbutar; St Yosafat Bangun; St Hermanto Hutasoit; St Farinton Nainggolan; St Harry Sianturi", doa: "1. Pelayanan gereja sesuai dengan warta jemaat & yang berulang tahun.\n2. Kesehatan seluruh jemaat HKBP Singapore dan se-Resort Singapore, termasuk para siswa, mahasiswa, Pekerja dan Pelaut di Singapore dan keluarga.\n3. Pemulihan jemaat yang sakit.",
+  info: "1. PERSEMBAHAN\nSelain dari Persembahan dalam Ibadah minggu, segala bentuk persembahan lainnya, dapat disampaikan melalui: PayNow Corporate, bisa melalui **UEN: S61SS0070G** dan **Rekening gereja HKBP Singapore, DBS Current Account No. 019-901598-4, Registered Name: Huria Kristen Batak Protestant**. Setelah melakukan transfer, silakan screenshot bukti transfer dan dikirimkan kepada Ibu **Dwita Situmorang (Bendahara Gereja) (WA No 90106487)** dengan detail transfer (offering/pledge/janji iman/thanksgiving).",
   jadwalTitle: "", jadwal: "", berita: "", attDate: "", att: ["", "", "", "", ""],
   closing: "Selalu hidup beriman, penuh Kasih dan Berpengharapan.", team: TEAM_ROLES.map((r) => [r, "", ""]),
 };
-const CARRY = ["resort", "address", "email", "timeThis", "timeNext", "bdayVerse", "annivVerse", "org", "doa", "info", "closing", "renunganBy"];
+const CARRY = ["resort", "address", "email", "timeThis", "timeNext", "bdayVerse", "annivVerse", "org", "doa", "info", "closing", "rosterLink"];
 const wartaPosts = () => D.posts.filter((p) => p.group_id === "secretary" && p.kind === "warta").sort((a, b) => (b.day || "").localeCompare(a.day || ""));
 const parseJSON = (s) => { try { return JSON.parse(s) || {}; } catch { return {}; } };
 function rosterNames(gid, iso) {
@@ -1460,34 +1493,39 @@ function rosterNames(gid, iso) {
   })));
   return out.join("; ");
 }
+// The daily bread of that Sunday (or the latest one before it) fills the cover reflection.
+function breadFor(day) {
+  const b = D.bread.find((x) => x.day === day) || D.bread.filter((x) => x.day <= day && x.day >= addDays(day, -6)).sort((a, c) => c.day.localeCompare(a.day))[0];
+  return b && b.body ? b : null;
+}
 // The parts that come from the app's data (recomputed with "Fill in again from the app").
 function wartaAutoParts(day, team) {
   const next = addDays(day, 7);
   const seen = new Set(); const bdays = birthdaysBetween(day, 6).map((x) => x.p.name).filter((n) => !seen.has(n) && seen.add(n));
-  const fins = D.posts.filter((p) => p.group_id === "treasurer" && p.kind === "finance" && (p.day || "") <= day).sort((a, b) => (b.day || "").localeCompare(a.day || ""));
   const ups = D.updates.filter((u) => u.audience === "all" && u.created_at.slice(0, 10) >= addDays(day, -10) && u.created_at.slice(0, 10) <= day);
   const until = addDays(day, 35);
   const evs = D.events.filter((e) => !(e.group_id && (G(e.group_id) || {}).kind === "office")).map((e) => ({ e, d: sgParts(e.starts_at).date })).filter((x) => x.d >= day && x.d <= until);
+  const b = breadFor(day);
   return {
     bdays: bdays.join("\n"),
-    finance: fins[0] ? fins[0].body : "",
+    finance: (finFor(day) || {}).body || "",
     berita: ups.map((u, i) => `${i + 1}. ${String(u.title || "").toUpperCase()}\n${u.body || ""}`).join("\n\n"),
     jadwalTitle: "JADWAL PELAYANAN BULAN " + new Intl.DateTimeFormat("id-ID", { month: "long" }).format(new Date(day + "T12:00:00+08:00")).toUpperCase(),
     jadwal: evs.map((x, i) => `${"abcdefghijklmnopqrstuvwxyz"[i] || i + 1}. ${x.e.title} (${+x.d.slice(8)}/${+x.d.slice(5, 7)})`).join("\n"),
-    team: team.map(([r, a, b]) => { const g = TEAM_ROSTER[r]; return g ? [r, rosterNames(g, day) || a, rosterNames(g, next) || b] : [r, a, b]; }),
+    team: team.map(([r, a, c]) => { const g = TEAM_ROSTER[r]; return g ? [r, rosterNames(g, day) || a, rosterNames(g, next) || c] : [r, a, c]; }),
+    ...(b ? { renungan: b.body, renTitle: b.title || "", renVerse: b.verse || "", renunganBy: "" } : {}),
   };
 }
 function wartaLoad(day) {
   const saved = wartaPosts().find((p) => p.day === day);
   if (saved) return { ...WARTA_BASE, ...parseJSON(saved.body), day, _id: saved.id };
   const prev = wartaPosts().find((p) => p.day < day); const P0 = prev ? parseJSON(prev.body) : {};
-  const W = { ...WARTA_BASE, day }; CARRY.forEach((k) => { if (P0[k] != null) W[k] = P0[k]; });
+  const W = { ...WARTA_BASE, day }; CARRY.forEach((k) => { if (P0[k] != null && P0[k] !== "") W[k] = P0[k]; });
   // Last week's "next Sunday" column becomes this week's.
   const prevTeam = Array.isArray(P0.team) ? P0.team : null; const lastWeek = prev && prev.day === addDays(day, -7);
   W.team = TEAM_ROLES.concat(prevTeam ? prevTeam.map((r) => r[0]).filter((r) => !TEAM_ROLES.includes(r)) : []).map((r) => {
     const old = prevTeam && prevTeam.find((x) => x[0] === r); return [r, old && lastWeek ? old[2] || "" : "", ""]; });
   if (lastWeek && P0.timeNext) W.timeThis = P0.timeNext;
-  if (lastWeek && P0.minggu && !W.minggu) W.attDate = "";
   return Object.assign(W, wartaAutoParts(day, W.team));
 }
 async function tataMeta(day) {
@@ -1501,8 +1539,11 @@ function wartaBlock() {
     ${canUpload("secretary") ? `<a class="btn primary block" href="#/warta/${sun}">${ic("edit")} ${esc(t("wartaMake", fmtID(sun)))}</a>` : ""}
     ${ws.map((p) => `<a class="li" href="#/warta/${p.day}"><span class="date-chip"><b>${esc(fmt(p.day, { day: "numeric" }))}</b><small>${esc(fmt(p.day, { month: "short" }))}</small></span><span class="grow"><b>${esc(p.title || "Warta Jemaat")}</b><small>${esc(p.author_name || "")}</small></span>${ic("chev", "chev")}</a>`).join("")}</div>`;
 }
-const wTa = (name, label, val, rows = 4, src = "") => `<label>${esc(label)}${src ? ` <span class="src-tag">${esc(src)}</span>` : ""}<textarea name="${name}" rows="${rows}">${esc(val || "")}</textarea></label>`;
-const wIn = (name, label, val, src = "") => `<label>${esc(label)}${src ? ` <span class="src-tag">${esc(src)}</span>` : ""}<input name="${name}" value="${esc(val || "")}"></label>`;
+// Every field has its own upload button (file or online link).
+const wUp = (name) => `<button type="button" class="w-up" data-act="wImp" data-f="${name}" aria-label="${esc(t("w_upload"))}" title="${esc(t("w_upload"))}">${ic("upload")}</button>`;
+const wLab = (name, label, src) => `<span class="w-lab"><span>${esc(label)}${src ? ` <span class="src-tag">${esc(src)}</span>` : ""}</span>${wUp(name)}</span>`;
+const wTa = (name, label, val, rows = 4, src = "") => `<label>${wLab(name, label, src)}<textarea name="${name}" rows="${rows}">${esc(val || "")}</textarea></label>`;
+const wIn = (name, label, val, src = "") => `<label>${wLab(name, label, src)}<input name="${name}" value="${esc(val || "")}"></label>`;
 R.warta = (day) => {
   if (!isOffice() || !offOk()) { location.replace("#/o/secretary"); return ""; }
   day = /^\d{4}-\d{2}-\d{2}$/.test(day || "") ? day : nextSunday();
@@ -1513,34 +1554,54 @@ R.warta = (day) => {
     if (m.sunday && !f.minggu.value) f.minggu.value = m.sunday;
     if (m.theme && !f.theme.value) { f.theme.value = (th ? th[1] : m.theme).replace(/^["“]|["”]$/g, ""); if (th && !f.verse.value) f.verse.value = th[2]; }
   });
+  if (!W._id && W.rosterLink) setTimeout(() => A.wRoster({ quiet: 1 }), 400);
   const sec = (title, inner, open) => `<details class="card wsec"${open ? " open" : ""}><summary><b>${esc(title)}</b></summary>${inner}</details>`;
   return shell("#/home", `
     <div class="card"><p class="small muted">${esc(t("wartaFormLead"))}</p>
+      ${can ? `<button class="btn primary block" data-act="wImpAll">${ic("upload")} ${esc(t("w_upAll"))}</button>
+      <p class="small muted" style="margin:6px 2px 10px">${esc(t("w_upAllHint"))}</p>` : ""}
       <div class="row two"><button class="btn" data-act="wartaPreview">${ic("screen")} ${esc(t("preview"))}</button><button class="btn" data-act="wartaRefill">${ic("check")} ${esc(t("wartaRefill"))}</button></div></div>
     <form class="form" id="warta-form" data-form="warta" data-day="${day}">
       ${sec(t("w_head"), `${wIn("minggu", "Minggu", W.minggu, "Tata Ibadah")}${wIn("theme", t("w_theme"), W.theme, "Tata Ibadah")}${wIn("verse", t("f_verse"), W.verse, "Tata Ibadah")}
         <div class="row two">${wIn("timeThis", t("w_timeThis"), W.timeThis)}${wIn("timeNext", t("w_timeNext"), W.timeNext)}</div>`, true)}
-      ${sec(t("w_renungan"), `${wTa("renungan", t("w_renunganBody"), W.renungan, 12)}${wIn("renunganBy", t("w_by"), W.renunganBy)}`, !W.renungan)}
+      ${sec(t("w_renungan"), `<p class="small muted">${esc(t("w_renHint"))}</p>${wIn("renTitle", t("w_renTitle"), W.renTitle, t("bread"))}${wIn("renVerse", t("f_verse"), W.renVerse, t("bread"))}${wTa("renungan", t("w_renunganBody"), W.renungan, 12, t("bread"))}${wIn("renunganBy", t("w_by"), W.renunganBy)}`, !W.renungan)}
       ${sec(t("birthdays"), `${wTa("bdays", t("w_bdays"), W.bdays, 4, t("src_bdays"))}${wTa("bdayVerse", t("w_verseGift"), W.bdayVerse, 2)}${wTa("anniv", t("w_anniv"), W.anniv, 3)}${wTa("annivVerse", t("w_verseGift"), W.annivVerse, 2)}`)}
-      ${sec("Warta Keuangan", wTa("finance", t("financeBody"), W.finance, 10, t("src_treasurer")))}
-      ${sec(t("w_team"), `<div class="tbl-wrap"><table class="tbl wteam"><tr><th></th><th>${esc(fmtID(day))}</th><th>${esc(fmtID(addDays(day, 7)))}</th></tr>
+      ${sec("Warta Keuangan", wFinBox(day), !finFor(day))}
+      ${sec(t("w_team"), `<label>${wLab("rosterLink", t("w_rosterLink"))}<input name="rosterLink" type="url" inputmode="url" placeholder="https://docs.google.com/spreadsheets/…" value="${esc(W.rosterLink || "")}"></label>
+        <p class="small muted">${esc(t("w_rosterHint"))}</p>
+        <div class="row two"><button type="button" class="btn" data-act="wRoster">${ic("check")} ${esc(t("w_rosterRead"))}</button><button type="button" class="btn" data-act="wImp" data-f="team">${ic("upload")} ${esc(t("w_upload"))}</button></div>
+        <div class="tbl-wrap"><table class="tbl wteam"><tr><th></th><th>${esc(fmtID(day))}</th><th>${esc(fmtID(addDays(day, 7)))}</th></tr>
         ${W.team.map(([r, a, b], i) => `<tr><th><input name="tr${i}" value="${esc(r)}"></th><td><input name="ta${i}" value="${esc(a)}"></td><td><input name="tb${i}" value="${esc(b)}"></td></tr>`).join("")}</table></div>
         <p class="small muted">${esc(t("w_teamHint"))}</p>`)}
       ${sec(t("w_news"), `${wTa("berita", "Berita Pelayanan", W.berita, 10, t("src_updates"))}${wIn("jadwalTitle", t("w_jadwalTitle"), W.jadwalTitle)}${wTa("jadwal", t("w_jadwal"), W.jadwal, 5, t("src_calendar"))}`)}
       ${sec(t("w_more"), `${wTa("doa", "Pokok Doa", W.doa, 4)}${wTa("info", t("w_info"), W.info, 6)}
         ${wIn("attDate", t("w_attDate"), W.attDate || fmtID(addDays(day, -7)))}
+        <div class="w-lab" style="margin-top:10px"><span class="small"><b>${esc(t("w_att"))}</b></span>${wUp("att")}</div>
         <div class="row three att">${["Bapak", "Ibu", "Naposo", "Remaja", "Sekolah Minggu"].map((l, i) => `<label>${l}<input name="att${i}" inputmode="numeric" value="${esc((W.att || [])[i] || "")}"></label>`).join("")}</div>`)}
       ${sec(t("w_org"), wTa("org", t("w_org"), W.org, 16))}
       ${sec(t("w_kop"), `${wIn("resort", "Resort", W.resort)}${wIn("address", t("w_address"), W.address)}${wIn("email", "Email", W.email)}${wTa("closing", t("w_closing"), W.closing, 2)}`)}
       ${can ? `<div class="row two sticky-actions"><button type="button" class="btn" data-act="wartaSave">${esc(t("w_saveDraft"))}</button><button class="btn primary">${ic("file")} ${esc(t("w_makePdf"))}</button></div>` : ""}
     </form>`, { back: "#/o/secretary", title: "Warta Jemaat", sub: fmtID(day) });
 };
+// Warta Keuangan is typed by the treasurer only; the secretary sees it here and can ask for it.
+function wFinBox(day) {
+  const p = finFor(day);
+  return `<div class="wfin">${p ? `<p class="small"><b>${esc(t("finFrom", p.author_name || t("treasurer")))}</b></p><p class="pre small">${esc(p.body)}</p>` : `<div class="notice warn">${ic("bell")} <span>${esc(t("finMissing", fmtID(day)))}</span></div>`}
+    <div class="row two"><button type="button" class="btn" data-act="wAskFin">${ic("wa")} ${esc(t("finAsk"))}</button>${canUpload("treasurer") ? `<button type="button" class="btn" data-act="financeForm" data-day="${day}">${ic("edit")} ${esc(t(p ? "financeEdit" : "financeNew"))}</button>` : `<button type="button" class="btn" data-act="wFinReload">${ic("check")} ${esc(t("finReload"))}</button>`}</div></div>`;
+}
+A.wAskFin = () => {
+  const f = $("#warta-form"); const day = f ? f.dataset.day : nextSunday();
+  const tr = holders("treasurer").find((p) => p.phone); const url = location.href.split("#")[0] + "#/o/treasurer";
+  window.open(wa(t("finAskMsg", fmtID(day), url), tr && tr.phone), "_blank", "noopener");
+};
+A.wFinReload = async () => { await refresh(); const f = $("#warta-form"); if (!f) return; const box = f.querySelector(".wfin"); if (box) box.outerHTML = wFinBox(f.dataset.day); toast(finFor(f.dataset.day) ? t("finArrived") : t("finStillMissing"), !finFor(f.dataset.day)); };
+const W_FIELDS = ["minggu", "theme", "verse", "timeThis", "timeNext", "renTitle", "renVerse", "renungan", "renunganBy", "rosterLink", "bdays", "bdayVerse", "anniv", "annivVerse", "berita", "jadwalTitle", "jadwal", "doa", "info", "attDate", "org", "resort", "address", "email", "closing"];
 function wartaCollect(f) {
   const W = { ...R.warta._W }; delete W._id;
-  ["minggu", "theme", "verse", "timeThis", "timeNext", "renungan", "renunganBy", "bdays", "bdayVerse", "anniv", "annivVerse", "finance", "berita", "jadwalTitle", "jadwal", "doa", "info", "attDate", "org", "resort", "address", "email", "closing"].forEach((k) => { if (f[k]) W[k] = f[k].value.trim(); });
+  W_FIELDS.forEach((k) => { if (f[k]) W[k] = f[k].value.trim(); });
   W.att = [0, 1, 2, 3, 4].map((i) => (f["att" + i] ? f["att" + i].value.trim() : ""));
   W.team = []; for (let i = 0; f["tr" + i]; i++) if (f["tr" + i].value.trim()) W.team.push([f["tr" + i].value.trim(), f["ta" + i].value.trim(), f["tb" + i].value.trim()]);
-  W.day = f.dataset.day; return W;
+  W.day = f.dataset.day; W.finance = (finFor(W.day) || {}).body || ""; return W;
 }
 async function wartaSaveDraft(W) {
   const res = await api.save("post", { id: R.warta._W._id || undefined, group_id: "secretary", kind: "warta", title: "Warta Jemaat " + fmtID(W.day), body: JSON.stringify(W), day: W.day });
@@ -1549,105 +1610,377 @@ async function wartaSaveDraft(W) {
 A.wartaSave = (d, btn) => busy(btn, async () => { try { await wartaSaveDraft(wartaCollect($("#warta-form"))); await refresh(); toast(t("saved")); } catch (e) { toast(errMsg(e), true); } });
 A.wartaRefill = () => {
   const f = $("#warta-form"); const W = wartaCollect(f); const a = wartaAutoParts(W.day, W.team);
-  ["bdays", "finance", "berita", "jadwalTitle", "jadwal"].forEach((k) => { if (a[k]) f[k].value = a[k]; });
+  ["bdays", "berita", "jadwalTitle", "jadwal", "renungan", "renTitle", "renVerse"].forEach((k) => { if (a[k]) f[k].value = a[k]; });
+  if (a.renungan) f.renunganBy.value = "";
   a.team.forEach(([, x, y], i) => { if (f["ta" + i] && x) f["ta" + i].value = x; if (f["tb" + i] && y) f["tb" + i].value = y; });
   toast(t("wartaRefilled"));
 };
-A.wartaPreview = () => {
-  const W = wartaCollect($("#warta-form"));
-  const el = document.createElement("div"); el.id = "wb"; el.className = "warta-prev";
-  el.innerHTML = `<div class="wb-bar"><button class="icon-btn" data-act="closeWb" aria-label="${esc(t("close"))}">${ic("x")}</button><b>Warta Jemaat · ${esc(fmtID(W.day))}</b><span></span></div><div class="wp-scroll"><div class="wp-zoom">${wartaHtml(W)}</div></div>`;
-  document.body.appendChild(el); document.body.classList.add("noscroll");
-  const z = el.querySelector(".wp-zoom"); const fit = () => { const s = Math.min(1, (el.clientWidth - 16) / 1123); z.style.transform = `scale(${s})`; z.style.height = 794 * 2 * s + 40 + "px"; };
-  fitWarta(z); fit();
-};
+// Preview is the real PDF, page by page, exactly as it will print.
+A.wartaPreview = (d, btn) => busy(btn, async () => {
+  try { const W = wartaCollect($("#warta-form")); const file = await wartaPdf(W); await showPdf(file, "Warta Jemaat · " + fmtID(W.day)); }
+  catch (e) { console.warn(e); toast(errMsg(e), true); }
+});
 F.warta = async (f) => {
   const W = wartaCollect(f); await wartaSaveDraft(W);
+  if (!W.finance) { const d = f.querySelector(".wfin"); if (d) { d.closest("details").open = true; d.scrollIntoView({ block: "center" }); } throw new S.AppError("w_needFinance"); }
   const file = await wartaPdf(W);
   const res = await saveOfficeFile("secretary", file, "Warta Jemaat " + fmtID(W.day), "", false);
   toast(t("w_pdfReady")); setTimeout(() => shareSheet(file, res.title, "secretary"), 50);
 };
 
-// Bulletin layout. Two A4 landscape pages (1123 x 794 px), each split in two halves, like the printed Warta.
-function wText(s) {
-  return String(s || "").split(/\n/).map((line) => {
-    const l = line.trim(); if (!l) return `<div class="gap"></div>`;
-    const caps = l.length > 3 && l === l.toUpperCase() && /[A-Z]/.test(l);
-    const m = l.match(/^((?:\d+|[a-zA-Z])[.)])\s+(.*)$/);
-    if (m) return `<div class="li-n${/^[A-Z][.)]$/.test(m[1]) ? " top" : ""}"><span>${esc(m[1])}</span><span>${caps || /^[A-Z][.)]$/.test(m[1]) ? `<b>${esc(m[2])}</b>` : esc(m[2])}</span></div>`;
-    return caps ? `<div><b>${esc(l)}</b></div>` : `<div>${esc(l)}</div>`;
+// ---------- reading uploaded files into the Warta ----------
+const W_LABEL = () => ({ minggu: "Minggu", theme: t("w_theme"), verse: t("f_verse"), timeThis: t("w_timeThis"), timeNext: t("w_timeNext"), renTitle: t("w_renTitle"), renVerse: t("f_verse"), renungan: t("w_renunganBody"), renunganBy: t("w_by"), rosterLink: t("w_rosterLink"), bdays: t("w_bdays"), bdayVerse: t("w_verseGift"), anniv: t("w_anniv"), annivVerse: t("w_verseGift"), team: t("w_team"), berita: "Berita Pelayanan", jadwalTitle: t("w_jadwalTitle"), jadwal: t("w_jadwal"), doa: "Pokok Doa", info: t("w_info"), attDate: t("w_attDate"), att: t("w_att"), org: t("w_org"), resort: "Resort", address: t("w_address"), email: "Email", closing: t("w_closing") });
+const W_ACCEPT = ".docx,.doc,.pdf,.xlsx,.xls,.xlsm,.csv,.ods";
+A.wImp = (d) => {
+  const name = d.f; const lab = W_LABEL()[name] || name;
+  sheet(t("w_upload") + " · " + lab, `<p class="small muted">${esc(t("w_upLead"))}</p>
+    <button class="btn primary block" data-act="wImpFile" data-f="${name}">${ic("upload")} ${esc(t("chooseFile"))}</button>
+    <p class="small muted" style="text-align:center;margin:8px 0">.docx · .doc · .pdf · .xlsx · .xls</p>
+    <form class="form" data-form="wimplink" data-f="${name}"><label>${esc(t("w_upLink"))}<input name="link" type="url" inputmode="url" placeholder="https://docs.google.com/…" required></label><button class="btn block">${esc(t("readLink"))}</button></form>`);
+};
+A.wImpFile = (d) => {
+  const inp = document.createElement("input"); inp.type = "file"; inp.accept = W_ACCEPT;
+  inp.onchange = async () => { const f = inp.files[0]; if (!f) return; toast(t("reading")); try { wPut(d.f, await P.file(f), f.name); } catch (e) { console.warn(e); toast(t(e.message === "unsupported" ? "err_unsupported" : "err_read"), true); } };
+  inp.click();
+};
+F.wimplink = async (f) => { const r = await P.link(f.link.value.trim()); if (!(r.lines || []).some(Boolean) && !r.tables.length) throw new S.AppError(r.note === "link_folder" ? "link_folder" : r.note === "link_private" ? "link_private" : "read"); wPut(f.dataset.f, r, "link"); };
+const linesOfRes = (res) => (res.lines && res.lines.length ? res.lines : String(res.text || "").split(/\n/)).map((l) => String(l).replace(/\s+/g, " ").trim());
+function wPut(name, res, src) {
+  const f = $("#warta-form"); if (!f) return;
+  const W = wartaCollect(f); const parts = wartaFromFile(res, W.day, W.team, name);
+  let v = parts[name];
+  if (name === "team") { if (!parts.team) { toast(t("w_noMatch"), true); return; } wSetTeam(f, parts.team); }
+  else if (name === "att") { if (!parts.att) { toast(t("w_noMatch"), true); return; } parts.att.forEach((n, i) => { if (f["att" + i]) f["att" + i].value = n; }); if (parts.attDate) f.attDate.value = parts.attDate; }
+  else {
+    if (v == null || v === "") {
+      // No matching section: use the whole text of the file.
+      const L = linesOfRes(res); const all = L.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+      v = f[name] && f[name].tagName === "INPUT" ? (L.find(Boolean) || "") : all;
+    }
+    if (!v) { toast(t("w_noMatch"), true); return; }
+    f[name].value = v; if (name === "jadwal" && parts.jadwalTitle) f.jadwalTitle.value = parts.jadwalTitle;
+    const det = f[name].closest("details"); if (det) det.open = true;
+  }
+  closeSheet(); toast(t("w_filled", W_LABEL()[name] || name));
+}
+function wSetTeam(f, team) {
+  const tb = f.querySelector(".wteam");
+  team.forEach(([r, a, b]) => {
+    let i = 0; for (; f["tr" + i]; i++) if (f["tr" + i].value.trim().toLowerCase() === r.toLowerCase()) break;
+    if (!f["tr" + i]) { tb.insertAdjacentHTML("beforeend", `<tr><th><input name="tr${i}" value="${esc(r)}"></th><td><input name="ta${i}"></td><td><input name="tb${i}"></td></tr>`); }
+    if (a) f["ta" + i].value = a; if (b) f["tb" + i].value = b;
+  });
+  const det = tb.closest("details"); if (det) det.open = true;
+}
+A.wRoster = async (d, btn) => {
+  const f = $("#warta-form"); if (!f) return; const url = f.rosterLink.value.trim();
+  if (!url) { if (!d || !d.quiet) toast(t("w_rosterNeed"), true); return; }
+  await busy(btn, async () => {
+    try {
+      const r = await P.link(url); const W = wartaCollect(f); const team = rosterFromTables(r.tables || [], W.day);
+      if (!team) { if (!d || !d.quiet) toast(t(r.note === "link_folder" ? "err_link_folder" : r.note === "link_private" ? "err_link_private" : "w_noMatch"), true); return; }
+      wSetTeam(f, team); if (!d || !d.quiet) toast(t("w_filled", t("w_team")));
+    } catch (e) { if (!d || !d.quiet) toast(t("err_read"), true); }
+  });
+};
+// One button: pick many files (or a folder on a computer), fill every part they match, then show the preview.
+A.wImpAll = () => {
+  sheet(t("w_upAll"), `<p class="small muted">${esc(t("w_upAllLead"))}</p>
+    <button class="btn primary block" data-act="wImpAllPick">${ic("upload")} ${esc(t("w_pickFiles"))}</button>
+    ${"webkitdirectory" in document.createElement("input") && !/iPhone|iPad|iPod/.test(navigator.userAgent) ? `<button class="btn block" data-act="wImpAllPick" data-dir="1" style="margin-top:8px">${ic("folder")} ${esc(t("w_pickFolder"))}</button>` : ""}
+    <form class="form" data-form="wimpalllink"><label>${esc(t("w_upLinks"))}<textarea name="links" rows="3" placeholder="https://docs.google.com/…"></textarea></label><button class="btn block">${esc(t("readLink"))}</button></form>`);
+};
+A.wImpAllPick = (d) => {
+  const inp = document.createElement("input"); inp.type = "file"; inp.multiple = true; inp.accept = W_ACCEPT; if (d.dir) inp.webkitdirectory = true;
+  inp.onchange = async () => {
+    const files = [...inp.files].filter((f) => /\.(docx|doc|pdf|xlsx|xls|xlsm|csv|ods)$/i.test(f.name)); if (!files.length) { toast(t("err_unsupported"), true); return; }
+    toast(t("reading")); const got = [];
+    for (const f of files) { try { got.push({ name: f.name, res: await P.file(f) }); } catch (e) { got.push({ name: f.name, err: 1 }); } }
+    wApplyAll(got);
+  };
+  inp.click();
+};
+F.wimpalllink = async (f) => {
+  const urls = f.links.value.split(/\s+/).filter((u) => /^https?:\/\//.test(u)); if (!urls.length) throw new S.AppError("read");
+  const got = []; for (const u of urls) { try { const r = await P.link(u); got.push({ name: u.replace(/^https?:\/\/(www\.)?/, "").slice(0, 40), res: r, err: !(r.lines || []).some(Boolean) && !r.tables.length }); } catch { got.push({ name: u, err: 1 }); } }
+  wApplyAll(got);
+};
+function wApplyAll(got) {
+  const f = $("#warta-form"); if (!f) return; const W = wartaCollect(f); const L = W_LABEL(); const report = [];
+  got.forEach((g) => {
+    if (g.err) { report.push([g.name, t("w_couldNotRead")]); return; }
+    const parts = wartaFromFile(g.res, W.day, W.team, null); const done = [];
+    Object.entries(parts).forEach(([k, v]) => {
+      if (v == null || v === "" || (Array.isArray(v) && !v.length)) return;
+      if (k === "team") { wSetTeam(f, v); done.push(L.team); return; }
+      if (k === "att") { v.forEach((n, i) => { if (f["att" + i]) f["att" + i].value = n; }); done.push(L.att); return; }
+      if (k === "finance" || !f[k]) return; f[k].value = v; if (L[k] && !done.includes(L[k])) done.push(L[k]);
+    });
+    report.push([g.name, done.length ? done.join(", ") : t("w_nothingMatched")]);
+  });
+  closeSheet();
+  setTimeout(() => sheet(t("w_upDone"), `<div class="list">${report.map(([n, d]) => `<div class="li"><span class="grow"><b>${esc(n)}</b><small>${esc(d)}</small></span></div>`).join("")}</div>
+    <p class="small muted">${esc(t("w_upDoneLead"))}</p>
+    <button class="btn primary block" data-act="wImpPreview">${ic("screen")} ${esc(t("preview"))}</button>`), 230);
+}
+A.wImpPreview = () => { closeSheet(); setTimeout(() => A.wartaPreview({}, $('[data-act="wartaPreview"]')), 200); };
+// PDF viewer: draws each page of the PDF with pdf.js, so the phone shows the file itself.
+async function showPdf(file, title) {
+  await P.load(P.LIBS.pdf); pdfjsLib.GlobalWorkerOptions.workerSrc = P.LIBS.pdfWorker;
+  const doc = await pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
+  A.closeWb(); const el = document.createElement("div"); el.id = "wb"; el.className = "warta-prev pdf-view";
+  el.innerHTML = `<div class="wb-bar"><button class="icon-btn" data-act="closeWb" aria-label="${esc(t("close"))}">${ic("x")}</button><b>${esc(title)}</b><span class="row"><button class="icon-btn" data-act="pdfShare" aria-label="${esc(t("share"))}">${ic("share")}</button><button class="icon-btn" data-act="pdfSave" aria-label="${esc(t("download"))}">${ic("download")}</button></span></div><div class="wp-scroll"><div class="pdf-pages"></div></div>`;
+  document.body.appendChild(el); document.body.classList.add("noscroll"); showPdf.file = file;
+  const box = el.querySelector(".pdf-pages"); const w = Math.max(320, el.clientWidth - 16);
+  for (let i = 1; i <= doc.numPages; i++) {
+    const pg = await doc.getPage(i); const v0 = pg.getViewport({ scale: 1 }); const css = w / v0.width; const dpr = Math.min(3, (window.devicePixelRatio || 1) * 1.5);
+    const vp = pg.getViewport({ scale: css * dpr }); const c = document.createElement("canvas"); c.width = vp.width; c.height = vp.height; c.style.width = w + "px"; c.style.height = v0.height * css + "px";
+    box.appendChild(c); await pg.render({ canvasContext: c.getContext("2d"), viewport: vp }).promise;
+  }
+}
+A.pdfSave = () => { const f = showPdf.file; if (f) download(f.name, f); };
+A.pdfShare = async () => { const f = showPdf.file; if (!f) return; try { if (navigator.canShare && navigator.canShare({ files: [f] })) await navigator.share({ files: [f], title: f.name }); else download(f.name, f); } catch {} };
+
+// Finds the Warta parts in a file. With `only`, the caller wants one field; otherwise every part found is returned.
+const W_HEADS = [
+  ["bdays", /^ulang tahun kelahiran\b/i], ["anniv", /^ulang tahun pernikahan\b/i], ["finance", /^warta keuangan\b/i], ["org", /^badan organisasi\b/i],
+  ["sambutan", /^sambutan\s*&?\s*tema/i], ["doa", /^pokok doa\b/i], ["info", /^informasi tambahan\b/i], ["att", /^jumlah jemaat\b/i],
+  ["team", /^pelayan ibadah\b/i], ["berita", /^berita pelayanan\b/i], ["closingBox", /^majelis gereja hkbp singapore mengucapkan/i], ["ren", /^[“"][A-Z0-9 ,.'!?-]{3,80}[”"]$/], ["wj", /^w\s*a\s*r\s*t\s*a\s+j\s*e\s*m\s*a\s*a\s*t$/i],
+];
+const plain = (s) => String(s || "").replace(/\*\*/g, "").trim();
+function wSections(lines) {
+  const out = {}; let cur = "_top";
+  lines.forEach((raw) => {
+    const l = plain(raw).replace(/^[\d.)\s]+(?=[A-Za-z])/, (m) => (/^\d+[.)]\s*$/.test(m) ? m : "")).trim();
+    const h = W_HEADS.find(([, re]) => re.test(plain(raw)));
+    if (h) { cur = h[0]; (out[cur] = out[cur] || []).push({ head: plain(raw) }); return; }
+    (out[cur] = out[cur] || []).push(raw);
+  });
+  Object.keys(out).forEach((k) => { out[k] = out[k].filter((x) => typeof x === "string" || x.head); });
+  return out;
+}
+const sectionText = (arr) => (arr || []).filter((x) => typeof x === "string").join("\n").replace(/\n{3,}/g, "\n\n").replace(/^\n+|\n+$/g, "");
+const isNumItem = (l) => /^(\d{1,2}|[a-zA-Z])[.)]\s+\S/.test(plain(l));
+function wartaFromFile(res, day, team, only) {
+  const lines = linesOfRes(res); const S2 = wSections(lines); const out = {};
+  const want = (k) => !only || only === k || (only === "jadwal" && k === "jadwalTitle") || (only === "att" && k === "attDate");
+  // Weekly roster from any table that has the Sunday's date.
+  if (!only || only === "team") { const tm = rosterFromTables(res.tables || [], day) || (S2.team ? rosterFromTables([{ rows: S2.team.filter((x) => typeof x === "string").map((l) => plain(l).split(/\s*\|\s*/)) }], day) : null); if (tm) out.team = tm; }
+  const names = (arr) => (arr || []).filter((x) => typeof x === "string").filter(isNumItem).map((l) => plain(l).replace(/^(\d{1,2}|[a-zA-Z])[.)]\s+/, "")).filter((n) => n.length < 60);
+  const verseOf = (arr) => { const v = (arr || []).filter((x) => typeof x === "string").join(" ").match(/tertulis dalam\s+(.+)$/i); return v ? plain(v[1]) : ""; };
+  if (S2.bdays) { if (want("bdays")) out.bdays = names(S2.bdays).join("\n"); const v = verseOf(S2.bdays); if (v && want("bdayVerse")) out.bdayVerse = v; }
+  if (S2.anniv) { if (want("anniv")) out.anniv = names(S2.anniv).join("\n"); const v = verseOf(S2.anniv); if (v && want("annivVerse")) out.annivVerse = v; }
+  if (S2.org && want("org")) out.org = sectionText(S2.org).replace(/^\s*HKBP SINGAPORE\s*\n/i, "");
+  if (S2.doa && want("doa")) out.doa = sectionText(S2.doa);
+  if (S2.info) {
+    const tx = sectionText(S2.info).split("\n"); const j = tx.findIndex((l) => /JADWAL PELAYANAN/i.test(l));
+    if (want("info")) out.info = (j >= 0 ? tx.slice(0, j) : tx).join("\n").trim();
+    if (j >= 0) { if (want("jadwalTitle")) out.jadwalTitle = plain(tx[j]).replace(/^\d+[.)]\s*/, ""); const jl = []; for (let i = j + 1; i < tx.length && (isNumItem(tx[i]) || !tx[i]); i++) if (tx[i]) jl.push(plain(tx[i])); if (want("jadwal")) out.jadwal = jl.join("\n"); }
+  }
+  if (S2.berita && want("berita")) out.berita = sectionText(S2.berita);
+  if (S2.ren && !/selamat hari minggu/i.test(S2.ren[0].head || "")) {
+    const body = S2.ren.filter((x) => typeof x === "string").slice(); while (body.length && !body[0]) body.shift();
+    const v = plain(body[0] || "").match(/^\((.+)\)$/); if (v) body.shift();
+    const end = body.findIndex((l) => /^selamat hari minggu$/i.test(plain(l))); if (end >= 0) body.length = end;
+    let txt = body.join("\n").replace(/\n{3,}/g, "\n\n").trim(); const by = txt.match(/\s*\(([^()]{2,30})\)\s*$/);
+    if (by) { txt = txt.slice(0, by.index).trim(); if (want("renunganBy")) out.renunganBy = by[1]; }
+    if (txt.split(/\s+/).length > 30) { if (want("renungan")) out.renungan = txt; if (want("renTitle")) out.renTitle = S2.ren[0].head.replace(/^[“"]|[”"]$/g, ""); if (v && want("renVerse")) out.renVerse = v[1]; }
+  }
+  if (S2.att && (want("att") || want("attDate"))) {
+    const head = (S2.att.find((x) => x.head) || {}).head || ""; const dm = head.match(/minggu,?\s*(.+)$/i); if (dm) out.attDate = dm[1].trim();
+    const nums = S2.att.filter((x) => typeof x === "string").join(" ").match(/\b\d{1,4}\b/g);
+    if (nums && nums.length >= 5) out.att = nums.slice(-5);
+  }
+  const all = lines.map(plain).join("\n");
+  // Sunday name and theme (from a Tata Ibadah or a previous Warta).
+  const mg = all.match(/\b(Minggu\s+(?:[IVXLC]+|\d+|ke-?\s*\d+)\s+(?:setelah|sesudah|dung|di)\s+[A-Za-z]+|Minggu\s+(?:Advent|Adven|Epiphanias|Septuagesima|Sexagesima|Estomihi|Invocavit|Reminiscere|Okuli|Letare|Judika|Palmarum|Paskah|Quasimodogeniti|Misericordias Domini|Jubilate|Kantate|Rogate|Exaudi|Pentakosta|Trinitatis)\b(?:\s+[IVX]+)?)/i);
+  if (mg && want("minggu")) out.minggu = mg[1].replace(/\s+/g, " ").toUpperCase();
+  const th = all.match(/(?:tema|thema|topik)(?:\s+minggu)?\s*:?\s*\n?\s*[“"]([^”"\n]{3,90})[”"]\s*\n?\s*\(?([^)\n]{3,40}\d[^)\n]*)?\)?/i);
+  if (th) { if (want("theme")) out.theme = th[1].trim(); if (th[2] && want("verse")) out.verse = th[2].trim(); }
+  // A sermon or reflection text: long prose that matched nothing else.
+  const words = all.split(/\s+/).length;
+  if (want("renungan") && !only && !Object.keys(out).filter((k) => k !== "minggu" && k !== "theme" && k !== "verse").length && words > 80 && !(res.tables || []).some((tb) => tb.rows.length > 3 && tb.rows[0].length > 2)) {
+    const L = lines.slice(); while (L.length && !L[0]) L.shift();
+    const q = plain(L[0] || "").match(/^[“"](.+)[”"]$/); if (q) { out.renTitle = q[1]; L.shift(); const v = plain(L[0] || "").match(/^\((.+)\)$/); if (v) { out.renVerse = v[1]; L.shift(); } }
+    out.renungan = L.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+  }
+  if (only === "renungan" && !out.renungan) out.renungan = "";
+  return out;
+}
+// Weekly roster: jobs down the side and Sundays across the top (or the other way round), one sheet per month is fine.
+function rosterFromTables(tables, day) {
+  const next = addDays(day, 7); const found = {};
+  const roleOf = (c) => { const k = plain(c).toLowerCase().replace(/\s+/g, " ").replace(/[:.]$/, "").trim(); if (!k || k.length > 40) return null; return ROLE_ALIAS[k] || TEAM_ROLES.find((r) => r.toLowerCase() === k) || null; };
+  const dateOf = (c, ym) => { const s = String(c || "").trim(); if (!s || s.length > 30) return null; return rowDate([s], ym); };
+  tables.forEach((tb) => {
+    const rows = tb.rows || []; const ym = (tb.name && rowDate([tb.name + " 1"], day.slice(0, 7)) || day).slice(0, 7);
+    const ymG = (() => { const m = String(tb.name || "").match(/(jan|feb|mar|apr|mei|may|jun|jul|agu|aug|sep|okt|oct|nov|des|dec)\w*\s+(\d{4})/i); return m ? `${m[2]}-${String(MONTHS[m[1].slice(0, 3).toLowerCase()]).padStart(2, "0")}` : day.slice(0, 7); })();
+    // Dates across a row.
+    rows.forEach((row, ri) => {
+      const cols = {}; row.forEach((c, ci) => { const d = dateOf(c, ymG); if (d === day || d === next) cols[d] = ci; });
+      if (!Object.keys(cols).length) return;
+      rows.slice(ri + 1).forEach((r) => {
+        const lab = r.slice(0, Math.min(...Object.values(cols))).map(plain).filter(Boolean)[0]; const role = roleOf(lab); if (!role) return;
+        Object.entries(cols).forEach(([d, ci]) => { const v = plain(r[ci]); if (v) { found[role] = found[role] || {}; if (!found[role][d]) found[role][d] = v; } });
+      });
+    });
+    // Dates down a column, jobs across the header row.
+    const head = rows.find((r) => r.filter((c) => roleOf(c)).length >= 2);
+    if (head) rows.forEach((r) => {
+      const d = r.map((c) => dateOf(c, ymG)).find((x) => x === day || x === next); if (!d) return;
+      head.forEach((c, ci) => { const role = roleOf(c); const v = plain(r[ci]); if (role && v) { found[role] = found[role] || {}; if (!found[role][d]) found[role][d] = v; } });
+    });
+  });
+  const roles = Object.keys(found); if (!roles.length) return null;
+  return roles.map((r) => [r, (found[r][day] || "").replace(/\s*;\s*/g, ", "), (found[r][next] || "").replace(/\s*;\s*/g, ", ")]);
+}
+
+// ---------- the printed bulletin ----------
+// Two A4 landscape pages (1123 x 794 px). Positions are in points, measured from the secretary's Word layout
+// (Arial Narrow, blue letterhead, thick-thin frames), so the PDF matches the printed Warta.
+function wInline(s) { return esc(s).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>"); }
+// Text with numbered items: "1." / "A." / "a." get a hanging indent; lines under an item stay indented.
+function wText(s, o = {}) {
+  const n1 = o.n1 || "1.5em", n2 = o.n2 || n1; let lvl = 0, type1 = null, inItem = false; const out = [];
+  String(s || "").split(/\n/).forEach((line) => {
+    const l = line.trim();
+    if (!l) { out.push(`<div class="gap"></div>`); inItem = o.keep ? inItem : false; if (!o.keep) lvl = 0; return; }
+    const m = l.match(/^((?:\d{1,2}|[a-zA-Z])[.)])\s+(.*)$/);
+    const capsLine = (x) => { const p = plain(x); return p.length > 3 && p === p.toUpperCase() && /[A-Z]{3}/.test(p); };
+    if (m) {
+      const ty = /^\d/.test(m[1]) ? "1" : /^[A-Z]/.test(m[1]) ? "A" : "a";
+      if (!inItem || type1 === null || ty === type1 || lvl === 0) { lvl = 1; type1 = ty; } else lvl = 2;
+      inItem = true;
+      const bold = lvl === 1 ? (o.b1 === true || (o.b1 !== false && capsLine(m[2]))) : (o.b2 === true || capsLine(m[2]));
+      const txt = wInline(m[2]);
+      out.push(`<div class="wi l${lvl}" style="--n:${lvl === 1 ? n1 : n2}${lvl === 2 ? `;--p:${n1}` : ""}"><span class="wn">${bold && lvl === 1 ? `<b>${esc(m[1])}</b>` : esc(m[1])}</span><span class="wt">${bold ? `<b>${txt}</b>` : txt}</span></div>`);
+      return;
+    }
+    const head = capsLine(l) || (/:$/.test(l) && l.length < 60 && !/[.,]\s/.test(l.slice(0, -1)));
+    if (inItem && !head) { out.push(`<div class="wp-p" style="padding-left:${lvl === 2 ? `calc(${n1} + ${n2})` : n1}">${wInline(l)}</div>`); return; }
+    inItem = false; lvl = 0;
+    out.push(`<div class="wp-p">${head ? `<b>${wInline(l)}</b>` : wInline(l)}</div>`);
+  });
+  while (out.length && out[out.length - 1] === `<div class="gap"></div>`) out.pop();
+  return out.join("");
+}
+const wNames = (s) => { const xs = String(s || "").split(/\n/).map((x) => x.trim()).filter(Boolean); return xs.length ? xs.map((x, i) => `<div class="wi l1" style="--n:18pt"><span class="wn"><b>${i + 1}.</b></span><span class="wt"><b>${wInline(x)}</b></span></div>`).join("") : ""; };
+// Organisation column: group headings in bold italic, names in italic, phone numbers lined up with a WhatsApp mark.
+function wOrg(s) {
+  const lines = String(s || "").split(/\n/).map((l) => l.trim()).filter((l, i) => !(i < 3 && /^(badan organisasi|hkbp singapore)$/i.test(l)));
+  while (lines.length && !lines[0]) lines.shift();
+  return lines.map((l) => {
+    if (!l) return `<div class="gap" style="height:.4em"></div>`;
+    const ph = l.match(/^(.*?)[\s\t]*((?:\+?65[\s-]?)?\d{4}[\s-]?\d{4})$/);
+    const isHead = /\*\*/.test(l) || /:\s*$/.test(l) || /^(spiritual|preacher|deacons|ordinary|anggota|dewan|sintua|majelis|parhalado)\b/i.test(plain(l));
+    const body = (txt) => (isHead ? `<b>${wInline(plain(txt))}</b>` : wInline(txt));
+    if (ph && ph[1]) return `<div class="og p"><span>${body(ph[1])}</span><span class="ph"><img src="warta/wa.png" alt="">${esc(ph[2])}</span></div>`;
+    if (ph) return `<div class="og"><span class="ph solo"><img src="warta/wa.png" alt=""><b>${esc(ph[2])}</b></span></div>`;
+    return `<div class="og"><span>${body(l)}</span></div>`;
   }).join("");
 }
-const wList = (s) => { const xs = String(s || "").split(/\n/).map((x) => x.trim()).filter(Boolean); return xs.length ? `<ol class="names">${xs.map((x) => `<li><b>${esc(x)}</b></li>`).join("")}</ol>` : `<p class="muted-p">-</p>`; };
 function wartaHtml(W) {
   const next = addDays(W.day, 7); const ver = (s) => { const i = String(s || "").indexOf(":", String(s || "").indexOf(":") + 1); return i > 0 ? [s.slice(0, i), s.slice(i + 1).trim()] : [s, ""]; };
   const [bv1, bv2] = ver(W.bdayVerse); const [av1, av2] = ver(W.annivVerse);
-  const theme = esc(W.theme || "").toUpperCase(); const verse = esc(W.verse || "").toUpperCase();
-  return `<style>
-  .wp{width:1123px;height:794px;background:#fff;color:#111;display:flex;font:10.5px/1.32 Arial,Helvetica,sans-serif;box-sizing:border-box;margin:0 0 20px;overflow:hidden}
-  .wp *{box-sizing:border-box}.wp .half{width:50%;height:100%;padding:26px 30px;overflow:hidden}
-  .wp h4{font-size:1.15em;margin:.9em 0 .3em}.wp p{margin:.3em 0}.wp .gap{height:.45em}.wp .li-n{display:flex;gap:.5em;padding-left:.6em}.wp .li-n.top{padding-left:0;margin-top:.3em}
-  .wp ol.names{margin:.4em 0 .6em 1.6em;padding:0}.wp .box{border:1px solid #111;padding:10px 14px;text-align:center;margin-top:16px}
-  .wp .mast{display:flex;align-items:center;gap:12px;border-bottom:2px solid #111;padding-bottom:8px;margin-bottom:8px}.wp .mast img{width:70px;height:70px;object-fit:contain}
-  .wp .mast .t{flex:1;text-align:center}.wp .mast .big{font:900 28px/1 "Arial Black",Arial,sans-serif;letter-spacing:1px;color:#1e3a8a;text-shadow:1px 1px 0 #93c5fd}
-  .wp .mast .sub{font-weight:700;font-size:1.15em}.wp .mast .min{font-weight:700;background:#1e3a8a;color:#fff;padding:2px 8px;display:inline-block;margin:3px 0}
-  .wp .cols{display:flex;gap:12px;height:calc(100% - 128px)}.wp .org{width:34%;font-size:.86em;line-height:1.25;border-right:1px solid #999;padding-right:8px;overflow:hidden}
-  .wp .ren{flex:1;font-size:.9em;text-align:justify;overflow:hidden}.wp .ren h5{text-align:center;font-size:1.1em;margin:0 0 .4em}
-  .wp .sam{border:1.5px solid #111;padding:10px 14px;text-align:center;font-weight:700}.wp .sam .tt{letter-spacing:4px;font-size:1.25em;margin-bottom:4px}
-  .wp .bar{background:#dc2626;color:#fff;font-weight:700;padding:3px 8px;margin:12px 0 6px}
-  .wp table{border-collapse:collapse;width:100%}.wp td,.wp th{border:1px solid #333;padding:2px 5px;vertical-align:top;text-align:left}
-  .wp .team th{background:#1e3a8a;color:#fff;text-align:center}.wp .team td:first-child{font-weight:700;width:24%;background:#eef2ff}
-  .wp .att td,.wp .att th{text-align:center}.wp .wj{font:900 34px/1 "Arial Black",Arial,sans-serif;letter-spacing:12px;color:#1e3a8a;text-align:right;margin-bottom:8px}
-  .wp .muted-p{color:#555}.wp .cover-foot{text-align:right;font-weight:700;margin-top:6px}
-  </style>
-  <div class="wp">
-    <div class="half">
-      <h4>Ulang Tahun Kelahiran</h4>
-      <p>Majelis &amp; Warga Jemaat mengucapkan Selamat Ulang Tahun bagi Bpk/Ibu/Sdr/i terkasih yang berulang tahun dalam satu minggu ini:</p>
-      ${wList(W.bdays)}
-      <p>Sebagai kado ulang tahun, terimalah Firman Tuhan yang tertulis dalam <b>${esc(bv1)}</b>${bv2 ? `: <b>${esc(bv2)}</b>` : ""}</p>
-      <h4>Ulang Tahun Pernikahan</h4>
-      <p>Majelis &amp; Warga Jemaat mengucapkan Selamat Ulang Tahun Pernikahan bagi Bpk/Ibu terkasih yang merayakan ulang tahun pernikahan dalam satu minggu ini:</p>
-      ${wList(W.anniv)}
-      <p>Sebagai kado ulang tahun pernikahan, terimalah Firman Tuhan yang tertulis dalam <b>${esc(av1)}</b>${av2 ? `: <b>${esc(av2)}</b>` : ""}</p>
-      <h4>WARTA KEUANGAN</h4>
-      <div class="fin">${wText(W.finance) || `<p class="muted-p">-</p>`}</div>
-      <div class="box">Majelis Gereja HKBP Singapore mengucapkan :<br><i><b>“Selamat Hari Minggu”</b></i><br>${esc(W.closing)}<br><b>TUHAN MEMBERKATI</b></div>
+  const up = (s) => esc(String(s || "").toUpperCase());
+  const theme = up(W.theme), verse = up(W.verse);
+  const rTitle = up(W.renTitle || W.theme), rVerse = up(W.renTitle ? W.renVerse : W.renVerse || W.verse);
+  const ren = String(W.renungan || "").trim() + (W.renunganBy ? ` (${W.renunganBy})` : "");
+  const minggu = esc(String(W.minggu || "").replace(/\s+/g, " ").trim());
+  const att = W.att || []; const hasAtt = att.some(Boolean);
+  return `<div class="wp" data-page="1">
+    <div class="wr" data-fit="shrink" data-fs="9.96" style="left:35.2pt;top:29.5pt;width:373.4pt;height:482pt;font-size:9.96pt">
+      <div class="wp-p"><b>Ulang Tahun Kelahiran</b></div>
+      <div class="wp-p">Majelis &amp; Warga Jemaat mengucapkan Selamat Ulang Tahun bagi Bpk/Ibu/Sdr/i terkasih yang berulang tahun dalam satu minggu ini:</div>
+      <div class="gap"></div>${W.bdays ? `<div class="names">${wNames(W.bdays)}</div><div class="gap"></div>` : ""}
+      <div class="wp-p">Sebagai kado ulang tahun, terimalah Firman Tuhan yang tertulis dalam <b>${esc(bv1)}${bv2 ? `: ${esc(bv2)}` : ""}</b></div>
+      <div class="gap"></div>
+      <div class="wp-p"><b>Ulang Tahun Pernikahan</b></div>
+      <div class="wp-p">Majelis &amp; Warga Jemaat mengucapkan Selamat Ulang Tahun Pernikahan bagi Bpk/Ibu terkasih yang merayakan ulang tahun pernikahan dalam satu minggu ini:</div>
+      <div class="gap"></div>${W.anniv ? `<div class="names">${wNames(W.anniv)}</div><div class="gap"></div>` : ""}
+      <div class="wp-p">Sebagai kado ulang tahun pernikahan, terimalah Firman Tuhan yang tertulis dalam <b>${esc(av1)}${av2 ? `: ${esc(av2)}` : ""}</b></div>
+      <div class="gap"></div>
+      <div class="wp-p"><b>WARTA KEUANGAN</b></div>
+      <div class="fin" style="font-size:.904em;margin-top:.45em">${wText(W.finance, { n1: "14.4pt", n2: "7.4pt", b1: true, keep: false })}</div>
     </div>
-    <div class="half">
-      <div class="mast"><img src="logo.png" alt=""><div class="t"><div class="big">HKBP SINGAPORE</div><div class="sub">${esc(W.resort)}</div>
-        <div class="min">${esc(W.minggu || "").toUpperCase()}</div><div class="sub">${esc(fmtID(W.day))}</div><div class="sub">${esc(W.address)}</div><div class="sub">Email Address: ${esc(W.email)}</div></div></div>
-      <div class="cols"><div class="org">${wText(W.org)}</div>
-        <div class="ren"><h5>“${theme}”${verse ? `<br>(${verse})` : ""}</h5>${wText(W.renungan)}${W.renunganBy ? `<p style="text-align:right"><b>(${esc(W.renunganBy)})</b></p>` : ""}
-          <div class="cover-foot">Selamat Hari Minggu<br>Tuhan Yesus Memberkati</div></div></div>
+    <div class="wbox" style="left:26.2pt;top:517.2pt;width:387.1pt;height:53pt">
+      <div style="top:1.3pt">Majelis Gereja HKBP Singapore mengucapkan <b>:</b></div>
+      <img src="warta/corsiva.png" alt="Selamat Hari Minggu" style="position:absolute;left:146.3pt;top:15.2pt;width:94.56pt;height:11.52pt">
+      <div style="top:27.6pt">${esc(W.closing)}</div>
+      <div style="top:40.3pt"><b>TUHAN MEMBERKATI</b></div>
+    </div>
+    <img class="whead" src="warta/head.jpg" alt="" style="left:435.8pt;top:17.7pt;width:396.8pt;height:112.1pt">
+    <div class="hl hl-a" style="top:${(67.6 - 0.8465 * 11.7).toFixed(2)}pt;font-size:11.7pt">${esc(W.resort)}</div>
+    <div class="hl hl-b" style="top:${(83.2 - 0.8465 * 12.4).toFixed(2)}pt;font-size:12.4pt">${minggu.toUpperCase()}</div>
+    <div class="hl hl-b" style="top:${(98.8 - 0.8465 * 12.4).toFixed(2)}pt;font-size:12.4pt">${esc(fmtID(W.day))}</div>
+    <div class="hl hl-c" style="top:${(109.6 - 0.8465 * 12.4).toFixed(2)}pt;font-size:12.4pt">${esc(W.address)}</div>
+    <div class="hl hl-c" style="top:${(122.8 - 0.8465 * 12.4).toFixed(2)}pt;font-size:12.4pt">Email Address: ${esc(W.email)}</div>
+    ${[[435.6, 130.3, 2.9, 447.6], [439.4, 130.3, 0.5, 443.5], [553.4, 130.3, 2.9, 446.2], [557.3, 130.3, 0.7, 443.5], [828.0, 130.3, 3.1, 446.2], [831.6, 130.3, 1.0, 447.6], [439.4, 573.8, 116.9, 2.7], [557.3, 573.8, 273.8, 2.7], [435.6, 577.4, 397, 0.5]].map(([x, y, w, h]) => `<i class="ln" style="left:${x}pt;top:${y}pt;width:${w}pt;height:${h}pt"></i>`).join("")}
+    <img src="warta/badan.png" alt="BADAN ORGANISASI HKBP SINGAPORE" style="position:absolute;left:460.8pt;top:133.64pt;width:71.52pt;height:20.4pt">
+    <div class="wr org" data-fit="shrink" data-fs="6.96" style="left:443.3pt;top:156.2pt;width:108.5pt;height:416pt;font-size:6.96pt">${wOrg(W.org)}</div>
+    <div class="wr ren" data-fit="fill" data-fs="6.96" data-max="11.5" style="left:561.2pt;top:136.2pt;width:263.8pt;height:437pt;font-size:6.96pt">
+      ${rTitle ? `<div class="rt"><b>“${rTitle}”</b>${rVerse ? `<br><b>(${rVerse})</b>` : ""}</div>` : ""}
+      ${wText(ren, { n1: "18pt", b1: true, keep: true })}
+      <div class="rf"><b>Selamat Hari Minggu<br>Tuhan Yesus Memberkati</b></div>
     </div>
   </div>
-  <div class="wp">
-    <div class="half">
-      <div class="sam"><div class="tt">Sambutan &amp; Tema Ibadah</div>SHALOM! Selamat hari Minggu buat kita semua.<br>Dengan sukacita kami mengucapkan selamat beribadah untuk jemaat sekalian. Hari ini adalah ${esc(W.minggu || "")}
-        <br><br>Dengan tema Minggu:<br>“${theme}”${verse ? `<br>(${verse})` : ""}</div>
-      <h4>Pokok Doa (Didoakan Pengkhotbah)</h4><div>${wText(W.doa)}</div>
-      <div class="bar">INFORMASI TAMBAHAN (UNTUK DIBACA SENDIRI)</div>
-      <div>${wText(W.info)}</div>
-      ${W.jadwal ? `<div class="li-n top"><span><b>2.</b></span><span><b>${esc(W.jadwalTitle)}</b></span></div><div style="padding-left:1.4em">${wText(W.jadwal)}</div>` : ""}
-      ${(W.att || []).some(Boolean) ? `<table class="att" style="margin-top:12px"><tr><th colspan="5">JUMLAH JEMAAT DI MINGGU, ${esc(W.attDate || "")}</th></tr><tr><td>BAPAK</td><td>IBU</td><td>NAPOSO</td><td>REMAJA</td><td>SEKOLAH MINGGU</td></tr><tr>${W.att.map((n) => `<td>${esc(n)}</td>`).join("")}</tr></table>` : ""}
+  <div class="wp" data-page="2">
+    <div class="samb" style="left:28.6pt;top:33.1pt;width:381.6pt;height:133.2pt">
+      <img src="warta/samb.png" alt="Sambutan &amp; Tema Ibadah" style="position:absolute;left:${(130 - 28.6).toFixed(2)}pt;top:${(47.12 - 33.1).toFixed(2)}pt;width:178.08pt;height:11.04pt">
+      <div class="sb" data-fit="shrink" data-fs="12.96" style="top:${(72.9 - 0.9215 * 12.96 - 33.1).toFixed(2)}pt;font-size:12.96pt">
+        <div>SHALOM! Selamat hari Minggu buat kita semua.</div>
+        <div>Dengan sukacita kami mengucapkan selamat beribadah untuk jemaat sekalian. Hari ini adalah ${minggu.toUpperCase()}</div>
+        <div class="gap"></div>
+        <div style="font-size:.926em">Dengan tema Minggu:</div>
+        <div style="font-size:.852em">“${theme}”</div>${verse ? `<div style="font-size:.852em">(${verse})</div>` : ""}
+      </div>
     </div>
-    <div class="half">
-      <div class="wj">WARTA JEMAAT</div>
-      <b>PELAYAN IBADAH</b>
-      <table class="team"><tr><th>Tanggal</th><th>Minggu,<br>${dmy(W.day)} ${esc(W.timeThis)}</th><th>Minggu,<br>${dmy(next)} ${esc(W.timeNext)}</th></tr>
-        ${(W.team || []).map(([r, a, b]) => `<tr><td>${esc(r)}</td><td>${esc(a || "-")}</td><td>${esc(b || "-")}</td></tr>`).join("")}</table>
-      <h4>BERITA PELAYANAN</h4><div>${wText(W.berita)}</div>
+    <div class="wr" data-fit="shrink" data-fs="11.04" style="left:28.1pt;top:${(181.7 - 0.9215 * 11.04).toFixed(2)}pt;width:381pt;height:${(477 - 181.7 + 0.9215 * 11.04).toFixed(2)}pt;font-size:11.04pt">
+      <div class="wp-p"><b>Pokok Doa (Didoakan Pengkhotbah)</b></div>
+      ${wText(W.doa, { n1: "14.1pt", b1: false })}
+      <div class="bar">INFORMASI TAMBAHAN (UNTUK DIBACA SENDIRI)</div>
+      <div class="info">${wText(W.info, { n1: "18pt", b1: true, keep: true })}</div>
+      ${W.jadwal ? `<div class="gap"></div><div class="gap"></div><div class="wi l1" style="--n:18pt"><span class="wn"><b>${String(W.info || "").match(/^\s*\d+[.)]/m) ? (String(W.info).match(/^\s*(\d+)[.)]/gm) || []).length + 1 : 1}.</b></span><span class="wt"><b>${esc(W.jadwalTitle)}</b></span></div>
+        <div class="jad">${wText(W.jadwal, { n1: "14.1pt", b1: false })}</div>` : ""}
+    </div>
+    ${hasAtt ? `<table class="att" style="left:35pt;top:478.3pt;width:355pt"><colgroup>${[63.6, 71.1, 56.6, 56.7, 106.5].map((w) => `<col style="width:${w}pt">`).join("")}</colgroup>
+      <tr><td colspan="5">JUMLAH JEMAAT DI MINGGU, ${esc(W.attDate || "")}</td></tr>
+      <tr><td>BAPAK</td><td>IBU</td><td>NAPOSO</td><td>REMAJA</td><td>SEKOLAH MINGGU</td></tr>
+      <tr>${[0, 1, 2, 3, 4].map((i) => `<td>${esc(att[i] || "")}</td>`).join("")}</tr></table>` : ""}
+    <img src="warta/banner.png" alt="WARTA JEMAAT" style="position:absolute;left:453.92pt;top:22.32pt;width:338.16pt;height:16.8pt">
+    <div style="position:absolute;left:435.6pt;top:${(47.7 - 0.8465 * 8.04).toFixed(2)}pt;font:700 8.04pt/1 var(--wn)">PELAYAN IBADAH</div>
+    <table class="team" style="left:441.1pt;top:49.4pt;width:370.3pt"><colgroup><col style="width:79.2pt"><col style="width:149.1pt"><col style="width:142pt"></colgroup>
+      <tr class="th"><td>Tanggal</td><td>Minggu,<br>${dmy(W.day)} ${esc(W.timeThis)}</td><td>Minggu,<br>${dmy(next)} ${esc(W.timeNext)}</td></tr>
+      ${(W.team || []).map(([r, a, b]) => `<tr><td>${esc(r)}</td><td>${esc(a || "-").replace(/\n/g, "<br>")}</td><td>${esc(b || "-").replace(/\n/g, "<br>")}</td></tr>`).join("")}</table>
+    <div class="wr ber" data-fit="shrink" data-fs="8.52" data-after=".team" style="left:435.6pt;top:212.6pt;width:379.5pt;height:372pt;font-size:8.52pt">
+      <div class="wp-p"><b>BERITA PELAYANAN</b></div>
+      ${wText(W.berita, { n1: "14.2pt", n2: "14.1pt", b1: true, keep: true })}
     </div>
   </div>`;
 }
-// Long text is made a little smaller until each half fits its page.
+// Each text area keeps the Word sizes. Long text is made smaller until it fits; the cover reflection also grows to fill its column.
 function fitWarta(root) {
-  root.querySelectorAll(".wp .half").forEach((h) => {
-    let fs = 10.5; h.style.fontSize = fs + "px";
-    while (h.scrollHeight > h.clientHeight + 1 && fs > 6.5) { fs -= 0.25; h.style.fontSize = fs + "px"; }
-    h.querySelectorAll(".org,.ren").forEach((c) => { let s = 1; while (c.scrollHeight > c.clientHeight + 1 && s > 0.6) { s -= 0.04; c.style.fontSize = s + "em"; } });
+  root.querySelectorAll(".wp").forEach((pg) => {
+    const team = pg.querySelector(".team"), ber = pg.querySelector(".ber");
+    if (team && ber) { const bottom = team.offsetTop + team.offsetHeight; const top = Math.max(212.6 * 4 / 3, bottom + 9.6 * 4 / 3); ber.style.top = top + "px"; ber.style.height = 585 * 4 / 3 - top + "px"; }
+    pg.querySelectorAll("[data-fit]").forEach((el) => {
+      const base = +el.dataset.fs; const max = +(el.dataset.max || base); const over = () => el.scrollHeight > el.clientHeight + 1;
+      if (el.classList.contains("sb")) { el.style.fontSize = base + "pt"; let f = base; while (el.offsetTop + el.offsetHeight > el.parentNode.clientHeight - 4 && f > 8) { f -= 0.25; el.style.fontSize = f + "pt"; } return; }
+      if (el.dataset.fit === "fill") {
+        let lo = 5, hi = max; el.style.fontSize = hi + "pt";
+        if (!over()) { let lh = 1.157; while (!over() && lh < 1.6) { lh += 0.03; el.style.lineHeight = lh; } if (over()) el.style.lineHeight = lh - 0.03; return; }
+        for (let i = 0; i < 12; i++) { const mid = (lo + hi) / 2; el.style.fontSize = mid + "pt"; if (over()) hi = mid; else lo = mid; }
+        el.style.fontSize = lo + "pt"; return;
+      }
+      let f = base; el.style.fontSize = f + "pt";
+      while (over() && f > 5.5) { f -= 0.2; el.style.fontSize = f + "pt"; }
+    });
   });
+}
+// The bulletin fonts: Arial Narrow and Arial when the phone has them, otherwise the same-width Liberation fonts bundled with the app.
+function wartaFonts() {
+  if (!document.fonts || !document.fonts.load) return Promise.resolve();
+  return Promise.all(["400 10pt WNarrow", "700 10pt WNarrow", "italic 400 10pt WNarrow", "italic 700 10pt WNarrow", "400 10pt WArial", "700 10pt WArial"].map((f) => document.fonts.load(f).catch(() => {}))).then(() => document.fonts.ready);
 }
 function loadScript(src) {
   return new Promise((res, rej) => {
@@ -1660,14 +1993,15 @@ async function wartaPdf(W) {
   await loadScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js");
   const host = document.createElement("div"); host.className = "warta-host"; host.innerHTML = wartaHtml(W); document.body.appendChild(host);
   try {
+    await wartaFonts();
     await Promise.all([...host.querySelectorAll("img")].map((i) => (i.complete ? 0 : new Promise((r) => { i.onload = i.onerror = r; }))));
     fitWarta(host);
     const pdf = new window.jspdf.jsPDF({ orientation: "landscape", unit: "mm", format: "a4", compress: true });
     const pages = host.querySelectorAll(".wp");
     for (let i = 0; i < pages.length; i++) {
-      const c = await window.html2canvas(pages[i], { scale: 2, backgroundColor: "#ffffff", logging: false });
+      const c = await window.html2canvas(pages[i], { scale: 2.5, backgroundColor: "#ffffff", logging: false });
       if (i) pdf.addPage();
-      pdf.addImage(c.toDataURL("image/jpeg", 0.9), "JPEG", 0, 0, 297, 210);
+      pdf.addImage(c.toDataURL("image/jpeg", 0.92), "JPEG", 0, 0, 297, 210);
     }
     return new File([pdf.output("blob")], `Warta Jemaat Minggu ${fmtID(W.day)}.pdf`, { type: "application/pdf" });
   } finally { host.remove(); }

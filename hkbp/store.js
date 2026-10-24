@@ -111,7 +111,7 @@ const Local = {
       groups: db.groups.filter((g) => g.kind !== "office" || off).sort((a, b) => a.sort - b.sort),
       posts: db.posts.filter((p) => this.sees(m, p.group_id)).sort((a, b) => b.created_at.localeCompare(a.created_at)),
       rosters: db.rosters.filter((r) => this.sees(m, r.group_id)).map(({ file_b64, ...r }) => ({ ...r, has_file: !!file_b64 })).sort((a, b) => b.month.localeCompare(a.month) || b.created_at.localeCompare(a.created_at)),
-      bread: db.bread.filter((b) => el || b.day <= today).sort((a, b) => b.day.localeCompare(a.day)),
+      bread: db.bread.filter((b) => el || off || b.day <= today).sort((a, b) => b.day.localeCompare(a.day)),
       updates: db.updates.filter((u) => u.audience === "all" || el).sort((a, b) => (b.pinned - a.pinned) || b.created_at.localeCompare(a.created_at)),
       events: db.events.filter((e) => this.sees(m, e.group_id)).sort((a, b) => a.starts_at.localeCompare(b.starts_at)),
       people: db.members.map((x) => ({

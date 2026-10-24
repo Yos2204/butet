@@ -269,7 +269,7 @@ begin
     'rosters', (select coalesce(jsonb_agg((to_jsonb(r) - 'file_b64') || jsonb_build_object('has_file', r.file_b64 is not null) order by r.month desc, r.created_at desc), '[]')
                from hk_rosters r where r.removed_at is null and hk__sees(m, r.group_id) and r.month >= to_char(now() - interval '12 months', 'YYYY-MM')),
     'bread', (select coalesce(jsonb_agg(to_jsonb(b) order by b.day desc), '[]') from hk_bread b
-               where b.removed_at is null and b.day >= current_date - 90 and (el or b.day <= (now() at time zone 'Asia/Singapore')::date)),
+               where b.removed_at is null and b.day >= current_date - 90 and (el or off or b.day <= (now() at time zone 'Asia/Singapore')::date)),
     'updates', (select coalesce(jsonb_agg(to_jsonb(u) order by u.pinned desc, u.created_at desc), '[]') from
                (select * from hk_updates where removed_at is null and (audience = 'all' or el) order by created_at desc limit 150) u),
     'events', (select coalesce(jsonb_agg(to_jsonb(e) order by e.starts_at), '[]') from hk_events e
