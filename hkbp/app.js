@@ -99,13 +99,13 @@ const TEACH = S.TEACH || ["naposo", "sekolah-minggu"];
 const isTeachG = (gid) => TEACH.includes(gid);
 const isTMaker = (gid) => !!D && (D.me.is_admin || roleIn(gid) === "tmaker");
 const isTeacherIn = (gid) => !!D && (D.me.is_admin || ["tmaker", "teacher"].includes(roleIn(gid)));
-// Teachers confirm their phone number every time they open Youth or Sunday School; leaving the class forgets it.
+// Teacher Makers confirm their phone number every time they open Youth or Sunday School; leaving the class forgets it.
 let tmPass = null;
 const tmOk = (gid) => !!D && !!tmPass && tmPass.phone === D.me.phone && (!gid || tmPass.g === gid);
 const setTmOk = (g) => { tmPass = g ? { g, phone: D.me.phone } : null; };
 window.addEventListener("hashchange", () => { const g = (location.hash.match(/^#\/g\/([\w-]+)/) || [])[1]; if (tmPass && g !== tmPass.g) tmPass = null; if (g !== hydrate.tmAsked) hydrate.tmAsked = null; });
 const canEdit = (gid) => manage() && (isTeachG(gid) ? isTMaker(gid) && tmOk(gid) : D.me.is_admin || roleIn(gid) === "chair");
-const canRunPoll = (gid) => manage() && isTeacherIn(gid) && (!isTeachG(gid) || tmOk(gid));
+const canRunPoll = (gid) => manage() && isTeacherIn(gid);
 const canSee = (g) => (g.kind === "office" ? isOffice() : g.kind === "service" || isElder() || !!roleIn(g.id));
 const G = (id) => D.groups.find((g) => g.id === id);
 const gname = (g) => (g ? g["name_" + lang] || g.name_en || g.id : t("wholeChurch"));
@@ -471,7 +471,7 @@ R.group = (gid) => {
       <span class="gicon xl">${ic(g.icon)}</span>
       <div><h2>${esc(gname(g))}</h2><p>${esc(t("motto_" + g.id) !== "motto_" + g.id ? t("motto_" + g.id) : t("kindSermon"))}</p>${roleBadge(gid) ? `<div class="hero-role">${roleBadge(gid)} <small>${esc(edit ? t("canUpdate") : teach && canRunPoll(gid) ? t("teacherSub") : t("readOnly"))}</small></div>` : ""}</div>
     </section>
-    ${ok && teach && manage() && isTeacherIn(gid) && !tmOk(gid) ? `<button class="card notify-ask" data-act="tmVerify" data-g="${gid}">${ic("lock")}<span><b>${esc(t("tmVerify"))}</b><small>${esc(t("tmNeedVerify"))}</small></span>${ic("chev", "chev")}</button>` : ""}
+    ${ok && teach && manage() && isTMaker(gid) && !tmOk(gid) ? `<button class="card notify-ask" data-act="tmVerify" data-g="${gid}">${ic("lock")}<span><b>${esc(t("tmVerify"))}</b><small>${esc(t("tmNeedVerify"))}</small></span>${ic("chev", "chev")}</button>` : ""}
     ${ok ? `<div class="seg" role="tablist" style="--gc:${g.color}">${tabs.map(([k, l, n]) => `<a role="tab" aria-selected="${tab === k}" href="#/g/${gid}?tab=${k}">${esc(t(l))}${n ? ` <i>${n}</i>` : ""}</a>`).join("")}</div>` : ""}
     <div style="--gc:${g.color}">${body}</div>`, { back: "#/groups", title: gname(g), sub: t("kindSermon") });
 };
@@ -707,7 +707,7 @@ function hydrate() {
   const tg = (location.hash.match(/^#\/g\/([\w-]+)/) || [])[1];
   // Opening Youth or Sunday School: the admin is asked for that class's missing Teacher Makers; a Maker is asked to confirm their phone.
   if (D && tg && isTeachG(tg) && $("#sheet").hidden && isAdmin() && teachSeedMissing(tg).length && hydrate.tsAsked !== tg) { hydrate.tsAsked = tg; setTimeout(() => { if ($("#sheet").hidden) A.teachSetup({ g: tg }); }, 300); }
-  else if (D && tg && isTeachG(tg) && $("#sheet").hidden && manage() && isTeacherIn(tg) && !tmOk(tg) && hydrate.tmAsked !== tg) { hydrate.tmAsked = tg; setTimeout(() => A.tmVerify({ g: tg }), 300); }
+  else if (D && tg && isTeachG(tg) && $("#sheet").hidden && manage() && isTMaker(tg) && !tmOk(tg) && hydrate.tmAsked !== tg) { hydrate.tmAsked = tg; setTimeout(() => A.tmVerify({ g: tg }), 300); }
   if (D && /^#\/o\//.test(location.hash) && $("#sheet").hidden && viewMode() !== null && isOffice()) {
     if (!offOk()) setTimeout(officePrompt, 250);
     else if (D.me.is_admin && manage() && !officeGroups().some((g) => holders(g.id).length) && !hydrate.offAsked) { hydrate.offAsked = true; setTimeout(() => A.addHolder({ g: location.hash.split("/")[2] }), 400); }
@@ -1354,8 +1354,8 @@ A.tmVerify = (d) => sheet(t("tmVerify"), `<form class="form" data-form="tmcheck"
   <button class="btn primary block">${esc(t("verify"))}</button></form>`, (el) => el.querySelector("input").focus());
 F.tmcheck = async (f) => {
   // Must be the signed-in member's own number and a Teacher Maker of this class. The server checks every change again.
-  if (S.phone8(f.phone.value) !== D.me.phone || !isTeacherIn(f.dataset.g)) { setTmOk(""); closeSheet(); toast(t("tmReject"), true); return; }
-  setTmOk(f.dataset.g); closeSheet(); toast(t(isTMaker(f.dataset.g) ? "tmOk" : "tOk"));
+  if (S.phone8(f.phone.value) !== D.me.phone || !isTMaker(f.dataset.g)) { setTmOk(""); closeSheet(); toast(t("tmReject"), true); return; }
+  setTmOk(f.dataset.g); closeSheet(); toast(t("tmOk"));
 };
 
 function teachersTab(gid, list) {
