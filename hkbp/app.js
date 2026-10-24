@@ -120,6 +120,10 @@ function profileCats(p) {
   if (p.married) c.push("sekolah-minggu"); // parents see Sunday School too (YB)
   return c;
 }
+// Second pop-up (YB 2026-10-24): pick the service sections you serve in; Jadwal then shows only those. Pilot: YB only.
+const SERVE_PILOT = ["85334780"];
+const serveOn = () => !!D && !isGuest() && !!me() && SERVE_PILOT.includes(S.phone8(me().phone));
+const serveShown = (g) => { if (g.kind !== "service" || !serveOn() || LS.get("allServe")) return true; const sv = (me().profile || {}).serve; return !sv || !sv.length || sv.includes(g.id); };
 const catShown = (g) => { if (g.kind !== "sermon" || !profileOn() || isAdmin() && LS.get("allCats")) return true; const r = roleIn(g.id); if (r && r !== "member") return true; const c = profileCats(me().profile); return !c || c.includes(g.id); };
 const G = (id) => D.groups.find((g) => g.id === id);
 const gname = (g) => (g ? g["name_" + lang] || g.name_en || g.id : t("wholeChurch"));
@@ -559,11 +563,12 @@ function peopleList(people, gid) {
 
 // Service sections (non-sermonic) with monthly rosters.
 R.serve = () => {
-  const list = D.groups.filter((g) => g.kind === "service");
-  const ym = monthKey(today());
+  const list = D.groups.filter((g) => g.kind === "service" && serveShown(g));
+  const ym = monthKey(today()); const sv = serveOn() && (me().profile || {}).serve;
   return shell("#/serve", `
     <h2 class="page-h">${esc(t("serveTitle"))}</h2>
     <p class="lead">${esc(t("serveLead"))}</p>
+    ${sv ? `<div class="card row between pf-note"><span class="small muted">${esc(t(LS.get("allServe") ? "svAllShown" : "svFiltered"))}</span><span class="row"><button class="btn sm ghost" data-act="servePick">${esc(t("pfChange"))}</button><button class="btn sm" data-act="allServe">${esc(t(LS.get("allServe") ? "pfMine" : "pfAll"))}</button></span></div>` : ""}
     <div class="glist">${list.map((g) => { const has = D.rosters.some((r) => r.group_id === g.id && r.month === ym); const nx = D.rosters.some((r) => r.group_id === g.id && r.month === shiftMonth(ym, 1));
       return groupTile(g, `${has ? "✓ " : ""}${esc(t(has ? "rosterReady" : "rosterMissing", monthName(ym)))}${nx ? " · " + esc(t("nextReady")) : ""}`); }).join("")}</div>
     ${isAdmin() ? `<button class="btn block ghost" data-act="newSection">${ic("plus")} ${esc(t("addSection"))}</button>` : ""}`);
@@ -778,6 +783,7 @@ R.more = () => {
       <button class="li" data-act="notify">${ic("bell")}<span class="grow"><b>${esc(t("notifications"))}</b><small>${esc(perm === "granted" ? t("notifyOnTxt") : perm === "denied" ? t("notifyDenied") : t("notifyAskBody"))}</small></span>${ic("chev", "chev")}</button>
       ${hasRights() ? `<button class="li" data-act="toggleView">${ic("people")}<span class="grow"><b>${esc(t("layout"))}: ${esc(t(manage() ? "viewAdmin" : "viewMember"))}</b><small>${esc(t(manage() ? "toMember" : "toAdmin"))}</small></span>${ic("chev", "chev")}</button>` : ""}
       ${isAdmin() ? `<button class="li" data-act="breadSetup">${ic("bread")}<span class="grow"><b>${esc(t("bs_title"))}</b><small>${esc(t("src_" + ((D.settings || {}).bread_source || "elders")))}</small></span>${ic("chev", "chev")}</button>` : ""}
+      ${serveOn() ? `<button class="li" data-act="servePick">${ic("calendar")}<span class="grow"><b>${esc(t("svTitle"))}</b><small>${esc((me().profile || {}).serve ? me().profile.serve.map((id) => gname(G(id))).filter(Boolean).join(", ") || t("svNone") : t("pfNotYet"))}</small></span>${ic("chev", "chev")}</button>` : ""}
       ${profileOn() ? `<button class="li" data-act="profile">${ic("people")}<span class="grow"><b>${esc(t("pfTitle"))}</b><small>${esc(me().profile ? profileCats(me().profile).map((id) => gname(G(id))).filter(Boolean).join(", ") : t("pfNotYet"))}</small></span>${ic("chev", "chev")}</button>` : ""}
       <button class="li" data-act="password">${ic("key")}<span class="grow"><b>${esc(t("changePw"))}</b></span>${ic("chev", "chev")}</button>
       <button class="li" data-act="install">${ic("phone")}<span class="grow"><b>${esc(t("installTitle"))}</b><small>${esc(standalone() ? t("installed") : t("installHint"))}</small></span>${ic("chev", "chev")}</button>
@@ -812,6 +818,7 @@ function hydrate() {
   if (D && !isGuest() && api.hasSession() && $("#sheet").hidden) {
     if (viewMode() === null) { if (hasRights()) setTimeout(rolePrompt, 300); else LS.set("view", "member"); }
     else if (profileOn() && !me().profile) setTimeout(() => { if ($("#sheet").hidden && profileOn() && !me().profile) profilePrompt(); }, 900);
+    else if (serveOn() && !(me().profile || {}).serve) setTimeout(() => { if ($("#sheet").hidden && serveOn() && !(me().profile || {}).serve) servePrompt(); }, 900);
   }
   if (D && /^#\/s\/multimedia/.test(location.hash) && $("#sheet").hidden && viewMode() !== null) {
     if (!mmRole()) setTimeout(mmPrompt, 250);
@@ -856,6 +863,21 @@ F.profile = async (f) => {
   const p = { married: v("married"), male: v("male"), pelaut: v("pelaut"), confirmed: v("confirmed") };
   const res = await api.profileSave(p); D.me.profile = res || p; LS.set("allCats", null);
   closeSheet(); toast(t("pfSaved") + " " + profileCats(D.me.profile).map((id) => gname(G(id))).filter(Boolean).join(", ")); render();
+  if (serveOn()) setTimeout(servePrompt, 350); // second layer
+};
+function servePrompt() {
+  const sv = (me().profile || {}).serve || [];
+  sheet(t("svTitle"), `<form class="form" data-form="serve">
+    <p class="muted">${esc(t("svLead"))}</p>
+    <div class="pick-list">${D.groups.filter((g) => g.kind === "service").map((g) => `<label class="pick" style="--gc:${g.color}"><input type="checkbox" name="sv" value="${esc(g.id)}" ${sv.includes(g.id) ? "checked" : ""}><span class="gicon">${ic(g.icon)}</span><b>${esc(gname(g))}</b><i class="tick">${ic("check")}</i></label>`).join("")}</div>
+    <button class="btn primary block">${esc(t("save"))}</button></form>`);
+}
+A.servePick = () => servePrompt();
+A.allServe = () => { LS.set("allServe", LS.get("allServe") ? null : 1); render(); };
+F.serve = async (f) => {
+  const serve = [...f.querySelectorAll('input[name="sv"]:checked')].map((x) => x.value);
+  const res = await api.profileSave({ serve }); D.me.profile = res || { ...(D.me.profile || {}), serve }; LS.set("allServe", null);
+  closeSheet(); toast(t("svSaved")); if (/^#\/serve/.test(location.hash)) render(); else location.hash = "#/serve";
 };
 A.toggleView = () => { LS.set("view", manage() ? "member" : "admin"); toast(t(manage() ? "nowAdmin" : "nowMember")); render(); };
 function rolePrompt() {

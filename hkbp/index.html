@@ -76,6 +76,15 @@ main { padding-top: 8px; }
 .row.between { justify-content: space-between; }
 .pf-note { margin: 0 0 12px; padding: 10px 12px; }
 .pf-note .row { margin-top: 0; }
+.pick-list { display: grid; gap: 8px; margin: 4px 0 14px; }
+.form label.pick { position: relative; display: flex; margin: 0; font-size: 15px; align-items: center; gap: 12px; padding: 10px 12px; border: 1.5px solid var(--line); border-radius: 14px; background: var(--surface); cursor: pointer; }
+.form label.pick input { position: absolute; opacity: 0; inset: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+.pick b { flex: 1; }
+.pick .tick { width: 26px; height: 26px; border-radius: 50%; border: 1.5px solid var(--line); display: grid; place-items: center; color: transparent; font-style: normal; }
+.pick .tick .ic { width: 16px; height: 16px; }
+.pick:has(input:checked) { border-color: var(--gc); box-shadow: 0 0 0 1px var(--gc) inset; }
+.pick:has(input:checked) .tick { background: var(--gc); border-color: var(--gc); color: #fff; }
+.pick:has(input:focus-visible) { outline: 2px solid var(--gc); outline-offset: 2px; }
 .row.two > * { flex: 1 1 140px; }
 .stack { display: grid; gap: 8px; margin-top: 12px; }
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 10px 16px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); font-weight: 700; text-decoration: none; white-space: nowrap; }
@@ -510,10 +519,10 @@ p, h1, h2, h3, h4, li, label, small, b { overflow-wrap: break-word; }
 <div id="view"><div class="login"><img class="logo-xl" src="logo.png" alt="HKBP"><h1>HKBP Singapore</h1></div></div>
 <div id="sheet" hidden></div>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
-<script src="config.js?v=31"></script>
-<script src="i18n.js?v=31"></script>
-<script src="store.js?v=31"></script>
-<script src="parse.js?v=31"></script>
-<script src="app.js?v=31"></script>
+<script src="config.js?v=32"></script>
+<script src="i18n.js?v=32"></script>
+<script src="store.js?v=32"></script>
+<script src="parse.js?v=32"></script>
+<script src="app.js?v=32"></script>
 </body>
 </html>
