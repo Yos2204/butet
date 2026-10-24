@@ -748,7 +748,7 @@ R.more = () => {
       <button class="li" data-act="notify">${ic("bell")}<span class="grow"><b>${esc(t("notifications"))}</b><small>${esc(perm === "granted" ? t("notifyOnTxt") : perm === "denied" ? t("notifyDenied") : t("notifyAskBody"))}</small></span>${ic("chev", "chev")}</button>
       <button class="li" data-act="install">${ic("phone")}<span class="grow"><b>${esc(t("installTitle"))}</b><small>${esc(standalone() ? t("installed") : t("installHint"))}</small></span>${ic("chev", "chev")}</button>
     </div>
-    <p class="small muted center pad">HKBP Singapore · ${esc(t("logoNote"))}</p>`, { title: t("tab_more"), sub: "HKBP Singapore" });
+    <p class="small muted center pad">HKBP Singapore · ${esc(t("logoNote"))}</p>`);
   return shell("#/more", `
     <section class="profile card">
       <span class="avatar lg">${esc(initials(m.name))}</span>
@@ -768,7 +768,7 @@ R.more = () => {
       ${isElder() ? `<button class="li" data-act="settings">${ic("gear")}<span class="grow"><b>${esc(t("settings"))}</b><small>${esc(api.mode === "remote" ? t("modeRemote") : t("modeLocal"))}</small></span>${ic("chev", "chev")}</button>` : ""}
       <button class="li" data-act="logout">${ic("logout")}<span class="grow"><b>${esc(t("signOut"))}</b></span></button>
     </div>
-    <p class="small muted center pad">HKBP Singapore · ${esc(t("logoNote"))}</p>`, { title: t("tab_more"), sub: "HKBP Singapore" });
+    <p class="small muted center pad">HKBP Singapore · ${esc(t("logoNote"))}</p>`);
 };
 R.notFound = () => shell("#/home", empty(t("notFound")), { back: "#/home" });
 
