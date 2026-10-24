@@ -95,10 +95,10 @@ const isElder = () => manage() && (D.me.is_admin || "parhalado" in (D.me.groups 
 const roleIn = (gid) => (D.me.groups || {})[gid] || null;
 // Youth and Sunday School are run by teachers: only a Teacher Maker (phone checked once per session) posts materials, news, events and polls.
 // A Teacher reads everything and starts or ends polls in class. Other categories: the chair (and the admin) post.
-const TEACH = S.TEACH || ["naposo", "sekolah-minggu", "remaja", "ama", "ina"];
+const TEACH = S.TEACH || ["naposo", "sekolah-minggu", "remaja", "ama", "ina", "pelaut"];
 const MAKERS = S.MAKERS || ["tmaker", "ychair", "ytreasurer", "ysecretary"];
 // Youth's Makers are its officers (YB 2026-10-25); the other teacher-run classes have Teacher Makers.
-const roleLabel = (gid, r) => t(r === "tmaker" && (gid === "ama" || gid === "ina") ? "role_k" + gid : "role_" + r);
+const roleLabel = (gid, r) => t(r === "tmaker" && ["ama", "ina", "pelaut"].includes(gid) ? "role_k" + gid : "role_" + r);
 const makerRoles = (gid) => (gid === "naposo" ? ["ychair", "ytreasurer", "ysecretary"] : ["tmaker"]);
 const isTeachG = (gid) => TEACH.includes(gid);
 const isTMaker = (gid) => !!D && (D.me.is_admin || MAKERS.includes(roleIn(gid)));
@@ -380,10 +380,15 @@ R.login = async () => {
       </form>
       <button class="btn block ghost" data-act="seedDemo">${ic("spark")} ${esc(t("demoBtn"))}</button>` : `
       <form class="card form" data-form="login">
-        <label>${esc(t("f_phone"))}<div class="phone-in"><span>+65</span><input name="phone" inputmode="numeric" required placeholder="8123 4567" autocomplete="username"></div></label>
-        <label>${esc(t("f_password"))}<input name="pw" type="password" autocomplete="current-password"></label>
-        <button class="btn primary block">${ic("lock")} ${esc(t("signIn"))}</button>
-        <p class="small muted center">${esc(t("forgot"))}</p>
+        <label>${esc(t("f_phone"))}<div class="phone-in"><span>+65</span><input name="phone" inputmode="numeric" required placeholder="8123 4567" autocomplete="username" data-phonecheck></div></label>
+        <p class="small muted pc-hint" aria-live="polite"></p>
+        <div class="pc-pw" hidden><label>${esc(t("f_password"))}<input name="pw" type="password" autocomplete="current-password"></label></div>
+        <div class="pc-new" hidden>
+          <label>${esc(t("f_newPw"))}<input name="npw" type="password" minlength="6" autocomplete="new-password"></label>
+          <label>${esc(t("f_pw2"))}<input name="npw2" type="password" minlength="6" autocomplete="new-password"></label>
+        </div>
+        <button class="btn primary block" disabled>${ic("lock")} <span class="pc-btn">${esc(t("signIn"))}</span></button>
+        <p class="small muted center pc-forgot" hidden>${esc(t("forgot"))}</p>
       </form>
       ${demo ? `<p class="small muted center">${esc(t("demoLogins"))}</p>` : ""}`}
     ${demo ? `<p class="small muted center">${ic("phone")} ${esc(t("demoBanner"))}</p>` : ""}
@@ -1399,10 +1404,59 @@ document.addEventListener("change", (e) => { const tp = e.target.closest && e.ta
 document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("#sheet").hidden) closeSheet(); });
 
 // ---------- forms ----------
+// Sign-in: the phone number is checked as it is typed. Makers (anyone who can change things) then
+// see a password field (or create their own password the first time); everyone else signs in with
+// the phone number only and can read. Numbers not on the list keep reading the public pages.
+const pwIsPhone = (pw, phone) => /^[+0-9 ()-]+$/.test(pw || "") && S.phone8(pw) === S.phone8(phone);
+function pcShow(f, kind) {
+  f.dataset.kind = kind || ""; f.dataset.kphone = kind ? S.phone8(f.phone.value) : "";
+  const q = (c) => f.querySelector(c);
+  q(".pc-pw").hidden = kind !== "maker"; q(".pc-new").hidden = kind !== "maker_new"; q(".pc-forgot").hidden = kind !== "maker";
+  q(".pc-hint").textContent = kind ? t("pc_" + kind) : "";
+  q(".pc-btn").textContent = t(kind === "maker_new" ? "firstPwBtn" : kind === "unknown" ? "pcBrowse" : "signIn");
+  q("button").disabled = !kind;
+  const focus = kind === "maker" ? f.pw : kind === "maker_new" ? f.npw : null; if (focus) setTimeout(() => focus.focus(), 50);
+}
+async function pcCheck(f) {
+  const ph = S.phone8(f.phone.value);
+  if (!validPhone(ph)) { pcShow(f, ""); return ""; }
+  if (f.dataset.kphone === ph && f.dataset.kind) return f.dataset.kind;
+  const kind = await api.phoneCheck(ph);
+  if (S.phone8(f.phone.value) === ph) pcShow(f, kind);
+  return kind;
+}
+let pcTimer = 0;
+document.addEventListener("input", (e) => {
+  const el = e.target.closest && e.target.closest("[data-phonecheck]"); if (!el) return;
+  const f = el.form; if (f.dataset.kphone !== S.phone8(el.value)) pcShow(f, "");
+  clearTimeout(pcTimer); pcTimer = setTimeout(() => pcCheck(f).catch((err) => toast(errMsg(err), true)), 300);
+});
+function mustChangeSheet(oldPw) {
+  sheet(t("pcChangeTitle"), `<form class="form" data-form="password"><p class="muted">${esc(t("pcChangeLead"))}</p>
+    <input type="hidden" name="old" value="${esc(oldPw)}">
+    <label>${esc(t("f_newPw"))}<input type="password" name="pw" required minlength="6" autocomplete="new-password"></label>
+    <button class="btn primary block">${ic("lock")} ${esc(t("save"))}</button></form>`, (el) => el.querySelector("input[name=pw]").focus());
+}
 F.login = async (f) => {
-  try { await api.login(f.phone.value, f.pw.value); }
-  catch (e) { if (e.code !== "needs_password") throw e; return firstPwSheet(f.phone.value); }
-  D = null; await refresh(); afterSignIn(); backAfterLogin(); localReminders(); };
+  const phone = S.phone8(f.phone.value);
+  if (!validPhone(phone)) throw new S.AppError("bad_phone");
+  const kind = await pcCheck(f);
+  if (kind === "unknown") { LS.set("afterLogin", null); location.hash = "#/home"; return; }
+  if (kind === "maker_new") {
+    const pw = f.npw.value || "";
+    if (pw.length < 6) throw new S.AppError("short_password");
+    if (pw !== f.npw2.value) throw new S.AppError("pw_mismatch");
+    if (pwIsPhone(pw, phone)) throw new S.AppError("pw_is_phone");
+    await api.firstPassword(phone, pw); D = null; await refresh(); afterSignIn(); backAfterLogin(); toast(t("firstPwDone")); localReminders(); return;
+  }
+  if (kind === "maker" && !f.pw.value) { f.pw.focus(); throw new S.AppError("bad_login"); }
+  const pw = kind === "maker" ? f.pw.value : "";
+  let r;
+  try { r = await api.login(phone, pw); }
+  catch (e) { if (e.code !== "needs_password") throw e; return firstPwSheet(phone); }
+  D = null; await refresh(); afterSignIn(); backAfterLogin(); localReminders();
+  if (r && r.must_change) setTimeout(() => mustChangeSheet(pw), 700);
+};
 function afterSignIn() {
   if (viewMode() === "admin" && D && !hasRights()) { LS.set("view", "member"); toast(t("notAdmin")); }
   // Right after signing in, ask once for notifications (the phone only allows this after a tap).
@@ -1412,6 +1466,7 @@ A.notifyNow = async (d, btn) => { closeSheet(); await enableNotifications(btn); 
 F.firstpw = async (f) => {
   if ((f.pw.value || "").length < 6) throw new S.AppError("short_password");
   if (f.pw.value !== f.pw2.value) throw new S.AppError("pw_mismatch");
+  if (pwIsPhone(f.pw.value, f.dataset.phone)) throw new S.AppError("pw_is_phone");
   await api.firstPassword(f.dataset.phone, f.pw.value); closeSheet(); D = null; await refresh(); afterSignIn(); backAfterLogin(); toast(t("firstPwDone")); localReminders();
 };
 F.setup = async (f) => { if (!validPhone(f.phone.value)) throw new S.AppError("bad_phone"); await api.setupAdmin(f.name.value.trim(), f.phone.value, f.pw.value); await api.login(f.phone.value, f.pw.value); D = null; await refresh(); location.hash = "#/people"; };
@@ -1451,7 +1506,7 @@ F.group = async (f) => {
   await api.save("group", { id, kind: f.kind.value, name_id: f.name_id.value.trim(), name_bt: f.name_bt.value.trim() || f.name_id.value.trim(), name_en: f.name_en.value.trim() || f.name_id.value.trim(), color: f.color.value, icon: f.icon.value, sort: 50 });
   closeSheet(); await refresh(); toast(t("saved"));
 };
-F.password = async (f) => { await api.setPassword(f.old.value, f.pw.value); closeSheet(); toast(t("saved")); };
+F.password = async (f) => { if (pwIsPhone(f.pw.value, (D && D.me && D.me.phone) || "")) throw new S.AppError("pw_is_phone"); await api.setPassword(f.old.value, f.pw.value); closeSheet(); toast(t("saved")); };
 F.settings = async (f) => {
   LS.set("claudeKey", f.claudeKey.value.trim());
   if (f.supabaseUrl) {
@@ -1588,8 +1643,9 @@ async function seedDemo() {
 const TEACH_SEED = {
   "sekolah-minggu": [["@me", "tmaker"], ["Dien Pasaribu", "tmaker"]],
   remaja: [["@me", "tmaker"], ["Richard Siburian", "tmaker"], ["Royen Gultom", "tmaker"]],
-  ama: [["@me", "tmaker"], ["Toga Sihombing", "tmaker"]],
-  ina: [["@me", "tmaker"], ["Dearni Purba", "tmaker"]],
+  ama: [["@me", "tmaker"], ["Toga Sihombing", "tmaker", "97894504"]],
+  ina: [["@me", "tmaker"], ["Dearni Purba", "tmaker", "97827584"]],
+  pelaut: [["@me", "tmaker"], ["Reynold Limbong", "tmaker", "91244555"]],
   naposo: [["Naomi Lubis", "ychair", "89498420"], ["Vhasya Bintang", "ytreasurer", "91881205"], ["Gio Sihombing", "ysecretary", "90538139"]],
 };
 const normName = (n) => String(n || "").toLowerCase().replace(/^(pdt|st|sintua|cst|bapak|ibu|sdr|sdri|kak|bang)\.?\s+/g, "").replace(/[^a-z ]/g, " ").replace(/\s+/g, " ").trim();

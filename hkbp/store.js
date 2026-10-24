@@ -8,6 +8,7 @@ const LS = {
   get(k, d) { try { const v = localStorage.getItem("hkbp." + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
   set(k, v) { try { if (v == null) localStorage.removeItem("hkbp." + k); else localStorage.setItem("hkbp." + k, JSON.stringify(v)); } catch {} },
 };
+const pwIsPhone = (pw, phone) => /^[+0-9 ()-]+$/.test(pw || "") && phone8(pw) === phone;
 const phone8 = (p) => { const d = String(p || "").replace(/\D/g, ""); return d.length === 10 && d.startsWith("65") ? d.slice(2) : d; };
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(16).slice(2));
 const sgToday = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Singapore" }).format(new Date());
@@ -32,7 +33,7 @@ const DEFAULT_GROUPS = [
 ].map(([id, kind, name_id, name_bt, name_en, color, icon, sort]) => ({ id, kind, name_id, name_bt, name_en, color, icon, sort }));
 
 // Categories run by teachers (Teacher Makers and Teachers), see hk__teach in backend/schema.sql.
-const TEACH = ["naposo", "sekolah-minggu", "remaja", "ama", "ina"];
+const TEACH = ["naposo", "sekolah-minggu", "remaja", "ama", "ina", "pelaut"];
 // Makers (may post) in teacher-run categories. In Youth they are the Youth Chair, Treasurer and Secretary (YB 2026-10-25).
 const MAKERS = ["tmaker", "ychair", "ytreasurer", "ysecretary"];
 
@@ -93,18 +94,26 @@ const Local = {
     await this.commit();
   },
   hasSession() { return !!LS.get("local.me"); },
+  // Same rules as hk__leader / hk_phone_check / hk_login in backend/schema.sql.
+  isMaker(db, m) { return !!m.is_admin || Object.entries(m.groups || {}).some(([g, r]) => r !== "member" || g === "parhalado" || (db.groups.find((x) => x.id === g) || {}).kind === "office"); },
+  async phoneCheck(phone) {
+    const db = await this.load(); const m = db.members.find((x) => x.phone === phone8(phone));
+    if (!m) return "unknown"; if (!this.isMaker(db, m)) return "member"; return m.pass_hash ? "maker" : "maker_new";
+  },
   async login(phone, pw) {
     const db = await this.load(); const h = await sha(pw);
     const m = db.members.find((x) => x.phone === phone8(phone));
-    if (m && !m.pass_hash && !pw && !m.is_admin && !Object.entries(m.groups || {}).some(([g, r]) => r !== "member" || g === "parhalado" || (db.groups.find((x) => x.id === g) || {}).kind === "office")) { LS.set("local.me", m.id); return; }
+    if (m && !pw && !this.isMaker(db, m)) { LS.set("local.me", m.id); return {}; }
     if (m && !m.pass_hash) throw new AppError("needs_password");
     if (!m || m.pass_hash !== h) throw new AppError("bad_login");
     LS.set("local.me", m.id);
+    return { must_change: this.isMaker(db, m) && pwIsPhone(pw, m.phone) };
   },
   async firstPassword(phone, pw) {
     const db = await this.load(); const m = db.members.find((x) => x.phone === phone8(phone));
     if (!m || m.pass_hash) throw new AppError("bad_login");
     if ((pw || "").length < 6) throw new AppError("short_password");
+    if (pwIsPhone(pw, m.phone)) throw new AppError("pw_is_phone");
     m.pass_hash = await sha(pw); await this.commit(); LS.set("local.me", m.id);
   },
   async logout() { LS.set("local.me", null); },
@@ -112,6 +121,7 @@ const Local = {
     const m = await this.me();
     if ((newPw || "").length < 6) throw new AppError("short_password");
     if (m.pass_hash !== await sha(oldPw)) throw new AppError("bad_login");
+    if (pwIsPhone(newPw, m.phone)) throw new AppError("pw_is_phone");
     m.pass_hash = await sha(newPw); await this.commit();
   },
   // Before signing in: the same public parts as hk_public() in backend/schema.sql.
@@ -321,7 +331,7 @@ const Remote = {
     } catch { throw new AppError("offline"); }
     const txt = await res.text(); let j = null; try { j = txt ? JSON.parse(txt) : null; } catch {}
     if (!res.ok) {
-      const code = ((j && j.message) || "").match(/not_signed_in|bad_login|needs_password|not_allowed|short_password|file_too_big|unknown_kind|bad_phone|need_name/);
+      const code = ((j && j.message) || "").match(/not_signed_in|bad_login|needs_password|not_allowed|short_password|pw_is_phone|file_too_big|unknown_kind|bad_phone|need_name/);
       if (code && code[0] === "not_signed_in") LS.set("remote.token", null);
       throw new AppError(code ? code[0] : "server");
     }
@@ -330,7 +340,8 @@ const Remote = {
   get token() { return LS.get("remote.token"); },
   hasSession() { return !!this.token; },
   async needsSetup() { return false; },
-  async login(phone, pw) { const r = await this.rpc("hk_login", { p_phone: phone, p_password: pw }); LS.set("remote.token", r.token); },
+  async login(phone, pw) { const r = await this.rpc("hk_login", { p_phone: phone, p_password: pw }); LS.set("remote.token", r.token); return r; },
+  async phoneCheck(phone) { return this.rpc("hk_phone_check", { p_phone: phone }); },
   async firstPassword(phone, pw) { const r = await this.rpc("hk_first_password", { p_phone: phone, p_password: pw }); LS.set("remote.token", r.token); },
   async logout() { const t = this.token; LS.set("remote.token", null); LS.set("remote.cache", null); try { await this.rpc("hk_logout", { p_token: t }); } catch {} },
   async setPassword(o, n) { return this.rpc("hk_set_password", { p_token: this.token, p_old: o, p_new: n }); },
