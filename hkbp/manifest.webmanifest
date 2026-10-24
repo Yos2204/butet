@@ -1,7 +1,7 @@
 {
-  "name": "One HKBPS",
-  "short_name": "One HKBPS",
-  "description": "One HKBPS: the HKBP Singapore church app for groups, rosters, daily bread, birthdays, elders' updates and events.",
+  "name": "Sada HKBPS",
+  "short_name": "Sada HKBPS",
+  "description": "Sada HKBPS: the HKBP Singapore church app for groups, rosters, daily bread, birthdays, elders' updates and events.",
   "id": "./",
   "start_url": "./#/home",
   "scope": "./",
