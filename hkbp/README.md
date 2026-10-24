@@ -1,4 +1,4 @@
-# HKBP Singapore app
+# One HKBPS (HKBP Singapore church app)
 
 One installable phone app (iPhone and Android) for the whole congregation, in Bahasa Indonesia, Batak Toba and English.
 Live at https://yos2204.github.io/butet/hkbp/ once merged to main. Try it with sample data: `https://yos2204.github.io/butet/hkbp/?demo=1`

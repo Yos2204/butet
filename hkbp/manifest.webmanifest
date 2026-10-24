@@ -1,7 +1,7 @@
 {
-  "name": "HKBP Singapore",
-  "short_name": "HKBP SG",
-  "description": "HKBP Singapore church app: groups, rosters, daily bread, birthdays, elders' updates and events.",
+  "name": "One HKBPS",
+  "short_name": "One HKBPS",
+  "description": "One HKBPS: the HKBP Singapore church app for groups, rosters, daily bread, birthdays, elders' updates and events.",
   "id": "./",
   "start_url": "./#/home",
   "scope": "./",
@@ -10,8 +10,21 @@
   "background_color": "#ffffff",
   "theme_color": "#2f3189",
   "icons": [
-    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
-    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
   ]
 }
