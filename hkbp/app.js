@@ -1334,7 +1334,7 @@ function parseDob(s) {
 }
 const yes = (v) => /^(y|yes|ya|iya|olo|1|true|x|✓|v)$/i.test(String(v || "").trim());
 function matchGroup(tok) {
-  const n = norm(tok).replace(/\b(chair|ketua|member|anggota|maker|pembuat|checker|pemeriksa)\b/g, "").trim(); if (!n) return null;
+  const n = norm(tok).replace(/\b(chair|ketua|member|anggota|maker|pembuat|checker|pemeriksa|user)\b/g, "").trim(); if (!n) return null;
   return D.groups.find((g) => [g.id, g.name_id, g.name_bt, g.name_en].some((x) => { const v = norm(x); return v && (v === n || v.startsWith(n) || n.startsWith(v) || v.split(" ").includes(n) || v.replace(/[()]/g, "").includes(n)); })) || null;
 }
 function memberRows(tables) {
@@ -1346,7 +1346,7 @@ function memberRows(tables) {
     return tb.rows.slice(hi + 1).map((r) => {
       const get = (k) => (k in idx ? String(r[idx[k]] || "").trim() : "");
       const groups = {}; const unknown = [];
-      get("groups").split(/[;,\/\n]+/).forEach((tok) => { if (!tok.trim()) return; const g = matchGroup(tok); if (g) groups[g.id] = /chair|ketua/i.test(tok) ? "chair" : /maker|pembuat/i.test(tok) ? "maker" : /checker|pemeriksa/i.test(tok) ? "checker" : groups[g.id] || "member"; else unknown.push(tok.trim()); });
+      get("groups").split(/[;,\/\n]+/).forEach((tok) => { if (!tok.trim()) return; const g = matchGroup(tok); if (g) groups[g.id] = /chair|ketua/i.test(tok) ? "chair" : /maker|pembuat/i.test(tok) ? "maker" : /checker|pemeriksa|\buser\b/i.test(tok) ? "checker" : groups[g.id] || "member"; else unknown.push(tok.trim()); });
       get("chair").split(/[;,\/\n]+/).forEach((tok) => { if (!tok.trim() || /^(no|tidak|-)$/i.test(tok.trim())) return; const g = matchGroup(tok); if (g) groups[g.id] = "chair"; else unknown.push(tok.trim()); });
       const rawDob = get("dob"); const dob = parseDob(rawDob); const rawWed = get("wed"); const wed = parseDob(rawWed);
       const row = { name: get("name"), alias: get("alias"), phone: S.phone8(get("phone")), dob, wed, password: get("password"), groups, is_admin: yes(get("is_admin")), wa_optin: yes(get("wa_optin")) };
