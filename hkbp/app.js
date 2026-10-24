@@ -1267,9 +1267,12 @@ document.addEventListener("click", (e) => {
   e.preventDefault(); Promise.resolve(fn(b.dataset, b)).catch((err) => toast(errMsg(err), true));
 });
 document.addEventListener("input", (e) => {
+  const tp = e.target.closest("[data-tp]");
+  if (tp) { const fm = tp.form; const ins = fm.querySelectorAll(`[data-tp="${tp.dataset.tp}"]`); fm[tp.dataset.tp].value = `${wTimeFix(ins[0].value)} - ${wTimeFix(ins[1].value)}`; return; }
   const f = e.target.closest("[data-filter]"); if (!f) return;
   const q = norm(f.value); document.querySelectorAll(f.dataset.filter).forEach((el) => (el.hidden = q && !el.dataset.q.includes(q)));
 });
+document.addEventListener("change", (e) => { const tp = e.target.closest && e.target.closest("[data-tp]"); if (tp) tp.value = wTimeFix(tp.value); });
 document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("#sheet").hidden) closeSheet(); });
 
 // ---------- forms ----------
@@ -1539,7 +1542,7 @@ R.office = (gid) => {
     <div class="chips office-tabs">${officeGroups().map((o) => `<a class="chip ${o.id === gid ? "on" : ""}" href="#/o/${o.id}" style="--gc:${o.color}">${esc(gname(o))}</a>`).join("")}</div>
     ${gid === "secretary" ? wartaBlock() : ""}
     ${gid === "treasurer" ? financeBlock() : ""}
-    <div class="card"><div class="card-h"><h3>${ic("file")} ${esc(t("officeFiles"))}</h3>${canUpload(gid) ? `<button class="btn sm primary" data-act="uploadFile" data-g="${gid}">${ic("upload")} ${esc(t("uploadFile"))}</button>` : ""}</div>
+    <div class="card"><div class="card-h"><h3>${ic("file")} ${esc(t("officeFiles"))}</h3>${canUpload(gid) && gid !== "treasurer" ? `<button class="btn sm primary" data-act="uploadFile" data-g="${gid}">${ic("upload")} ${esc(t("uploadFile"))}</button>` : ""}</div>
       ${files.length ? files.map(fileRow).join("") : `<p class="muted small">${esc(t("noFiles"))}</p>`}</div>
     <div class="card"><div class="card-h"><h3>${ic("people")} ${esc(t("officeHolders"))}</h3>${isAdmin() ? `<button class="btn sm" data-act="addHolder" data-g="${gid}">${ic("plus")} ${esc(t("addHolder"))}</button>` : ""}</div>
       ${hs.length ? hs.map((p) => `<div class="li"><span class="avatar">${esc(initials(p.name))}</span><span class="grow"><b>${esc(p.name)}</b><small>${esc(fmtPhone(p.phone))}</small></span>
@@ -1644,23 +1647,6 @@ A.waSendFile = async () => {
 // ---------- Treasurer: Warta Keuangan (used by the Secretary's Warta Jemaat) ----------
 // Warta Keuangan: the treasurer types each part by hand every week. The Warta PDF cannot be made without it.
 const finFor = (day) => D.posts.find((p) => p.group_id === "treasurer" && p.kind === "finance" && p.day === day);
-const FIN_PARTS = [["A", "PERSEMBAHAN"], ["B", "PERSEMBAHAN BULANAN"], ["C", "DANA PEMBANGUNAN GEREJA"]];
-function finSplit(body) {
-  const out = { date: "", parts: ["", "", ""] }; let k = -1;
-  String(body || "").split(/\n/).forEach((l) => {
-    const h = l.trim().match(/^([ABC])[.)]\s*(.*)$/);
-    if (h && FIN_PARTS.some(([x]) => x === h[1]) && /PERSEMBAHAN|DANA/i.test(h[2])) { k = "ABC".indexOf(h[1]); if (k === 0) out.date = h[2].replace(/^PERSEMBAHAN\s*/i, "").trim(); return; }
-    if (k >= 0 && l.trim()) out.parts[k] += (out.parts[k] ? "\n" : "") + l.trim().replace(/^\d{1,2}[.)]\s*/, "");
-  });
-  return out;
-}
-function finJoin(date, parts) {
-  return FIN_PARTS.map(([x, name], i) => {
-    const items = String(parts[i] || "").split(/\n/).map((l) => l.trim().replace(/^\d{1,2}[.)]\s*/, "")).filter(Boolean);
-    const body = items.length === 1 && /^[-–]$/.test(items[0]) ? "-" : items.map((l, j) => `${j + 1}. ${l}`).join("\n");
-    return `${x}. ${name}${i === 0 && date ? " " + date : ""}\n${body}`;
-  }).join("\n\n");
-}
 function financeBlock() {
   const sun = nextSunday(); const cur = finFor(sun); const p = cur || lastPost("treasurer", "finance");
   return `<div class="card"><div class="card-h"><h3>${ic("coins")} ${esc(t("financeTitle"))}</h3>${canUpload("treasurer") ? `<button class="btn sm primary" data-act="financeForm">${ic("edit")} ${esc(t(cur ? "financeEdit" : "financeNew"))}</button>` : ""}</div>
@@ -1673,21 +1659,62 @@ function finPrompt() {
   const sun = nextSunday(); if (finFor(sun)) return "";
   return `<a class="card notice-card" href="#/o/treasurer">${ic("coins")}<span class="grow"><b>${esc(t("finNeededTitle"))}</b><small>${esc(t("finNeeded", fmtID(sun)))}</small></span>${ic("chev", "chev")}</a>`;
 }
+// Treasurer form: fields laid out like the Warta Keuangan (A to D). The text for the Warta is built from them.
+const FIN_SECS = [["A", "PERSEMBAHAN"], ["B", "PERSEMBAHAN BULANAN"], ["C", "DANA PEMBANGUNAN GEREJA"], ["D", "PERSEMBAHAN SYUKUR"]];
+const FIN_A = ["Persembahan Ibadah Umum", "Sekolah Minggu", "Remaja"];
+const finNum = (x) => { const n = parseFloat(String(x || "").replace(/[^\d.]/g, "")); return isFinite(n) && String(x || "").trim() ? n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ""; };
+const finRaw = (x) => String(x || "").replace(/,/g, "");
+function finParse(body) {
+  const out = { date: "", A: [], B: [], C: [], D: [] }; let k = null;
+  String(body || "").split(/\n/).forEach((l0) => {
+    const l = l0.trim(); const h = l.match(/^([A-D])[.)]\s*(.*)$/);
+    if (h && /PERSEMBAHAN|DANA/i.test(h[2])) { k = h[1]; if (k === "A") out.date = h[2].replace(/^PERSEMBAHAN\s*/i, "").trim(); return; }
+    if (!k || !l || /^[-–]$/.test(l)) return;
+    const x = l.replace(/^\d{1,2}[.)]\s*/, "").replace(/;$/, "");
+    if (k === "A") { const m = x.match(/^([^:]+):\s*(.*)$/); const amt = (cur) => { const r = (m ? m[2] : "").match(new RegExp(cur + "\\s*([\\d.,]+)", "i")); return r ? finRaw(r[1]) : ""; }; out.A.push({ name: m ? m[1].trim() : x, sgd: amt("SGD"), idr: amt("IDR"), myr: amt("MYR") }); }
+    else if (k === "D") { const m = x.match(/^(.*?),\s*SGD\s*([\d.,]+)\s*$/i); out.D.push(m ? { name: m[1].trim(), amt: finRaw(m[2]) } : { name: x, amt: "" }); }
+    else { const i = x.lastIndexOf(","); out[k].push(i > 0 ? { name: x.slice(0, i).trim(), when: x.slice(i + 1).trim() } : { name: x, when: "" }); }
+  });
+  return out;
+}
+function finBuild(date, x) {
+  const line = { A: (r) => { const a = [["SGD", r.sgd], ["IDR", r.idr], ["MYR", r.myr]].filter(([, v]) => finNum(v)).map(([c, v]) => `${c} ${finNum(v)}`); return r.name && a.length ? `${r.name}: ${a.join(" + ")}` : ""; },
+    B: (r) => r.name ? r.name + (r.when ? ", " + r.when : "") : "", C: (r) => r.name ? r.name + (r.when ? ", " + r.when : "") : "", D: (r) => r.name ? r.name + (finNum(r.amt) ? ", SGD " + finNum(r.amt) : "") : "" };
+  return FIN_SECS.map(([k, name]) => { const items = (x[k] || []).map(line[k]).filter(Boolean);
+    return `${k}. ${name}${k === "A" && date ? " " + date : ""}\n${items.length ? items.map((l, i) => `${i + 1}. ${l}`).join("\n") : "-"}`; }).join("\n\n");
+}
+const finRow = (k, r = {}) => k === "A"
+  ? `<div class="fin-row fa"><input name="n" value="${esc(r.name || "")}" placeholder="${esc(t("finWhat"))}"><div class="fin-amt"><label>SGD<input name="sgd" inputmode="decimal" value="${esc(r.sgd || "")}" placeholder="0.00"></label><label>IDR<input name="idr" inputmode="decimal" value="${esc(r.idr || "")}"></label><label>MYR<input name="myr" inputmode="decimal" value="${esc(r.myr || "")}"></label></div><button type="button" class="icon-btn" data-act="finRm" aria-label="${esc(t("delete"))}">${ic("x")}</button></div>`
+  : k === "D"
+  ? `<div class="fin-row"><input name="n" value="${esc(r.name || "")}" placeholder="${esc(t("finName"))}"><input name="amt" class="fin-sm" inputmode="decimal" value="${esc(r.amt || "")}" placeholder="SGD (${esc(t("optional"))})"><button type="button" class="icon-btn" data-act="finRm" aria-label="${esc(t("delete"))}">${ic("x")}</button></div>`
+  : `<div class="fin-row"><input name="n" value="${esc(r.name || "")}" placeholder="${esc(t("finName"))}"><input name="when" class="fin-sm" value="${esc(r.when || "")}" placeholder="${esc(t("finWhen"))}"><button type="button" class="icon-btn" data-act="finRm" aria-label="${esc(t("delete"))}">${ic("x")}</button></div>`;
 A.financeForm = (d) => {
-  const sun = d && d.day || nextSunday(); const p = finFor(sun); const x = p ? finSplit(p.body) : { date: fmtID(addDays(sun, -7)), parts: ["", "", ""] };
-  const hint = [t("finHintA"), t("finHintB"), t("finHintC")];
-  sheet(t("financeTitle"), `<form class="form" data-form="finance" data-id="${p ? p.id : ""}">
+  const sun = d && d.day || nextSunday(); const p = finFor(sun); const prevSun = addDays(sun, -7);
+  const x = p ? finParse(p.body) : { date: fmtID(prevSun), A: [], B: [], C: [], D: [] };
+  if (!x.A.length) x.A = FIN_A.map((name) => ({ name }));
+  const sec = (k, name) => `<fieldset class="fin-sec" data-s="${k}"><legend>${k}. ${esc(name)}</legend>
+    ${k === "A" ? `<label class="fin-date">${esc(t("finOffDate"))}<input name="fdate" value="${esc(x.date)}" placeholder="${esc(fmtID(prevSun))}" required></label>` : `<p class="small muted">${esc(t("finEmptyOk"))}</p>`}
+    <div class="fin-rows">${(x[k].length ? x[k] : k === "A" ? [] : [{}]).map((r) => finRow(k, r)).join("")}</div>
+    <button type="button" class="btn sm ghost" data-act="finAdd" data-s="${k}">${ic("plus")} ${esc(t("finAddRow"))}</button></fieldset>`;
+  sheet(t("financeTitle"), `<form class="form fin-form" data-form="finance" data-id="${p ? p.id : ""}">
     <label>${esc(t("financeFor"))}<input type="date" name="day" value="${esc(sun)}" required></label>
-    <p class="small muted">${esc(t("finManual"))}</p>
-    ${FIN_PARTS.map(([k, name], i) => `<label><b>${k}. ${esc(name)}</b>${i === 0 ? `<input name="fdate" value="${esc(x.date)}" placeholder="11 Oktober 2026" required style="margin-bottom:6px">` : ""}
-      <textarea name="fp${i}" rows="${i ? 3 : 5}" required placeholder="${esc(hint[i])}">${esc(x.parts[i])}</textarea></label>`).join("")}
-    <p class="small muted">${esc(t("financeHint"))}</p>
+    ${FIN_SECS.map(([k, name]) => sec(k, name)).join("")}
+    <details class="fin-prev"><summary>${esc(t("preview"))}</summary><p class="pre small" id="fin-prev"></p></details>
     <button class="btn primary block">${esc(t("save"))}</button></form>`);
+  finPreview();
 };
+A.finAdd = (d) => { const box = document.querySelector(`.fin-sec[data-s="${d.s}"] .fin-rows`); if (!box) return; box.insertAdjacentHTML("beforeend", finRow(d.s)); const ins = box.lastElementChild.querySelector("input"); if (ins) ins.focus(); finPreview(); };
+A.finRm = (d, btn) => { const r = btn.closest(".fin-row"); if (r) r.remove(); finPreview(); };
+function finCollect(f) {
+  const x = {}; FIN_SECS.forEach(([k]) => { x[k] = [...f.querySelectorAll(`.fin-sec[data-s="${k}"] .fin-row`)].map((row) => { const o = {}; row.querySelectorAll("input").forEach((i) => (o[i.name === "n" ? "name" : i.name] = i.value.trim())); return o; }); });
+  return x;
+}
+function finPreview() { const f = document.querySelector(".fin-form"); const el = document.getElementById("fin-prev"); if (f && el) el.textContent = "WARTA KEUANGAN\n" + finBuild(f.fdate.value.trim(), finCollect(f)); }
+document.addEventListener("input", (e) => { if (e.target.closest && e.target.closest(".fin-form")) finPreview(); });
 F.finance = async (f) => {
-  const parts = [0, 1, 2].map((i) => f["fp" + i].value.trim());
-  if (parts.some((x) => !x) || !f.fdate.value.trim()) throw new S.AppError("fin_parts");
-  await api.save("post", { id: f.dataset.id || undefined, group_id: "treasurer", kind: "finance", title: "Warta Keuangan " + f.day.value, body: finJoin(f.fdate.value.trim(), parts), day: f.day.value });
+  const x = finCollect(f);
+  if (!f.fdate.value.trim() || !x.A.some((r) => r.name && (finNum(r.sgd) || finNum(r.idr) || finNum(r.myr)))) throw new S.AppError("fin_parts");
+  await api.save("post", { id: f.dataset.id || undefined, group_id: "treasurer", kind: "finance", title: "Warta Keuangan " + f.day.value, body: finBuild(f.fdate.value.trim(), x), day: f.day.value });
   closeSheet(); await refresh(); toast(t("saved"));
   const wf = $("#warta-form .wfin"); if (wf) wf.outerHTML = wFinBox($("#warta-form").dataset.day);
 };
@@ -1706,7 +1733,7 @@ const TEAM_ROSTER = { "Pemain Musik": "musik", "Song Leader": "song-leader", "Mu
 const ROLE_ALIAS = { agenda: "Liturgist", liturgis: "Liturgist", warta: "Pembaca Warta", "pembaca warta": "Pembaca Warta", "penerima tamu": "Penerima Tamu", "usher": "Penerima Tamu", "pemain musik": "Pemain Musik", musik: "Pemain Musik", "song leader": "Song Leader", "songleader": "Song Leader", "st sekolah minggu": "St. Sekolah Minggu", "st. sekolah minggu": "St. Sekolah Minggu", pengkhotbah: "Pengkhotbah", "pemimpin ibadah": "Liturgist", "tally counter": "Tally Counter", bahasa: "Bahasa", "sekolah minggu": "Sekolah Minggu", remaja: "Remaja", multimedia: "Multimedia" };
 const WARTA_BASE = {
   resort: "Resort Singapore - Distrik XX Kepulauan Riau", address: "8 Short Street Singapore 188214", email: "hkbpsingapura@gmail.com",
-  timeThis: "13.30 - 15.00", timeNext: "13.30 - 15.00", minggu: "", theme: "", verse: "", renTitle: "", renVerse: "", renungan: "", renunganBy: "", rosterLink: "",
+  timeThis: "13.30 - 15.30", timeNext: "13.30 - 15.30", minggu: "", theme: "", verse: "", renTitle: "", renVerse: "", renungan: "", renunganBy: "", rosterLink: "",
   bdays: "", anniv: "", bdayVerse: "Mazmur 22: 11: “Kepada-Mu aku diserahkan sejak aku lahir, sejak dalam kandungan ibuku Engkaulah Allahku.”",
   annivVerse: "Mazmur 128: 1: “Berbahagialah setiap orang yang takut akan TUHAN, yang hidup menurut jalan yang ditunjukkan-Nya!”",
   finance: "", org: "Spiritual Committee\nPreacher : Pdt. Catherina N Hutasoit\n88176835\nDeacons :\n1. St Ratna Silitonga\n2. St Johnny Tobing\nOrdinary Com.-Administration\nKetua (Chairman)\nSt Royen Gultom 97355376\nAnggota :\nSekretaris (Hon. Secretary)\nRichard Siburian 9842-9041\nBendahara (Hon. Treasurer)\nDwita Situmorang 90106487\nAnggota Biasa (Admin)\n1. Nurani Simatupang\n2. Maria Tobing\nAnggota Biasa (Auditors)\n1. Sondang Simbolon\n2. Petra Sibuea\nDewan Koinonia (Koinonia Council)\nSt Farinton Nainggolan\nAnggota :\n1. Dien Pasaribu (S Minggu)\n2. St Yosafat Bangun (Remaja)\n3. Naomi Lubis (Pemuda)\n4. Dearni Purba (Kaum Perempuan)\n5. Toga Sihombing (Kaum Bapak)\n6. Reynold Limbong (Pelaut/pekerja)\nDewan Marturia (Marturia Council)\nSt. Helmi Sihombing\nAnggota :\n1. St Royen Gultom (Zending)\n2. Richard Siburian (Musik)\n3. Mira Nainggolan (Musik-Vocal)\nDewan Diakonia (Diaconia Council)\nSt. Ratna Silitonga\nAnggota :\n1. St. Harry Sianturi (Sosial Kem.)\n2. Sophia Siagian (Kesehatan)\n3. Marcus Simanjuntak (Pendidikan)\n4. Andrew Butarbutar (Perlengkapan)\nSintua (Elders)\nSt Royen Gultom; St. Alston Manik; St Johnny Tobing; St Helmi Sihombing; St Ratna Silitonga; St Jannes Sibuea; St Sabar Butarbutar; St Yosafat Bangun; St Hermanto Hutasoit; St Farinton Nainggolan; St Harry Sianturi", doa: "1. Pelayanan gereja sesuai dengan warta jemaat & yang berulang tahun.\n2. Kesehatan seluruh jemaat HKBP Singapore dan se-Resort Singapore, termasuk para siswa, mahasiswa, Pekerja dan Pelaut di Singapore dan keluarga.\n3. Pemulihan jemaat yang sakit.",
@@ -1714,7 +1741,7 @@ const WARTA_BASE = {
   jadwalTitle: "", jadwal: "", berita: "", attDate: "", att: ["", "", "", "", ""],
   closing: "Selalu hidup beriman, penuh Kasih dan Berpengharapan.", team: TEAM_ROLES.map((r) => [r, "", ""]),
 };
-const CARRY = ["resort", "address", "email", "timeThis", "timeNext", "bdayVerse", "annivVerse", "org", "doa", "info", "closing", "rosterLink"];
+const CARRY = ["resort", "address", "email", "bdayVerse", "annivVerse", "org", "doa", "info", "closing", "rosterLink"];
 const wartaPosts = () => D.posts.filter((p) => p.group_id === "secretary" && p.kind === "warta").sort((a, b) => (b.day || "").localeCompare(a.day || ""));
 const parseJSON = (s) => { try { return JSON.parse(s) || {}; } catch { return {}; } };
 function rosterNames(gid, iso) {
@@ -1758,7 +1785,6 @@ function wartaLoad(day) {
   const prevTeam = Array.isArray(P0.team) ? P0.team : null; const lastWeek = prev && prev.day === addDays(day, -7);
   W.team = TEAM_ROLES.concat(prevTeam ? prevTeam.map((r) => r[0]).filter((r) => !TEAM_ROLES.includes(r)) : []).map((r) => {
     const old = prevTeam && prevTeam.find((x) => x[0] === r); return [r, old && lastWeek ? old[2] || "" : "", ""]; });
-  if (lastWeek && P0.timeNext) W.timeThis = P0.timeNext;
   return Object.assign(W, wartaAutoParts(day, W.team));
 }
 async function tataMeta(day) {
@@ -1781,6 +1807,15 @@ const wIn = (name, label, val, src = "") => `<label>${wLab(name, label, src)}<in
 const W_SECS = { "@head": ["minggu", "theme", "verse", "timeThis", "timeNext"], "@ren": ["renTitle", "renVerse", "renungan", "renunganBy"] };
 const wPlainLab = (label, src) => `<span class="w-lab"><span>${esc(label)}${src ? ` <span class="src-tag">${esc(src)}</span>` : ""}</span></span>`;
 const wIn0 = (name, label, val, src = "") => `<label>${wPlainLab(label, src)}<input name="${name}" value="${esc(val || "")}"></label>`;
+// Service time: start and end, each picked from the list or typed; the hidden field keeps "13.30 - 15.30".
+const wTimeParts = (v) => { const m = String(v || "").match(/(\d{1,2}[.:]\d{2})\D+(\d{1,2}[.:]\d{2})/); return m ? [m[1].replace(":", "."), m[2].replace(":", ".")] : ["", ""]; };
+const wTime = (name, label, val) => { const [a, b] = wTimeParts(val); return `<div class="wtime"><span class="wtime-l">${esc(label)}</span><div class="wtime-r">
+  <input data-tp="${name}" list="w-times" value="${esc(a)}" inputmode="decimal" placeholder="13.30" aria-label="${esc(label)} ${esc(t("w_from"))}"><span>–</span>
+  <input data-tp="${name}" list="w-times" value="${esc(b)}" inputmode="decimal" placeholder="15.30" aria-label="${esc(label)} ${esc(t("w_to"))}"></div>
+  <input type="hidden" name="${name}" value="${esc(val || "")}"></div>`; };
+const wTimeList = () => { const o = []; for (let m = 6 * 60; m <= 22 * 60; m += 15) o.push(`<option value="${String(Math.floor(m / 60)).padStart(2, "0")}.${String(m % 60).padStart(2, "0")}">`); return `<datalist id="w-times">${o.join("")}</datalist>`; };
+const wTimeFix = (x) => { const m = String(x || "").trim().match(/^(\d{1,2})(?:[.:]?(\d{2}))?$/); return m ? `${m[1].padStart(2, "0")}.${m[2] || "00"}` : String(x || "").trim(); };
+function wTimeSync(f) { ["timeThis", "timeNext"].forEach((n) => { if (!f || !f[n]) return; const [a, b] = wTimeParts(f[n].value); const ins = f.querySelectorAll(`[data-tp="${n}"]`); if (ins.length === 2 && a) { ins[0].value = a; ins[1].value = b; } }); }
 const wTa0 = (name, label, val, rows = 4, src = "") => `<label>${wPlainLab(label, src)}<textarea name="${name}" rows="${rows}">${esc(val || "")}</textarea></label>`;
 const wSecUp = (key, extra = "") => `<div class="row two w-secup"><button type="button" class="btn sm primary" data-act="wImp" data-f="${key}">${ic("upload")} ${esc(t("w_upSec"))}</button>${extra}</div>`;
 R.warta = (day) => {
@@ -1802,7 +1837,7 @@ R.warta = (day) => {
       <div class="row two"><button class="btn" data-act="wartaPreview">${ic("screen")} ${esc(t("preview"))}</button><button class="btn" data-act="wartaRefill">${ic("check")} ${esc(t("wartaRefill"))}</button></div></div>
     <form class="form" id="warta-form" data-form="warta" data-day="${day}">
       ${sec(t("w_head"), `${can ? wSecUp("@head") : ""}${wIn0("minggu", "Minggu", W.minggu, "Tata Ibadah")}${wIn0("theme", t("w_theme"), W.theme, "Tata Ibadah")}${wIn0("verse", t("f_verse"), W.verse, "Tata Ibadah")}
-        <div class="row two">${wIn0("timeThis", t("w_timeThis"), W.timeThis)}${wIn0("timeNext", t("w_timeNext"), W.timeNext)}</div>`, true)}
+        ${wTime("timeThis", t("w_timeThis"), W.timeThis)}${wTime("timeNext", t("w_timeNext"), W.timeNext)}${wTimeList()}`, true)}
       ${sec(t("w_renungan"), `<p class="small muted">${esc(t("w_renHint"))}</p>${can ? wSecUp("@ren", `<button type="button" class="btn sm" data-act="wFromBread">${ic("bread")} ${esc(t("w_fromBread"))}</button>`) : ""}${wIn0("renTitle", t("w_renTitle"), W.renTitle, t("bread"))}${wIn0("renVerse", t("f_verse"), W.renVerse, t("bread"))}${wTa0("renungan", t("w_renunganBody"), W.renungan, 12, t("bread"))}${wIn0("renunganBy", t("w_by"), W.renunganBy)}`, !W.renungan)}
       ${sec(t("birthdays"), `${wTa("bdays", t("w_bdays"), W.bdays, 4, t("src_bdays"))}${wTa("bdayVerse", t("w_verseGift"), W.bdayVerse, 2)}${wTa("anniv", t("w_anniv"), W.anniv, 3)}${wTa("annivVerse", t("w_verseGift"), W.annivVerse, 2)}`)}
       ${sec("Warta Keuangan", wFinBox(day), !finFor(day))}
@@ -1891,7 +1926,7 @@ function wPutSec(key, res) {
   if (key === "@ren") { const full = wartaFromFile(res, W.day, W.team); ["renTitle", "renVerse", "renungan", "renunganBy"].forEach((k) => { if (full[k]) parts[k] = full[k]; }); }
   const got = W_SECS[key].filter((k) => parts[k]);
   if (!got.length) { toast(t("w_noMatch"), true); return; }
-  got.forEach((k) => (f[k].value = parts[k]));
+  got.forEach((k) => (f[k].value = parts[k])); wTimeSync(f);
   const det = f[got[0]].closest("details"); if (det) det.open = true;
   closeSheet(); toast(t("w_filledN", got.map((k) => W_LABEL()[k]).join(", ")));
 }
@@ -1932,6 +1967,11 @@ function wPut(name, res, src) {
   if (name === "team") { if (!parts.team) { toast(t("w_noMatch"), true); return; } wSetTeam(f, parts.team); }
   else if (name === "att") { if (!parts.att) { toast(t("w_noMatch"), true); return; } parts.att.forEach((n, i) => { if (f["att" + i]) f["att" + i].value = n; }); if (parts.attDate) f.attDate.value = parts.attDate; }
   else {
+    const SEC_OF = { bdays: "bdays", bdayVerse: "bdays", anniv: "anniv", annivVerse: "anniv", org: "org", doa: "doa", info: "info", berita: "berita", jadwal: "info", jadwalTitle: "info" };
+    if ((v == null || v === "") && SEC_OF[name] && wSections(linesOfRes(res))[SEC_OF[name]]) {
+      // The file has this section but nothing in it this week (e.g. no anniversaries): leave it empty.
+      if (/^(bdays|anniv)$/.test(name)) { f[name].value = ""; closeSheet(); toast(t("w_emptySec", W_LABEL()[name] || name)); return; }
+    }
     if (v == null || v === "") {
       // No matching section: use the whole text of the file.
       const L = linesOfRes(res); const all = L.join("\n").replace(/\n{3,}/g, "\n\n").trim();
@@ -1998,7 +2038,7 @@ function wApplyAll(got) {
     });
     report.push([g.name, done.length ? done.join(", ") : t("w_nothingMatched")]);
   });
-  closeSheet();
+  wTimeSync(f); closeSheet();
   setTimeout(() => sheet(t("w_upDone"), `<div class="list">${report.map(([n, d]) => `<div class="li"><span class="grow"><b>${esc(n)}</b><small>${esc(d)}</small></span></div>`).join("")}</div>
     <p class="small muted">${esc(t("w_upDoneLead"))}</p>
     <button class="btn primary block" data-act="wImpPreview">${ic("screen")} ${esc(t("preview"))}</button>`), 230);
@@ -2032,7 +2072,7 @@ function wSections(lines) {
   const out = {}; let cur = "_top";
   lines.forEach((raw) => {
     const l = plain(raw).replace(/^[\d.)\s]+(?=[A-Za-z])/, (m) => (/^\d+[.)]\s*$/.test(m) ? m : "")).trim();
-    const h = W_HEADS.find(([, re]) => re.test(plain(raw)));
+    const h = W_HEADS.find(([, re]) => re.test(plain(raw))) || (/^sambutan&?tema/i.test(plain(raw).replace(/\s+/g, "")) ? ["sambutan"] : null);
     if (h) { cur = h[0]; (out[cur] = out[cur] || []).push({ head: plain(raw) }); return; }
     (out[cur] = out[cur] || []).push(raw);
   });
@@ -2046,8 +2086,24 @@ function wartaFromFile(res, day, team, only) {
   const want = (k) => !only || only === k || (only === "jadwal" && k === "jadwalTitle") || (only === "att" && k === "attDate");
   // Weekly roster from any table that has the Sunday's date.
   if (!only || only === "team") { const tm = rosterFromTables(res.tables || [], day) || (S2.team ? rosterFromTables([{ rows: S2.team.filter((x) => typeof x === "string").map((l) => plain(l).split(/\s*\|\s*/)) }], day) : null); if (tm) out.team = tm; }
-  const names = (arr) => (arr || []).filter((x) => typeof x === "string").filter(isNumItem).map((l) => plain(l).replace(/^(\d{1,2}|[a-zA-Z])[.)]\s+/, "")).filter((n) => n.length < 60);
-  const verseOf = (arr) => { const v = (arr || []).filter((x) => typeof x === "string").join(" ").match(/tertulis dalam\s+(.+)$/i); return v ? plain(v[1]) : ""; };
+  // Names in the birthday / anniversary part: numbered or plain lines, table cells ("A | B"), up to the gift-verse sentence.
+  const names = (arr) => {
+    const out = [];
+    for (const x of (arr || []).filter((y) => typeof y === "string")) {
+      const l = plain(x).replace(/\*\*/g, "").trim(); if (!l) continue;
+      if (/sebagai kado|tertulis dalam/i.test(l)) break;
+      if (/majelis|mengucapkan|satu minggu ini|terkasih yang/i.test(l)) continue;
+      l.split(/\s*\|\s*|\t+/).forEach((c) => { c = c.replace(/^(\d{1,2}|[a-zA-Z])[.)]\s+/, "").replace(/^[-•·]\s*/, "").trim(); if (c && c.length < 60 && c.split(/\s+/).length <= 7 && !/[.:!?]$/.test(c)) out.push(c); });
+    }
+    return out;
+  };
+  // The gift verse: from "tertulis dalam" to the end of the quoted verse, never the rest of the section.
+  const verseOf = (arr) => {
+    const s = (arr || []).filter((x) => typeof x === "string").join("\n").replace(/\*\*/g, " "); const i = s.search(/tertulis dalam\s*/i); if (i < 0) return "";
+    let r = s.slice(i).replace(/^tertulis dalam\s*/i, ""); const q = r.match(/^[^“"]*[“"][^”"]*[”"]/);
+    r = q ? q[0] : r.split(/\n\s*\n/)[0].split("\n").slice(0, 2).join(" ");
+    return plain(r.replace(/\s*\n\s*/g, " ")).trim();
+  };
   if (S2.bdays) { if (want("bdays")) out.bdays = names(S2.bdays).join("\n"); const v = verseOf(S2.bdays); if (v && want("bdayVerse")) out.bdayVerse = v; }
   if (S2.anniv) { if (want("anniv")) out.anniv = names(S2.anniv).join("\n"); const v = verseOf(S2.anniv); if (v && want("annivVerse")) out.annivVerse = v; }
   if (S2.org && want("org")) out.org = sectionText(S2.org).replace(/^\s*HKBP SINGAPORE\s*\n/i, "");
@@ -2144,7 +2200,7 @@ function wText(s, o = {}) {
   while (out.length && out[out.length - 1] === `<div class="gap"></div>`) out.pop();
   return out.join("");
 }
-const wNames = (s) => { const xs = String(s || "").split(/\n/).map((x) => x.trim()).filter(Boolean); return xs.length ? xs.map((x, i) => `<div class="wi l1" style="--n:18pt"><span class="wn"><b>${i + 1}.</b></span><span class="wt"><b>${wInline(x)}</b></span></div>`).join("") : ""; };
+const wNames = (s) => { const xs = String(s || "").split(/\n/).map((x) => x.trim().replace(/^\d{1,2}[.)]\s*/, "")).filter(Boolean); return xs.length ? xs.map((x, i) => `<div class="wi l1" style="--n:18pt"><span class="wn"><b>${i + 1}.</b></span><span class="wt"><b>${wInline(x)}</b></span></div>`).join("") : ""; };
 // Organisation column: group headings in bold italic, names in italic, phone numbers lined up with a WhatsApp mark.
 function wOrg(s) {
   const lines = String(s || "").split(/\n/).map((l) => l.trim()).filter((l, i) => !(i < 3 && /^(badan organisasi|hkbp singapore)$/i.test(l)));
