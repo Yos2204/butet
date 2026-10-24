@@ -312,7 +312,7 @@ function shell(active, inner, opts = {}) {
   <main${opts.cols ? ' class="cols"' : ""}>${inner}</main>
   <nav class="tabs"><div class="in">${nav}</div></nav>`;
 }
-const langSwitch = () => `<div class="langs" role="group" aria-label="Language">${["id", "bt", "en"].map((l) => `<button data-act="lang" data-l="${l}" aria-pressed="${lang === l}">${l.toUpperCase()}</button>`).join("")}</div>`;
+const langSwitch = () => `<div class="langs" role="group" aria-label="${esc(t("language"))}">${["id", "bt", "en"].map((l) => `<button data-act="lang" data-l="${l}" aria-pressed="${lang === l}">${l.toUpperCase()}</button>`).join("")}</div>`;
 const empty = (msg, icon = "star") => `<div class="empty">${ic(icon)}<p>${esc(msg)}</p></div>`;
 const roleBadge = (gid) => { const r = isAdmin() && !roleIn(gid) ? "admin" : roleIn(gid); return r ? `<span class="badge ${r === "tmaker" ? "chair" : r === "teacher" ? "member" : r}">${esc(t("role_" + r))}</span>` : ""; };
 const groupTile = (g, extra = "") => `<a class="gtile" href="#/${({ sermon: "g", office: "o" })[g.kind] || "s"}/${g.id}" style="--gc:${g.color}">
@@ -1664,62 +1664,100 @@ function finPrompt() {
   const sun = nextSunday(); if (finFor(sun)) return "";
   return `<a class="card notice-card" href="#/o/treasurer">${ic("coins")}<span class="grow"><b>${esc(t("finNeededTitle"))}</b><small>${esc(t("finNeeded", fmtID(sun)))}</small></span>${ic("chev", "chev")}</a>`;
 }
-// Treasurer form: fields laid out like the Warta Keuangan (A to D). The text for the Warta is built from them.
-const FIN_SECS = [["A", "PERSEMBAHAN"], ["B", "PERSEMBAHAN BULANAN"], ["C", "DANA PEMBANGUNAN GEREJA"], ["D", "PERSEMBAHAN SYUKUR"]];
+// Treasurer form, laid out like the 18 Oct Warta Keuangan: A. Persembahan (each offering with one or more currency amounts),
+// B. Persembahan Bulanan and C. Dana Pembangunan Gereja (name and months). More sections can be added (name, optional amounts).
+// The text for the Warta is built from the fields; letters follow the order of the sections.
 const FIN_A = ["Persembahan Ibadah Umum", "Sekolah Minggu", "Remaja"];
+const FIN_DEFAULT = [{ title: "PERSEMBAHAN", type: "amt" }, { title: "PERSEMBAHAN BULANAN", type: "when" }, { title: "DANA PEMBANGUNAN GEREJA", type: "when" }];
+const CUR_TOP = ["SGD", "IDR", "MYR", "USD", "EUR", "AUD", "GBP", "JPY", "CNY", "HKD"];
+const CURS = (() => { let all = []; try { all = Intl.supportedValuesOf("currency"); } catch (e) { all = CUR_TOP.slice(); } return CUR_TOP.concat(all.filter((c) => !CUR_TOP.includes(c))); })();
+const curName = (c) => { try { return new Intl.DisplayNames([lang === "en" ? "en" : "id"], { type: "currency" }).of(c); } catch (e) { return c; } };
 const finNum = (x) => { const n = parseFloat(String(x || "").replace(/[^\d.]/g, "")); return isFinite(n) && String(x || "").trim() ? n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ""; };
 const finRaw = (x) => String(x || "").replace(/,/g, "");
+const LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 function finParse(body) {
-  const out = { date: "", A: [], B: [], C: [], D: [] }; let k = null;
+  const out = { date: "", secs: [] }; let cur = null;
   String(body || "").split(/\n/).forEach((l0) => {
-    const l = l0.trim(); const h = l.match(/^([A-D])[.)]\s*(.*)$/);
-    if (h && /PERSEMBAHAN|DANA/i.test(h[2])) { k = h[1]; if (k === "A") out.date = h[2].replace(/^PERSEMBAHAN\s*/i, "").trim(); return; }
-    if (!k || !l || /^[-–]$/.test(l)) return;
+    const l = l0.trim(); const h = l.match(/^([A-Z])[.)]\s+(.*)$/);
+    if (h && h[2] === h[2].toUpperCase().replace(/\d.*$/, "") + h[2].slice(h[2].toUpperCase().replace(/\d.*$/, "").length) && /[A-Z]{4}/.test(h[2])) {
+      let title = h[2].trim();
+      if (!out.secs.length) { const m = title.match(/^(PERSEMBAHAN)\s+(.*)$/i); if (m) { title = m[1].toUpperCase(); out.date = m[2].trim(); } }
+      cur = { title, type: /BULANAN|PEMBANGUNAN/i.test(title) ? "when" : "amt", items: [] }; out.secs.push(cur); return;
+    }
+    if (!cur || !l || /^[-–]$/.test(l)) return;
     const x = l.replace(/^\d{1,2}[.)]\s*/, "").replace(/;$/, "");
-    if (k === "A") { const m = x.match(/^([^:]+):\s*(.*)$/); const amt = (cur) => { const r = (m ? m[2] : "").match(new RegExp(cur + "\\s*([\\d.,]+)", "i")); return r ? finRaw(r[1]) : ""; }; out.A.push({ name: m ? m[1].trim() : x, sgd: amt("SGD"), idr: amt("IDR"), myr: amt("MYR") }); }
-    else if (k === "D") { const m = x.match(/^(.*?),\s*SGD\s*([\d.,]+)\s*$/i); out.D.push(m ? { name: m[1].trim(), amt: finRaw(m[2]) } : { name: x, amt: "" }); }
-    else { const i = x.lastIndexOf(","); out[k].push(i > 0 ? { name: x.slice(0, i).trim(), when: x.slice(i + 1).trim() } : { name: x, when: "" }); }
+    if (cur.type === "amt") {
+      const amts = []; x.replace(/([A-Z]{3})\s*([\d.,]+\d)/g, (_, c, v) => amts.push({ cur: c, amt: finRaw(v) }));
+      const name = x.replace(/[:,]\s*[A-Z]{3}\s*[\d.,]+.*$/, "").trim(); cur.items.push({ name, amts });
+    } else { const i = x.lastIndexOf(","); cur.items.push(i > 0 ? { name: x.slice(0, i).trim(), when: x.slice(i + 1).trim() } : { name: x, when: "" }); }
   });
   return out;
 }
-function finBuild(date, x) {
-  const line = { A: (r) => { const a = [["SGD", r.sgd], ["IDR", r.idr], ["MYR", r.myr]].filter(([, v]) => finNum(v)).map(([c, v]) => `${c} ${finNum(v)}`); return r.name && a.length ? `${r.name}: ${a.join(" + ")}` : ""; },
-    B: (r) => r.name ? r.name + (r.when ? ", " + r.when : "") : "", C: (r) => r.name ? r.name + (r.when ? ", " + r.when : "") : "", D: (r) => r.name ? r.name + (finNum(r.amt) ? ", SGD " + finNum(r.amt) : "") : "" };
-  return FIN_SECS.map(([k, name]) => { const items = (x[k] || []).map(line[k]).filter(Boolean);
-    return `${k}. ${name}${k === "A" && date ? " " + date : ""}\n${items.length ? items.map((l, i) => `${i + 1}. ${l}`).join("\n") : "-"}`; }).join("\n\n");
+function finBuild(date, secs) {
+  const line = (type, r) => { if (!r.name) return ""; if (type === "when") return r.name + (r.when ? ", " + r.when : "");
+    const a = (r.amts || []).filter((v) => v.cur && finNum(v.amt)).map((v) => `${v.cur} ${finNum(v.amt)}`); return a.length ? `${r.name}: ${a.join(" + ")}` : r.name; };
+  return secs.filter((sx, i) => i === 0 || sx.title).map((sx, i) => { const items = (sx.items || []).map((r) => line(sx.type, r)).filter(Boolean);
+    return `${LETTERS[i]}. ${(sx.title || "").toUpperCase()}${i === 0 && date ? " " + date : ""}\n${items.length ? items.map((l, j) => `${j + 1}. ${l}`).join("\n") : "-"}`; }).join("\n\n");
 }
-const finRow = (k, r = {}) => k === "A"
-  ? `<div class="fin-row fa"><input name="n" value="${esc(r.name || "")}" placeholder="${esc(t("finWhat"))}"><div class="fin-amt"><label>SGD<input name="sgd" inputmode="decimal" value="${esc(r.sgd || "")}" placeholder="0.00"></label><label>IDR<input name="idr" inputmode="decimal" value="${esc(r.idr || "")}"></label><label>MYR<input name="myr" inputmode="decimal" value="${esc(r.myr || "")}"></label></div><button type="button" class="icon-btn" data-act="finRm" aria-label="${esc(t("delete"))}">${ic("x")}</button></div>`
-  : k === "D"
-  ? `<div class="fin-row"><input name="n" value="${esc(r.name || "")}" placeholder="${esc(t("finName"))}"><input name="amt" class="fin-sm" inputmode="decimal" value="${esc(r.amt || "")}" placeholder="SGD (${esc(t("optional"))})"><button type="button" class="icon-btn" data-act="finRm" aria-label="${esc(t("delete"))}">${ic("x")}</button></div>`
-  : `<div class="fin-row"><input name="n" value="${esc(r.name || "")}" placeholder="${esc(t("finName"))}"><input name="when" class="fin-sm" value="${esc(r.when || "")}" placeholder="${esc(t("finWhen"))}"><button type="button" class="icon-btn" data-act="finRm" aria-label="${esc(t("delete"))}">${ic("x")}</button></div>`;
+const rmBtn = (act) => `<button type="button" class="icon-btn danger" data-act="${act}" aria-label="${esc(t("delete"))}">${ic("trash")}</button>`;
+const curRow = (v = {}) => `<div class="cur-row"><input type="hidden" name="cur" value="${esc(v.cur || "SGD")}"><button type="button" class="cur-btn" data-act="curPick">${esc(v.cur || "SGD")} ▾</button><input name="amt" inputmode="decimal" value="${esc(v.amt || "")}" placeholder="0.00" aria-label="${esc(t("finAmount"))}">${rmBtn("finRm")}</div>`;
+const finRow = (type, r = {}) => type === "amt"
+  ? `<div class="fin-row fa"><div class="fin-head"><input name="n" value="${esc(r.name || "")}" placeholder="${esc(t("finWhat"))}">${rmBtn("finRmItem")}</div>
+      <div class="cur-rows">${(r.amts || []).map(curRow).join("")}</div>
+      <button type="button" class="btn sm ghost" data-act="curAdd">${ic("plus")} ${esc(t("finAddCur"))}</button></div>`
+  : `<div class="fin-row"><input name="n" value="${esc(r.name || "")}" placeholder="${esc(t("finName"))}"><input name="when" class="fin-sm" value="${esc(r.when || "")}" placeholder="${esc(t("finWhen"))}">${rmBtn("finRm")}</div>`;
+const finSec = (sx, i, date, prevSun) => `<fieldset class="fin-sec" data-type="${sx.type}"><legend><span class="fin-l">${LETTERS[i] || "+"}.</span> ${i < 3 && !sx.custom ? `<b class="fin-t">${esc(sx.title)}</b><input type="hidden" name="st" value="${esc(sx.title)}">` : `<input name="st" class="fin-title" value="${esc(sx.title || "")}" placeholder="${esc(t("finSecName"))}">`}</legend>
+    <div class="row end">${i >= 3 || sx.custom ? `<button type="button" class="btn sm ghost" data-act="finRmSec">${ic("x")} ${esc(t("finRmSec"))}</button>` : ""}<button type="button" class="btn sm danger" data-act="finClear">${ic("trash")} ${esc(t("delAll"))}</button></div>
+    ${i === 0 ? `<label class="fin-date">${esc(t("finOffDate"))}<input name="fdate" value="${esc(date)}" placeholder="${esc(fmtID(prevSun))}" required></label>` : `<p class="small muted">${esc(t("finEmptyOk"))}</p>`}
+    <div class="fin-rows">${(sx.items || []).map((r) => finRow(sx.type, r)).join("")}</div>
+    <button type="button" class="btn sm" data-act="finAdd">${ic("plus")} ${esc(t(sx.type === "amt" ? "finAddOffering" : "finAddRow"))}</button></fieldset>`;
 A.financeForm = (d) => {
   const sun = d && d.day || nextSunday(); const p = finFor(sun); const prevSun = addDays(sun, -7);
-  const x = p ? finParse(p.body) : { date: fmtID(prevSun), A: [], B: [], C: [], D: [] };
-  if (!x.A.length) x.A = FIN_A.map((name) => ({ name }));
-  const sec = (k, name) => `<fieldset class="fin-sec" data-s="${k}"><legend>${k}. ${esc(name)}</legend>
-    ${k === "A" ? `<label class="fin-date">${esc(t("finOffDate"))}<input name="fdate" value="${esc(x.date)}" placeholder="${esc(fmtID(prevSun))}" required></label>` : `<p class="small muted">${esc(t("finEmptyOk"))}</p>`}
-    <div class="fin-rows">${(x[k].length ? x[k] : k === "A" ? [] : [{}]).map((r) => finRow(k, r)).join("")}</div>
-    <button type="button" class="btn sm ghost" data-act="finAdd" data-s="${k}">${ic("plus")} ${esc(t("finAddRow"))}</button></fieldset>`;
+  const x = p ? finParse(p.body) : { date: fmtID(prevSun), secs: [] };
+  FIN_DEFAULT.forEach((df, i) => { if (!x.secs[i]) x.secs[i] = { ...df, items: [] }; });
+  if (!x.secs[0].items.length) x.secs[0].items = FIN_A.map((name) => ({ name, amts: [{ cur: "SGD" }] }));
+  ["B", "C"].forEach((_, j) => { if (!x.secs[j + 1].items.length) x.secs[j + 1].items = [{}]; });
   sheet(t("financeTitle"), `<form class="form fin-form" data-form="finance" data-id="${p ? p.id : ""}">
     <label>${esc(t("financeFor"))}<input type="date" name="day" value="${esc(sun)}" required></label>
-    ${FIN_SECS.map(([k, name]) => sec(k, name)).join("")}
+    <div class="fin-secs">${x.secs.map((sx, i) => finSec(sx, i, x.date, prevSun)).join("")}</div>
+    <button type="button" class="btn block" data-act="finAddSec" style="margin-top:12px">${ic("plus")} ${esc(t("finAddSec"))}</button>
     <details class="fin-prev"><summary>${esc(t("preview"))}</summary><p class="pre small" id="fin-prev"></p></details>
     <button class="btn primary block">${esc(t("save"))}</button></form>`);
   finPreview();
 };
-A.finAdd = (d) => { const box = document.querySelector(`.fin-sec[data-s="${d.s}"] .fin-rows`); if (!box) return; box.insertAdjacentHTML("beforeend", finRow(d.s)); const ins = box.lastElementChild.querySelector("input"); if (ins) ins.focus(); finPreview(); };
-A.finRm = (d, btn) => { const r = btn.closest(".fin-row"); if (r) r.remove(); finPreview(); };
+const finRelabel = () => document.querySelectorAll(".fin-secs .fin-sec .fin-l").forEach((el, i) => (el.textContent = (LETTERS[i] || "+") + "."));
+A.finAddSec = () => { const box = $(".fin-secs"); const i = box.children.length; box.insertAdjacentHTML("beforeend", finSec({ title: "", type: "amt", custom: true, items: [{ amts: [{ cur: "SGD" }] }] }, i, "", "")); const n = box.lastElementChild.querySelector(".fin-title"); if (n) n.focus(); finPreview(); };
+A.finRmSec = (d, btn) => { btn.closest(".fin-sec").remove(); finRelabel(); finPreview(); };
+A.finAdd = (d, btn) => { const sec = btn.closest(".fin-sec"); const box = sec.querySelector(".fin-rows"); const type = sec.dataset.type; box.insertAdjacentHTML("beforeend", finRow(type, type === "amt" ? { amts: [{ cur: "SGD" }] } : {})); const ins = box.lastElementChild.querySelector("input[name=n]"); if (ins) ins.focus(); finPreview(); };
+A.finRm = (d, btn) => { const r = btn.closest(".cur-row") || btn.closest(".fin-row"); if (r) r.remove(); finPreview(); };
+A.finRmItem = (d, btn) => { const r = btn.closest(".fin-row"); if (r) r.remove(); finPreview(); };
+A.finClear = (d, btn) => {
+  if (btn.dataset.sure !== "1") { btn.dataset.sure = "1"; btn.classList.add("sure"); btn.innerHTML = `${ic("trash")} ${esc(t("tapAgain"))}`; setTimeout(() => { if (btn.isConnected) { btn.dataset.sure = ""; btn.classList.remove("sure"); btn.innerHTML = `${ic("trash")} ${esc(t("delAll"))}`; } }, 4000); return; }
+  btn.closest(".fin-sec").querySelector(".fin-rows").innerHTML = ""; btn.dataset.sure = ""; btn.classList.remove("sure"); btn.innerHTML = `${ic("trash")} ${esc(t("delAll"))}`; finPreview();
+};
+A.curAdd = (d, btn) => { const box = btn.closest(".fin-row").querySelector(".cur-rows"); box.insertAdjacentHTML("beforeend", curRow({})); A.curPick({}, box.lastElementChild.querySelector(".cur-btn")); };
+// Currency picker: every 3-letter currency code, with a search box at the top.
+A.curPick = (d, btn) => {
+  document.querySelectorAll(".cur-pop").forEach((x) => x.remove());
+  const row = btn.closest(".cur-row"); const pop = document.createElement("div"); pop.className = "cur-pop";
+  const list = (q) => CURS.filter((c) => !q || c.toLowerCase().includes(q) || curName(c).toLowerCase().includes(q)).slice(0, 200).map((c) => `<button type="button" data-act="curSet" data-c="${c}"><b>${c}</b><small>${esc(curName(c))}</small></button>`).join("") || `<p class="small muted">–</p>`;
+  pop.innerHTML = `<input type="search" placeholder="${esc(t("search"))}" aria-label="${esc(t("search"))}"><div class="cur-list">${list("")}</div>`;
+  row.appendChild(pop); const s2 = pop.querySelector("input"); s2.oninput = () => (pop.querySelector(".cur-list").innerHTML = list(s2.value.trim().toLowerCase())); setTimeout(() => s2.focus(), 30);
+};
+A.curSet = (d, btn) => { const row = btn.closest(".cur-row"); row.querySelector("[name=cur]").value = d.c; row.querySelector(".cur-btn").textContent = d.c + " ▾"; btn.closest(".cur-pop").remove(); const a = row.querySelector("[name=amt]"); if (a) a.focus(); finPreview(); };
+document.addEventListener("click", (e) => { if (e.target.closest && !e.target.closest(".cur-pop") && !e.target.closest(".cur-btn, [data-act=curAdd]")) document.querySelectorAll(".cur-pop").forEach((x) => x.remove()); });
 function finCollect(f) {
-  const x = {}; FIN_SECS.forEach(([k]) => { x[k] = [...f.querySelectorAll(`.fin-sec[data-s="${k}"] .fin-row`)].map((row) => { const o = {}; row.querySelectorAll("input").forEach((i) => (o[i.name === "n" ? "name" : i.name] = i.value.trim())); return o; }); });
-  return x;
+  return [...f.querySelectorAll(".fin-secs .fin-sec")].map((sec) => ({ title: sec.querySelector("[name=st]").value.trim(), type: sec.dataset.type,
+    items: [...sec.querySelectorAll(".fin-row")].map((row) => sec.dataset.type === "amt"
+      ? { name: row.querySelector("[name=n]").value.trim(), amts: [...row.querySelectorAll(".cur-row")].map((c) => ({ cur: c.querySelector("[name=cur]").value, amt: c.querySelector("[name=amt]").value.trim() })) }
+      : { name: row.querySelector("[name=n]").value.trim(), when: row.querySelector("[name=when]").value.trim() }) }));
 }
-function finPreview() { const f = document.querySelector(".fin-form"); const el = document.getElementById("fin-prev"); if (f && el) el.textContent = "WARTA KEUANGAN\n" + finBuild(f.fdate.value.trim(), finCollect(f)); }
+function finPreview() { const f = document.querySelector(".fin-form"); const el = document.getElementById("fin-prev"); if (f && el) el.textContent = "WARTA KEUANGAN\n" + finBuild(f.fdate ? f.fdate.value.trim() : "", finCollect(f)); }
 document.addEventListener("input", (e) => { if (e.target.closest && e.target.closest(".fin-form")) finPreview(); });
 F.finance = async (f) => {
-  const x = finCollect(f);
-  if (!f.fdate.value.trim() || !x.A.some((r) => r.name && (finNum(r.sgd) || finNum(r.idr) || finNum(r.myr)))) throw new S.AppError("fin_parts");
-  await api.save("post", { id: f.dataset.id || undefined, group_id: "treasurer", kind: "finance", title: "Warta Keuangan " + f.day.value, body: finBuild(f.fdate.value.trim(), x), day: f.day.value });
+  const secs = finCollect(f);
+  if (!f.fdate || !f.fdate.value.trim() || !(secs[0] && secs[0].items.some((r) => r.name && (r.amts || []).some((v) => v.cur && finNum(v.amt))))) throw new S.AppError("fin_parts");
+  await api.save("post", { id: f.dataset.id || undefined, group_id: "treasurer", kind: "finance", title: "Warta Keuangan " + f.day.value, body: finBuild(f.fdate.value.trim(), secs), day: f.day.value });
   closeSheet(); await refresh(); toast(t("saved"));
   const wf = $("#warta-form .wfin"); if (wf) wf.outerHTML = wFinBox($("#warta-form").dataset.day);
 };
