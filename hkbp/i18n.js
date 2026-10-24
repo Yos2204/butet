@@ -2,7 +2,7 @@
 // Batak Toba wording should be checked by a fluent elder before wide use.
 window.HKBP_I18N = {
   en: {
-    tagline: "Church family app", tab_home: "Home", tab_groups: "Groups", tab_serve: "Rosters", tab_calendar: "Calendar", tab_more: "More",
+    tagline: "App for the congregation", tab_home: "Home", tab_groups: "Groups", tab_serve: "Rosters", tab_calendar: "Calendar", tab_more: "More",
     back: "Back", close: "Close", working: "Working…", retry: "Try again", save: "Save", edit: "Edit", delete: "Delete", tapAgain: "Tap again", deleted: "Deleted", saved: "Saved", savedSent: "Saved. Members get a notification within 15 minutes.", copied: "Copied", copy: "Copy", seeAll: "See all", readMore: "Read", search: "Search", or: "or", today: "Today", tomorrow: "Tomorrow", inDays: (n) => `in ${n} days`, notFound: "Page not found.",
     offline: "Offline: showing the last saved copy.", demoBanner: "Demo mode: data stays on this phone until the church database is connected.",
     loginLead: "Sign in with your phone number and password. First time? Leave the password empty and tap Sign in to create your own.", signIn: "Sign in", forgot: "Forgot your password? Ask the church admin to reset it.", installHint: "Tip: add this app to your home screen (Share, then Add to Home Screen on iPhone; menu, then Install app on Android).",
@@ -39,7 +39,7 @@ window.HKBP_I18N = {
     err_pw_mismatch: "The two passwords are not the same.", err_needs_password: "Please create your password first.",
   },
   id: {
-    tagline: "Aplikasi keluarga jemaat", tab_home: "Beranda", tab_groups: "Kategorial", tab_serve: "Jadwal", tab_calendar: "Kalender", tab_more: "Lainnya",
+    tagline: "Aplikasi untuk jemaat", tab_home: "Beranda", tab_groups: "Kategorial", tab_serve: "Jadwal", tab_calendar: "Kalender", tab_more: "Lainnya",
     back: "Kembali", close: "Tutup", working: "Sedang diproses…", retry: "Coba lagi", save: "Simpan", edit: "Ubah", delete: "Hapus", tapAgain: "Ketuk lagi", deleted: "Dihapus", saved: "Tersimpan", savedSent: "Tersimpan. Anggota menerima notifikasi dalam 15 menit.", copied: "Disalin", copy: "Salin", seeAll: "Lihat semua", readMore: "Baca", search: "Cari", or: "atau", today: "Hari ini", tomorrow: "Besok", inDays: (n) => `${n} hari lagi`, notFound: "Halaman tidak ditemukan.",
     offline: "Offline: menampilkan salinan terakhir.", demoBanner: "Mode demo: data hanya di HP ini sampai database gereja terhubung.",
     loginLead: "Masuk dengan nomor HP dan kata sandi. Pertama kali? Kosongkan kata sandi lalu ketuk Masuk untuk membuat kata sandi sendiri.", signIn: "Masuk", forgot: "Lupa kata sandi? Minta admin gereja untuk mengaturnya ulang.", installHint: "Tip: pasang aplikasi ini di layar HP (iPhone: Bagikan, lalu Tambah ke Layar Utama; Android: menu, lalu Instal aplikasi).",
@@ -76,7 +76,7 @@ window.HKBP_I18N = {
     err_pw_mismatch: "Kedua kata sandi tidak sama.", err_needs_password: "Silakan buat kata sandi terlebih dahulu.",
   },
   bt: {
-    tagline: "Aplikasi keluarga ruas", tab_home: "Jabu", tab_groups: "Kategorial", tab_serve: "Jadwal", tab_calendar: "Kalender", tab_more: "Na asing",
+    tagline: "Aplikasi tu ruas", tab_home: "Jabu", tab_groups: "Kategorial", tab_serve: "Jadwal", tab_calendar: "Kalender", tab_more: "Na asing",
     back: "Mulak", close: "Tutup", working: "Dihorjai…", retry: "Coba muse", save: "Simpan", edit: "Ubah", delete: "Hapus", tapAgain: "Ketuk muse", deleted: "Nunga dihapus", saved: "Nunga disimpan", savedSent: "Nunga disimpan. Ruas mandapot notifikasi di bagasan 15 menit.", copied: "Nunga disalin", copy: "Salin", seeAll: "Ida sude", readMore: "Jaha", search: "Lului", or: "manang", today: "Sadarion", tomorrow: "Marsogot", inDays: (n) => `${n} ari nai`, notFound: "Ndang jumpang halaman on.",
     offline: "Offline: dipatudu salinan na parpudi.", demoBanner: "Mode demo: data di HP on sambing ro di na tersambung database ni huria.",
     loginLead: "Bongot ma marhite nomor HP dohot kata sandi. Parjolo hali? Unang isi kata sandi, jala tuktuk Bongot asa dipatupa ho kata sandimu.", signIn: "Bongot", forgot: "Lupa kata sandi? Pangido ma tu admin huria asa dipaimbaru.", installHint: "Tip: pasang ma aplikasi on di layar HP (iPhone: Bagikan, dungi Tambah ke Layar Utama; Android: menu, dungi Instal aplikasi).",
