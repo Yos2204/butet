@@ -175,7 +175,7 @@ insert into hk_groups (id, kind, name_id, name_bt, name_en, color, icon, sort) v
   ('multimedia','service','Multimedia','Multimedia','Multimedia','#7c5cff','screen',11),
   ('jemaat','service','Jemaat','Ruas','Congregation','#0f766e','people',12),
   ('parhalado','service','Parhalado (Penatua & Pendeta)','Parhalado','Elders & Pastor','#8b5a2b','book',13),
-  ('band','service','Band','Band','Band','#e11d48','drum',14),
+  ('band','service','ReNa Band','ReNa Band','ReNa Band','#e11d48','drum',14),
   ('song-leader','service','Song Leader','Song Leader','Song Leader','#ca8a04','mic',15),
   ('musik','service','Pemusik','Pargonsi / Pemusik','Musicians','#0891b2','note',16),
   ('secretary','office','Sekretaris','Sekretaris','Secretary','#334155','file',21),
