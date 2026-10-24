@@ -297,7 +297,7 @@ const Local = {
   async profileSave(p) {
     const m = await this.me(); const v = {};
     for (const k of ["married", "male", "pelaut", "confirmed"]) if (k in p) v[k] = !!p[k];
-    if ("serve" in p) v.serve = this.dbo.groups.filter((g) => g.kind === "service" && (p.serve || []).includes(g.id)).sort((a, b) => a.sort - b.sort).map((g) => g.id);
+    if ("serve" in p) v.serve = this.dbo.groups.filter((g) => g.kind === "service" && (p.serve || []).includes(g.id)).sort((a, b) => a.sort - b.sort).map((g) => g.id); if ("serve" in p) v.serve_ym = sgToday().slice(0, 7);
     m.profile = { ...(m.profile || {}), ...v, at: new Date().toISOString() }; await this.commit(); return m.profile;
   },
   async calToken() { throw new AppError("demo_only"); }, // a calendar feed needs the shared database
