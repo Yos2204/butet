@@ -76,13 +76,20 @@ const Local = {
   async login(phone, pw) {
     const db = await this.load(); const h = await sha(pw);
     const m = db.members.find((x) => x.phone === phone8(phone));
-    if (!m || !m.pass_hash || m.pass_hash !== h) throw new AppError("bad_login");
+    if (m && !m.pass_hash) throw new AppError("needs_password");
+    if (!m || m.pass_hash !== h) throw new AppError("bad_login");
     LS.set("local.me", m.id);
+  },
+  async firstPassword(phone, pw) {
+    const db = await this.load(); const m = db.members.find((x) => x.phone === phone8(phone));
+    if (!m || m.pass_hash) throw new AppError("bad_login");
+    if ((pw || "").length < 6) throw new AppError("short_password");
+    m.pass_hash = await sha(pw); await this.commit(); LS.set("local.me", m.id);
   },
   async logout() { LS.set("local.me", null); },
   async setPassword(oldPw, newPw) {
     const m = await this.me();
-    if ((newPw || "").length < 4) throw new AppError("short_password");
+    if ((newPw || "").length < 6) throw new AppError("short_password");
     if (m.pass_hash !== await sha(oldPw)) throw new AppError("bad_login");
     m.pass_hash = await sha(newPw); await this.commit();
   },
@@ -174,7 +181,7 @@ const Remote = {
     } catch { throw new AppError("offline"); }
     const txt = await res.text(); let j = null; try { j = txt ? JSON.parse(txt) : null; } catch {}
     if (!res.ok) {
-      const code = ((j && j.message) || "").match(/not_signed_in|bad_login|bad_code|not_allowed|short_password|file_too_big|unknown_kind/);
+      const code = ((j && j.message) || "").match(/not_signed_in|bad_login|needs_password|not_allowed|short_password|file_too_big|unknown_kind/);
       if (code && code[0] === "not_signed_in") LS.set("remote.token", null);
       throw new AppError(code ? code[0] : "server");
     }
@@ -184,7 +191,7 @@ const Remote = {
   hasSession() { return !!this.token; },
   async needsSetup() { return false; },
   async login(phone, pw) { const r = await this.rpc("hk_login", { p_phone: phone, p_password: pw }); LS.set("remote.token", r.token); },
-  async claim(phone, code, pw) { const r = await this.rpc("hk_claim", { p_phone: phone, p_code: code, p_password: pw }); LS.set("remote.token", r.token); },
+  async firstPassword(phone, pw) { const r = await this.rpc("hk_first_password", { p_phone: phone, p_password: pw }); LS.set("remote.token", r.token); },
   async logout() { const t = this.token; LS.set("remote.token", null); LS.set("remote.cache", null); try { await this.rpc("hk_logout", { p_token: t }); } catch {} },
   async setPassword(o, n) { return this.rpc("hk_set_password", { p_token: this.token, p_old: o, p_new: n }); },
   async data() {

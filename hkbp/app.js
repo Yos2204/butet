@@ -97,6 +97,14 @@ function sheet(title, body, onMount) {
   requestAnimationFrame(() => el.classList.add("open"));
   if (onMount) onMount(el);
 }
+// First sign-in: the member has no password yet, so a pop-up asks them to create one.
+function firstPwSheet(phone) {
+  sheet(t("firstPwTitle"), `<form class="form" data-form="firstpw" data-phone="${esc(S.phone8(phone))}">
+    <p class="muted">${esc(t("firstPwLead"))}</p>
+    <label>${esc(t("f_newPw"))}<input type="password" name="pw" required minlength="6" autocomplete="new-password"></label>
+    <label>${esc(t("f_pw2"))}<input type="password" name="pw2" required minlength="6" autocomplete="new-password"></label>
+    <button class="btn primary block">${ic("lock")} ${esc(t("firstPwBtn"))}</button></form>`, (el) => el.querySelector("input").focus());
+}
 function closeSheet() { const el = $("#sheet"); el.classList.remove("open"); document.body.classList.remove("noscroll"); setTimeout(() => { el.hidden = true; el.innerHTML = ""; }, 180); }
 async function busy(btn, fn) { if (btn) { btn.disabled = true; btn.dataset.label = btn.innerHTML; btn.innerHTML = `<span class="spin"></span>${esc(t("working"))}`; } try { return await fn(); } finally { if (btn && btn.isConnected) { btn.disabled = false; btn.innerHTML = btn.dataset.label; } } }
 
@@ -276,24 +284,16 @@ R.login = async () => {
         <p class="small muted">${esc(t("setupLead"))}</p>
         <label>${esc(t("f_name"))}<input name="name" required autocomplete="name"></label>
         <label>${esc(t("f_phone"))}<div class="phone-in"><span>+65</span><input name="phone" inputmode="numeric" required placeholder="8123 4567"></div></label>
-        <label>${esc(t("f_password"))}<input name="pw" type="password" required minlength="4" autocomplete="new-password"></label>
+        <label>${esc(t("f_password"))}<input name="pw" type="password" required minlength="6" autocomplete="new-password"></label>
         <button class="btn primary block">${esc(t("setupBtn"))}</button>
       </form>
       <button class="btn block ghost" data-act="seedDemo">${ic("spark")} ${esc(t("demoBtn"))}</button>` : `
       <form class="card form" data-form="login">
         <label>${esc(t("f_phone"))}<div class="phone-in"><span>+65</span><input name="phone" inputmode="numeric" required placeholder="8123 4567" autocomplete="username"></div></label>
-        <label>${esc(t("f_password"))}<input name="pw" type="password" required autocomplete="current-password"></label>
+        <label>${esc(t("f_password"))}<input name="pw" type="password" autocomplete="current-password"></label>
         <button class="btn primary block">${ic("lock")} ${esc(t("signIn"))}</button>
         <p class="small muted center">${esc(t("forgot"))}</p>
       </form>
-      ${!demo ? `<details class="card claim"><summary>${esc(t("haveCode"))}</summary>
-        <form class="form" data-form="claim">
-          <p class="small muted">${esc(t("claimLead"))}</p>
-          <label>${esc(t("f_phone"))}<div class="phone-in"><span>+65</span><input name="phone" inputmode="numeric" required placeholder="8123 4567"></div></label>
-          <label>${esc(t("f_code"))}<input name="code" required autocomplete="one-time-code" autocapitalize="characters"></label>
-          <label>${esc(t("f_newPw"))}<input name="pw" type="password" required minlength="6" autocomplete="new-password"></label>
-          <button class="btn primary block">${esc(t("claimBtn"))}</button>
-        </form></details>` : ""}
       ${demo ? `<p class="small muted center">${esc(t("demoLogins"))}</p>` : ""}`}
     ${demo ? `<p class="small muted center">${ic("phone")} ${esc(t("demoBanner"))}</p>` : ""}
     <p class="small muted center">${esc(t("installHint"))}</p>
@@ -742,7 +742,7 @@ A.newSection = () => sheet(t("addSection"), `<form class="form" data-form="group
   <button class="btn primary block">${esc(t("save"))}</button></form>`);
 A.password = () => sheet(t("changePw"), `<form class="form" data-form="password">
   <label>${esc(t("f_oldPw"))}<input type="password" name="old" required autocomplete="current-password"></label>
-  <label>${esc(t("f_newPw"))}<input type="password" name="pw" required minlength="4" autocomplete="new-password"></label>
+  <label>${esc(t("f_newPw"))}<input type="password" name="pw" required minlength="6" autocomplete="new-password"></label>
   <button class="btn primary block">${esc(t("save"))}</button></form>`);
 A.install = () => sheet(t("installTitle"), `<div class="steps"><h4>iPhone</h4><p>${esc(t("installIos"))}</p><h4>Android</h4><p>${esc(t("installAndroid"))}</p><p class="small muted">${esc(t("installWhy"))}</p></div>`);
 A.settings = () => {
@@ -856,8 +856,15 @@ document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("#she
 
 // ---------- forms ----------
 const F = {};
-F.login = async (f) => { await api.login(f.phone.value, f.pw.value); D = null; await refresh(); location.hash = "#/home"; localReminders(); };
-F.claim = async (f) => { if ((f.pw.value || "").length < 6) throw new S.AppError("short_password"); await api.claim(f.phone.value, f.code.value, f.pw.value); D = null; await refresh(); location.hash = "#/home"; toast(t("claimDone")); };
+F.login = async (f) => {
+  try { await api.login(f.phone.value, f.pw.value); }
+  catch (e) { if (e.code !== "needs_password") throw e; return firstPwSheet(f.phone.value); }
+  D = null; await refresh(); location.hash = "#/home"; localReminders(); };
+F.firstpw = async (f) => {
+  if ((f.pw.value || "").length < 6) throw new S.AppError("short_password");
+  if (f.pw.value !== f.pw2.value) throw new S.AppError("pw_mismatch");
+  await api.firstPassword(f.dataset.phone, f.pw.value); closeSheet(); D = null; await refresh(); location.hash = "#/home"; toast(t("firstPwDone")); localReminders();
+};
 F.setup = async (f) => { if (!validPhone(f.phone.value)) throw new S.AppError("bad_phone"); await api.setupAdmin(f.name.value.trim(), f.phone.value, f.pw.value); await api.login(f.phone.value, f.pw.value); D = null; await refresh(); location.hash = "#/people"; };
 F.bread = async (f) => { await api.save("bread", { day: f.day.value, verse: f.verse.value.trim(), title: f.title.value.trim(), body: f.body.value.trim() }); await refresh(); toast(t("saved")); location.hash = "#/bread/" + f.day.value; };
 F.post = async (f) => {
