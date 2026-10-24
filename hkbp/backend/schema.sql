@@ -737,7 +737,8 @@ begin
   -- 'serve': the service sections the member picked (second pop-up); Jadwal shows only these.
   if p ? 'serve' then
     v := v || jsonb_build_object('serve', (select coalesce(jsonb_agg(g.id order by g.sort), '[]') from hk_groups g
-      where g.kind = 'service' and g.removed_at is null and g.id in (select jsonb_array_elements_text(case when jsonb_typeof(p -> 'serve') = 'array' then p -> 'serve' else '[]' end))));
+      where g.kind = 'service' and g.removed_at is null and g.id in (select jsonb_array_elements_text(case when jsonb_typeof(p -> 'serve') = 'array' then p -> 'serve' else '[]' end))),
+      'serve_ym', to_char(now() at time zone 'Asia/Singapore', 'YYYY-MM')); -- the app asks again each new month
   end if;
   v := coalesce(m.profile, '{}') || v || jsonb_build_object('at', now());
   update hk_members set profile = v where id = m.id;

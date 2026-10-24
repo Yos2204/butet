@@ -123,6 +123,8 @@ function profileCats(p) {
 // Second pop-up (YB 2026-10-24): pick the service sections you serve in; Jadwal then shows only those. Pilot: YB only.
 const SERVE_PILOT = ["85334780"];
 const serveOn = () => !!D && !isGuest() && !!me() && SERVE_PILOT.includes(S.phone8(me().phone));
+// Asked again on the first open of every month (YB 2026-10-24), with last month's picks ticked.
+const serveDue = () => { if (!serveOn()) return false; const p = me().profile || {}; return !p.serve || (p.serve_ym || "") < today().slice(0, 7); };
 const serveShown = (g) => { if (g.kind !== "service" || !serveOn() || LS.get("allServe")) return true; const sv = (me().profile || {}).serve; return !sv || !sv.length || sv.includes(g.id); };
 const catShown = (g) => { if (g.kind !== "sermon" || !profileOn() || isAdmin() && LS.get("allCats")) return true; const r = roleIn(g.id); if (r && r !== "member") return true; const c = profileCats(me().profile); return !c || c.includes(g.id); };
 const G = (id) => D.groups.find((g) => g.id === id);
@@ -818,7 +820,7 @@ function hydrate() {
   if (D && !isGuest() && api.hasSession() && $("#sheet").hidden) {
     if (viewMode() === null) { if (hasRights()) setTimeout(rolePrompt, 300); else LS.set("view", "member"); }
     else if (profileOn() && !me().profile) setTimeout(() => { if ($("#sheet").hidden && profileOn() && !me().profile) profilePrompt(); }, 900);
-    else if (serveOn() && !(me().profile || {}).serve) setTimeout(() => { if ($("#sheet").hidden && serveOn() && !(me().profile || {}).serve) servePrompt(); }, 900);
+    else if (serveDue()) setTimeout(() => { if ($("#sheet").hidden && serveDue()) servePrompt(); }, 900);
   }
   if (D && /^#\/s\/multimedia/.test(location.hash) && $("#sheet").hidden && viewMode() !== null) {
     if (!mmRole()) setTimeout(mmPrompt, 250);
