@@ -869,6 +869,11 @@ F.berita = async (f) => {
   await api.save("update", { id: old ? old.id : undefined, kind: "berita", day, title: "Berita Pelayanan · " + fmtID(day), body: f.body.value.trim(), notify: f.notify.checked });
   closeSheet(); await refresh(); toast(t("beritaSaved"));
 };
+// Delete every saved Warta Jemaat draft (tap twice to confirm).
+A.wDelAll = async (d, btn) => {
+  if (btn.dataset.sure !== "1") { btn.dataset.sure = "1"; btn.classList.add("sure"); btn.innerHTML = `${ic("trash")} ${esc(t("tapAgain"))}`; setTimeout(() => { if (btn.isConnected) { btn.dataset.sure = ""; btn.classList.remove("sure"); btn.innerHTML = `${ic("trash")} ${esc(t("delAll"))}`; } }, 4000); return; }
+  await busy(btn, async () => { try { for (const p of wartaPosts()) await api.del("post", p.id); await refresh(); toast(t("deleted")); render(); } catch (e) { toast(errMsg(e), true); } });
+};
 A.closeWb = () => { const el = $("#wb"); if (el) el.remove(); document.body.classList.remove("noscroll"); };
 A.publishWb = () => {
   const w = $("#wb iframe") && $("#wb iframe").contentWindow;
@@ -1793,10 +1798,11 @@ async function tataMeta(day) {
 }
 function wartaBlock() {
   const ws = wartaPosts().slice(0, 5); const sun = nextSunday();
-  return `<div class="card"><div class="card-h"><h3>${ic("book")} Warta Jemaat</h3></div>
+  const can = canUpload("secretary");
+  return `<div class="card"><div class="card-h"><h3>${ic("book")} Warta Jemaat</h3>${can && ws.length ? `<button class="btn sm danger" data-act="wDelAll">${ic("trash")} ${esc(t("delAll"))}</button>` : ""}</div>
     <p class="small muted">${esc(t("wartaLead"))}</p>
-    ${canUpload("secretary") ? `<a class="btn primary block" href="#/warta/${sun}">${ic("edit")} ${esc(t("wartaMake", fmtID(sun)))}</a>` : ""}
-    ${ws.map((p) => `<a class="li" href="#/warta/${p.day}"><span class="date-chip"><b>${esc(fmt(p.day, { day: "numeric" }))}</b><small>${esc(fmt(p.day, { month: "short" }))}</small></span><span class="grow"><b>${esc(p.title || "Warta Jemaat")}</b><small>${esc(p.author_name || "")}</small></span>${ic("chev", "chev")}</a>`).join("")}</div>`;
+    ${can ? `<a class="btn primary block" href="#/warta/${sun}">${ic("edit")} ${esc(t("wartaMake", fmtID(sun)))}</a>` : ""}
+    ${ws.map((p) => `<div class="li w-hist"><a class="grow-link" href="#/warta/${p.day}"><span class="date-chip"><b>${esc(fmt(p.day, { day: "numeric" }))}</b><small>${esc(fmt(p.day, { month: "short" }))}</small></span><span class="grow"><b>${esc(p.title || "Warta Jemaat")}</b><small>${esc(p.author_name || "")}</small></span></a>${can ? `<button class="icon-btn danger" data-act="del" data-kind="post" data-id="${p.id}" aria-label="${esc(t("delete"))}">${ic("trash")}</button>` : ic("chev", "chev")}</div>`).join("")}</div>`;
 }
 // Every field has its own upload button (file or online link).
 const wUp = (name) => `<button type="button" class="w-up" data-act="wImp" data-f="${name}" aria-label="${esc(t("w_upload"))}" title="${esc(t("w_upload"))}">${ic("upload")}</button>`;
