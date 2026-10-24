@@ -235,10 +235,10 @@ create or replace function hk__maker(m hk_members) returns boolean language sql 
   select m.is_admin or coalesce(m.groups ->> 'multimedia', '') in ('maker', 'chair')
 $$;
 
--- Youth, Remaja and Sunday School are run by their teachers. In Youth the Makers are the Youth Chair, Treasurer and Secretary (ychair/ytreasurer/ysecretary). A Teacher Maker ("tmaker") posts materials, news, events and polls;
+-- Youth, Remaja, Sunday School, Ama and Ina are run by their teachers. In Youth the Makers are the Youth Chair, Treasurer and Secretary (ychair/ytreasurer/ysecretary). A Teacher Maker ("tmaker") posts materials, news, events and polls;
 -- a Teacher ("teacher") reads everything and opens or closes polls in class. Only Makers (and the admin) add teachers.
 create or replace function hk__teach(gid text) returns boolean language sql immutable as $$
-  select coalesce(gid in ('naposo', 'sekolah-minggu', 'remaja'), false)
+  select coalesce(gid in ('naposo', 'sekolah-minggu', 'remaja', 'ama', 'ina'), false)
 $$;
 
 create or replace function hk__teacher(m hk_members, gid text) returns boolean language sql immutable as $$

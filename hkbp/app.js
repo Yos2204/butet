@@ -95,9 +95,10 @@ const isElder = () => manage() && (D.me.is_admin || "parhalado" in (D.me.groups 
 const roleIn = (gid) => (D.me.groups || {})[gid] || null;
 // Youth and Sunday School are run by teachers: only a Teacher Maker (phone checked once per session) posts materials, news, events and polls.
 // A Teacher reads everything and starts or ends polls in class. Other categories: the chair (and the admin) post.
-const TEACH = S.TEACH || ["naposo", "sekolah-minggu", "remaja"];
+const TEACH = S.TEACH || ["naposo", "sekolah-minggu", "remaja", "ama", "ina"];
 const MAKERS = S.MAKERS || ["tmaker", "ychair", "ytreasurer", "ysecretary"];
 // Youth's Makers are its officers (YB 2026-10-25); the other teacher-run classes have Teacher Makers.
+const roleLabel = (gid, r) => t(r === "tmaker" && (gid === "ama" || gid === "ina") ? "role_k" + gid : "role_" + r);
 const makerRoles = (gid) => (gid === "naposo" ? ["ychair", "ytreasurer", "ysecretary"] : ["tmaker"]);
 const isTeachG = (gid) => TEACH.includes(gid);
 const isTMaker = (gid) => !!D && (D.me.is_admin || MAKERS.includes(roleIn(gid)));
@@ -106,7 +107,7 @@ const isTeacherIn = (gid) => !!D && (D.me.is_admin || [...MAKERS, "teacher"].inc
 let tmPass = null;
 // The admin (YB) is a full Maker everywhere and is never asked for the phone check.
 const tmOk = (gid) => !!D && (D.me.is_admin || (!!tmPass && tmPass.phone === D.me.phone && (!gid || tmPass.g === gid)));
-const tmTitle = (gid) => t("tmVerifyRole", t("role_" + (makerRoles(gid).includes(roleIn(gid)) ? roleIn(gid) : makerRoles(gid)[0])));
+const tmTitle = (gid) => t("tmVerifyRole", roleLabel(gid, makerRoles(gid).includes(roleIn(gid)) ? roleIn(gid) : makerRoles(gid)[0]));
 const setTmOk = (g) => { tmPass = g ? { g, phone: D.me.phone } : null; };
 window.addEventListener("hashchange", () => { try { wAutoFlush(false); draftFlush(); } catch (e) { console.warn(e); } });
 window.addEventListener("hashchange", () => { const g = (location.hash.match(/^#\/g\/([\w-]+)/) || [])[1]; if (tmPass && g !== tmPass.g) tmPass = null; if (g !== hydrate.tmAsked) hydrate.tmAsked = null; });
@@ -353,7 +354,7 @@ function shell(active, inner, opts = {}) {
 }
 const langSwitch = () => `<div class="langs" role="group" aria-label="${esc(t("language"))}">${["id", "bt", "en"].map((l) => `<button data-act="lang" data-l="${l}" aria-pressed="${lang === l}">${l.toUpperCase()}</button>`).join("")}</div>`;
 const empty = (msg, icon = "star") => `<div class="empty">${ic(icon)}<p>${esc(msg)}</p></div>`;
-const roleBadge = (gid) => { const r = isAdmin() && !roleIn(gid) ? "admin" : roleIn(gid); return r ? `<span class="badge ${MAKERS.includes(r) ? "chair" : r === "teacher" ? "member" : r}">${esc(t("role_" + r))}</span>` : ""; };
+const roleBadge = (gid) => { const r = isAdmin() && !roleIn(gid) ? "admin" : roleIn(gid); return r ? `<span class="badge ${MAKERS.includes(r) ? "chair" : r === "teacher" ? "member" : r}">${esc(roleLabel(gid, r))}</span>` : ""; };
 const groupTile = (g, extra = "") => `<a class="gtile" href="#/${({ sermon: "g", office: "o" })[g.kind] || "s"}/${g.id}" style="--gc:${g.color}">
     <span class="gicon">${ic(g.icon)}</span><span class="gname"><b>${esc(gname(g))}</b><small>${extra}</small></span>${roleBadge(g.id)}${ic("chev", "chev")}</a>`;
 
@@ -566,7 +567,7 @@ function postCard(p, edit) {
 }
 function peopleList(people, gid) {
   if (!people.length) return empty(t("noMembers"), "people");
-  return `<div class="card">${people.map((p) => `<div class="li"><span class="avatar">${esc(initials(p.name))}</span><span class="grow"><b>${esc(p.name)}</b><small>${gid && ["chair", ...MAKERS, "teacher"].includes(p.groups[gid]) ? esc(t("role_" + p.groups[gid])) : ""}${p.phone ? (gid && ["chair", ...MAKERS, "teacher"].includes(p.groups[gid]) ? " · " : "") + esc(fmtPhone(p.phone)) : ""}</small></span>
+  return `<div class="card">${people.map((p) => `<div class="li"><span class="avatar">${esc(initials(p.name))}</span><span class="grow"><b>${esc(p.name)}</b><small>${gid && ["chair", ...MAKERS, "teacher"].includes(p.groups[gid]) ? esc(roleLabel(gid, p.groups[gid])) : ""}${p.phone ? (gid && ["chair", ...MAKERS, "teacher"].includes(p.groups[gid]) ? " · " : "") + esc(fmtPhone(p.phone)) : ""}</small></span>
     ${p.phone ? `<a class="icon-btn wa" href="https://wa.me/65${p.phone}" target="_blank" rel="noopener" aria-label="WhatsApp">${ic("wa")}</a>` : ""}</div>`).join("")}</div>`;
 }
 
@@ -1587,6 +1588,8 @@ async function seedDemo() {
 const TEACH_SEED = {
   "sekolah-minggu": [["@me", "tmaker"], ["Dien Pasaribu", "tmaker"]],
   remaja: [["@me", "tmaker"], ["Richard Siburian", "tmaker"], ["Royen Gultom", "tmaker"]],
+  ama: [["@me", "tmaker"], ["Toga Sihombing", "tmaker"]],
+  ina: [["@me", "tmaker"], ["Dearni Purba", "tmaker"]],
   naposo: [["Naomi Lubis", "ychair", "89498420"], ["Vhasya Bintang", "ytreasurer", "91881205"], ["Gio Sihombing", "ysecretary", "90538139"]],
 };
 const normName = (n) => String(n || "").toLowerCase().replace(/^(pdt|st|sintua|cst|bapak|ibu|sdr|sdri|kak|bang)\.?\s+/g, "").replace(/[^a-z ]/g, " ").replace(/\s+/g, " ").trim();
@@ -1603,7 +1606,7 @@ A.teachSetup = (d = {}) => {
   const only = d.g && TEACH_SEED[d.g] ? d.g : null;
   const rows = Object.entries(TEACH_SEED).filter(([g]) => !only || g === only).map(([g, list]) => `<h4>${esc(gname(G(g)))}</h4>` + list.map((n, i) => {
     const x = seedPerson(n); const done = seedDone(g, x);
-    return `<div class="ts-row"><p class="small"><b>${esc(t("role_" + x.role))}</b></p><label>${esc(t("f_name"))}<input name="n_${g}_${i}" value="${esc(x.name)}" ${n[0] === "@me" ? "readonly" : ""}></label>
+    return `<div class="ts-row"><p class="small"><b>${esc(roleLabel(g, x.role))}</b></p><label>${esc(t("f_name"))}<input name="n_${g}_${i}" value="${esc(x.name)}" ${n[0] === "@me" ? "readonly" : ""}></label>
       <label>${esc(t("f_phone"))}${done ? ` <span class="badge chair">${ic("check")}</span>` : ""}<div class="phone-in"><span>+65</span><input name="p_${g}_${i}" inputmode="numeric" placeholder="8123 4567" value="${esc(x.phone)}"></div></label></div>`;
   }).join("")).join("");
   sheet(t("tsTitle"), `<form class="form" data-form="tsetup" data-g="${only || ""}"><p class="muted">${esc(t("tsLead"))}</p>${rows}
@@ -1633,7 +1636,7 @@ F.tmcheck = async (f) => {
 function teachersTab(gid, list) {
   const mk = canEdit(gid); const order = { ychair: 0, ytreasurer: 1, ysecretary: 2, tmaker: 3, teacher: 4 };
   const rows = list.slice().sort((a, b) => order[a.groups[gid]] - order[b.groups[gid]] || a.name.localeCompare(b.name)).map((p) => `<div class="li"><span class="avatar">${esc(initials(p.name))}</span>
-    <span class="grow"><b>${esc(p.name)}</b><small>${esc(t("role_" + p.groups[gid]))}${p.phone ? " · " + esc(fmtPhone(p.phone)) : ""}</small></span>
+    <span class="grow"><b>${esc(p.name)}</b><small>${esc(roleLabel(gid, p.groups[gid]))}${p.phone ? " · " + esc(fmtPhone(p.phone)) : ""}</small></span>
     ${p.phone ? `<a class="icon-btn wa" href="https://wa.me/65${p.phone}" target="_blank" rel="noopener" aria-label="WhatsApp">${ic("wa")}</a>` : ""}
     ${mk && p.phone && p.id !== D.me.id ? `<button class="icon-btn" data-act="rmTeacher" data-g="${gid}" data-phone="${esc(p.phone)}" aria-label="${esc(t("delete"))}">${ic("trash")}</button>` : ""}</div>`).join("");
   return `<div class="card"><div class="card-h"><h3>${ic("people")} ${esc(t("t_teachers"))}</h3>${mk ? `<button class="btn sm primary" data-act="addTeacher" data-g="${gid}">${ic("plus")} ${esc(t("addTeacher"))}</button>` : ""}</div>
@@ -1642,7 +1645,7 @@ function teachersTab(gid, list) {
     ${isAdmin() ? `<button class="btn sm ghost" data-act="teachSetup" data-g="${gid}">${ic("gear")} ${esc(t("tsTitle"))}</button>` : ""}</div>`;
 }
 A.addTeacher = (d) => sheet(t("addTeacher"), `<form class="form" data-form="teacher" data-g="${esc(d.g)}"><p class="muted">${esc(t("addTeacherLead"))}</p>
-  <label>${esc(t("f_teacherRole"))}<select name="role"><option value="teacher">${esc(t("role_teacher"))} · ${esc(t("teacherSub"))}</option>${makerRoles(d.g).map((r) => `<option value="${r}" ${d.r === r ? "selected" : ""}>${esc(t("role_" + r))} · ${esc(t("tmakerSub"))}</option>`).join("")}</select></label>
+  <label>${esc(t("f_teacherRole"))}<select name="role"><option value="teacher">${esc(t("role_teacher"))} · ${esc(t("teacherSub"))}</option>${makerRoles(d.g).map((r) => `<option value="${r}" ${d.r === r ? "selected" : ""}>${esc(roleLabel(d.g, r))} · ${esc(t("tmakerSub"))}</option>`).join("")}</select></label>
   <label>${esc(t("f_phone"))}<div class="phone-in"><span>+65</span><input name="phone" inputmode="numeric" required placeholder="8123 4567"></div></label>
   <label>${esc(t("f_nameIfNew"))}<input name="name" autocomplete="off"></label>
   <label class="check"><input type="checkbox" name="more"> ${esc(t("addAnother"))}</label>
@@ -1650,7 +1653,7 @@ A.addTeacher = (d) => sheet(t("addTeacher"), `<form class="form" data-form="teac
 F.teacher = async (f) => {
   const g = f.dataset.g; const role = f.role.value;
   const r = await api.setTeacher(f.phone.value, g, role, f.name.value.trim());
-  const more = f.more.checked; await refresh(); toast(t("teacherAdded", r.name, t("role_" + role)));
+  const more = f.more.checked; await refresh(); toast(t("teacherAdded", r.name, roleLabel(g, role)));
   closeSheet(); if (more) setTimeout(() => A.addTeacher({ g, r: role }), 220);
 };
 A.rmTeacher = async (d, btn) => {

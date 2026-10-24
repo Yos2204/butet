@@ -32,7 +32,7 @@ const DEFAULT_GROUPS = [
 ].map(([id, kind, name_id, name_bt, name_en, color, icon, sort]) => ({ id, kind, name_id, name_bt, name_en, color, icon, sort }));
 
 // Categories run by teachers (Teacher Makers and Teachers), see hk__teach in backend/schema.sql.
-const TEACH = ["naposo", "sekolah-minggu", "remaja"];
+const TEACH = ["naposo", "sekolah-minggu", "remaja", "ama", "ina"];
 // Makers (may post) in teacher-run categories. In Youth they are the Youth Chair, Treasurer and Secretary (YB 2026-10-25).
 const MAKERS = ["tmaker", "ychair", "ytreasurer", "ysecretary"];
 
