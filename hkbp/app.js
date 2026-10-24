@@ -99,9 +99,12 @@ const TEACH = S.TEACH || ["naposo", "sekolah-minggu"];
 const isTeachG = (gid) => TEACH.includes(gid);
 const isTMaker = (gid) => !!D && (D.me.is_admin || roleIn(gid) === "tmaker");
 const isTeacherIn = (gid) => !!D && (D.me.is_admin || ["tmaker", "teacher"].includes(roleIn(gid)));
-const tmOk = () => { try { return !!D && sessionStorage.getItem("hkbp.tm") === D.me.phone; } catch { return false; } };
-const setTmOk = (v) => { try { v ? sessionStorage.setItem("hkbp.tm", v) : sessionStorage.removeItem("hkbp.tm"); } catch {} };
-const canEdit = (gid) => manage() && (isTeachG(gid) ? isTMaker(gid) && tmOk() : D.me.is_admin || roleIn(gid) === "chair");
+// Teacher Makers confirm their phone number every time they open Youth or Sunday School; leaving the class forgets it.
+let tmPass = null;
+const tmOk = (gid) => !!D && !!tmPass && tmPass.phone === D.me.phone && (!gid || tmPass.g === gid);
+const setTmOk = (g) => { tmPass = g ? { g, phone: D.me.phone } : null; };
+window.addEventListener("hashchange", () => { const g = (location.hash.match(/^#\/g\/([\w-]+)/) || [])[1]; if (tmPass && g !== tmPass.g) tmPass = null; if (g !== hydrate.tmAsked) hydrate.tmAsked = null; });
+const canEdit = (gid) => manage() && (isTeachG(gid) ? isTMaker(gid) && tmOk(gid) : D.me.is_admin || roleIn(gid) === "chair");
 const canRunPoll = (gid) => manage() && isTeacherIn(gid);
 const canSee = (g) => (g.kind === "office" ? isOffice() : g.kind === "service" || isElder() || !!roleIn(g.id));
 const G = (id) => D.groups.find((g) => g.id === id);
@@ -468,7 +471,7 @@ R.group = (gid) => {
       <span class="gicon xl">${ic(g.icon)}</span>
       <div><h2>${esc(gname(g))}</h2><p>${esc(t("motto_" + g.id) !== "motto_" + g.id ? t("motto_" + g.id) : t("kindSermon"))}</p>${roleBadge(gid) ? `<div class="hero-role">${roleBadge(gid)} <small>${esc(edit ? t("canUpdate") : teach && canRunPoll(gid) ? t("teacherSub") : t("readOnly"))}</small></div>` : ""}</div>
     </section>
-    ${ok && teach && manage() && isTMaker(gid) && !tmOk() ? `<button class="card notify-ask" data-act="tmVerify" data-g="${gid}">${ic("lock")}<span><b>${esc(t("tmVerify"))}</b><small>${esc(t("tmNeedVerify"))}</small></span>${ic("chev", "chev")}</button>` : ""}
+    ${ok && teach && manage() && isTMaker(gid) && !tmOk(gid) ? `<button class="card notify-ask" data-act="tmVerify" data-g="${gid}">${ic("lock")}<span><b>${esc(t("tmVerify"))}</b><small>${esc(t("tmNeedVerify"))}</small></span>${ic("chev", "chev")}</button>` : ""}
     ${ok ? `<div class="seg" role="tablist" style="--gc:${g.color}">${tabs.map(([k, l, n]) => `<a role="tab" aria-selected="${tab === k}" href="#/g/${gid}?tab=${k}">${esc(t(l))}${n ? ` <i>${n}</i>` : ""}</a>`).join("")}</div>` : ""}
     <div style="--gc:${g.color}">${body}</div>`, { back: "#/groups", title: gname(g), sub: t("kindSermon") });
 };
@@ -702,11 +705,9 @@ function hydrate() {
     else if (D.me.is_admin && manage() && !makers().length && !hydrate.mkAsked) { hydrate.mkAsked = true; setTimeout(A.addMaker, 400); }
   }
   const tg = (location.hash.match(/^#\/g\/([\w-]+)/) || [])[1];
-  if (D && tg && isTeachG(tg) && $("#sheet").hidden && manage() && isTMaker(tg) && !tmOk() && hydrate.tmAsked !== tg) { hydrate.tmAsked = tg; setTimeout(() => A.tmVerify({ g: tg }), 300); }
-  if (D && /^#\/home/.test(location.hash) && $("#sheet").hidden && isAdmin() && !hydrate.tsAsked && teachSeedMissing().length) {
-    hydrate.tsAsked = true; let seen = false; try { seen = sessionStorage.getItem("hkbp.ts") === "1"; } catch {}
-    if (!seen) setTimeout(() => { if ($("#sheet").hidden) A.teachSetup(); }, 600);
-  }
+  // Opening Youth or Sunday School: the admin is asked for that class's missing Teacher Makers; a Maker is asked to confirm their phone.
+  if (D && tg && isTeachG(tg) && $("#sheet").hidden && isAdmin() && teachSeedMissing(tg).length && hydrate.tsAsked !== tg) { hydrate.tsAsked = tg; setTimeout(() => { if ($("#sheet").hidden) A.teachSetup({ g: tg }); }, 300); }
+  else if (D && tg && isTeachG(tg) && $("#sheet").hidden && manage() && isTMaker(tg) && !tmOk(tg) && hydrate.tmAsked !== tg) { hydrate.tmAsked = tg; setTimeout(() => A.tmVerify({ g: tg }), 300); }
   if (D && /^#\/o\//.test(location.hash) && $("#sheet").hidden && viewMode() !== null && isOffice()) {
     if (!offOk()) setTimeout(officePrompt, 250);
     else if (D.me.is_admin && manage() && !officeGroups().some((g) => holders(g.id).length) && !hydrate.offAsked) { hydrate.offAsked = true; setTimeout(() => A.addHolder({ g: location.hash.split("/")[2] }), 400); }
@@ -1324,21 +1325,21 @@ function seedPerson(name) {
   const hit = D.people.filter((p) => { const n = normName(p.name); return parts.every((w) => n.split(" ").includes(w)); });
   return { name, phone: hit.length === 1 ? hit[0].phone || "" : "" };
 }
-const teachSeedMissing = () => Object.entries(TEACH_SEED).flatMap(([g, list]) => list.map((n) => ({ g, ...seedPerson(n) }))
+const teachSeedMissing = (only) => Object.entries(TEACH_SEED).filter(([g]) => !only || g === only).flatMap(([g, list]) => list.map((n) => ({ g, ...seedPerson(n) }))
   .filter((x) => !D.people.some((p) => p.phone && p.phone === x.phone && (p.groups || {})[x.g] === "tmaker")));
-A.teachSetup = () => {
-  try { sessionStorage.setItem("hkbp.ts", "1"); } catch {}
-  const rows = Object.entries(TEACH_SEED).map(([g, list]) => `<h4>${esc(gname(G(g)))} · ${esc(t("role_tmaker"))}</h4>` + list.map((n, i) => {
+A.teachSetup = (d = {}) => {
+  const only = d.g && TEACH_SEED[d.g] ? d.g : null;
+  const rows = Object.entries(TEACH_SEED).filter(([g]) => !only || g === only).map(([g, list]) => `<h4>${esc(gname(G(g)))} · ${esc(t("role_tmaker"))}</h4>` + list.map((n, i) => {
     const x = seedPerson(n); const done = D.people.some((p) => p.phone && p.phone === x.phone && (p.groups || {})[g] === "tmaker");
     return `<div class="ts-row"><label>${esc(t("f_name"))}<input name="n_${g}_${i}" value="${esc(x.name)}" ${n === "@me" ? "readonly" : ""}></label>
       <label>${esc(t("f_phone"))}${done ? ` <span class="badge chair">${ic("check")}</span>` : ""}<div class="phone-in"><span>+65</span><input name="p_${g}_${i}" inputmode="numeric" placeholder="8123 4567" value="${esc(x.phone)}"></div></label></div>`;
   }).join("")).join("");
-  sheet(t("tsTitle"), `<form class="form" data-form="tsetup"><p class="muted">${esc(t("tsLead"))}</p>${rows}
+  sheet(t("tsTitle"), `<form class="form" data-form="tsetup" data-g="${only || ""}"><p class="muted">${esc(t("tsLead"))}</p>${rows}
     <button class="btn primary block">${ic("check")} ${esc(t("tsSave"))}</button></form>`, (el) => { const e = [...el.querySelectorAll("input[name^=p_]")].find((x) => !x.value); if (e) e.focus(); });
 };
 F.tsetup = async (f) => {
   const missing = []; let n = 0;
-  for (const [g, list] of Object.entries(TEACH_SEED)) for (let i = 0; i < list.length; i++) {
+  for (const [g, list] of Object.entries(TEACH_SEED).filter(([k]) => !f.dataset.g || k === f.dataset.g)) for (let i = 0; i < list.length; i++) {
     const name = f["n_" + g + "_" + i].value.trim(); const ph = f["p_" + g + "_" + i].value;
     if (!S.phone8(ph)) { missing.push(name); continue; }
     if (!validPhone(ph)) throw new S.AppError("bad_phone");
@@ -1354,7 +1355,7 @@ A.tmVerify = (d) => sheet(t("tmVerify"), `<form class="form" data-form="tmcheck"
 F.tmcheck = async (f) => {
   // Must be the signed-in member's own number and a Teacher Maker of this class. The server checks every change again.
   if (S.phone8(f.phone.value) !== D.me.phone || !isTMaker(f.dataset.g)) { setTmOk(""); closeSheet(); toast(t("tmReject"), true); return; }
-  setTmOk(D.me.phone); closeSheet(); toast(t("tmOk"));
+  setTmOk(f.dataset.g); closeSheet(); toast(t("tmOk"));
 };
 
 function teachersTab(gid, list) {
@@ -1366,7 +1367,7 @@ function teachersTab(gid, list) {
   return `<div class="card"><div class="card-h"><h3>${ic("people")} ${esc(t("t_teachers"))}</h3>${mk ? `<button class="btn sm primary" data-act="addTeacher" data-g="${gid}">${ic("plus")} ${esc(t("addTeacher"))}</button>` : ""}</div>
     <p class="small muted">${esc(t("teachersLead"))}</p>
     ${rows || `<p class="muted small">${esc(t("noTeachers"))}</p>`}
-    ${isAdmin() ? `<button class="btn sm ghost" data-act="teachSetup">${ic("gear")} ${esc(t("tsTitle"))}</button>` : ""}</div>`;
+    ${isAdmin() ? `<button class="btn sm ghost" data-act="teachSetup" data-g="${gid}">${ic("gear")} ${esc(t("tsTitle"))}</button>` : ""}</div>`;
 }
 A.addTeacher = (d) => sheet(t("addTeacher"), `<form class="form" data-form="teacher" data-g="${esc(d.g)}"><p class="muted">${esc(t("addTeacherLead"))}</p>
   <label>${esc(t("f_teacherRole"))}<select name="role"><option value="teacher">${esc(t("role_teacher"))} · ${esc(t("teacherSub"))}</option><option value="tmaker" ${d.r === "tmaker" ? "selected" : ""}>${esc(t("role_tmaker"))} · ${esc(t("tmakerSub"))}</option></select></label>
