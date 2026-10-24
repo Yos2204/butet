@@ -666,7 +666,6 @@ async function render() {
 function hydrate() {
   if (D && api.hasSession() && $("#sheet").hidden) {
     if (viewMode() === null) { if (hasRights()) setTimeout(rolePrompt, 300); else LS.set("view", "member"); }
-    else if (D.me.is_admin && manage() && !(D.settings || {}).setup_done && !hydrate.asked && /^#\/home/.test(location.hash)) { hydrate.asked = true; setTimeout(A.breadSetup, 500); }
   }
   if (D && /^#\/s\/multimedia/.test(location.hash) && $("#sheet").hidden && viewMode() !== null) {
     if (!mmRole()) setTimeout(mmPrompt, 250);
