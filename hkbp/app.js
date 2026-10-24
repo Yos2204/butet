@@ -109,9 +109,9 @@ const canEdit = (gid) => manage() && (isTeachG(gid) ? isTMaker(gid) && tmOk(gid)
 const canRunPoll = (gid) => manage() && isTeacherIn(gid);
 const canSee = (g) => (g.kind === "office" ? isOffice() : g.kind === "service" || isElder() || !!roleIn(g.id));
 // First-login profile (YB 2026-10-24): four questions pick which categories the member sees.
-// Pilot: only these phone numbers get the pop-up for now; add more (or everyone) once YB has tested it.
-const PROFILE_PILOT = ["85334780"];
-const profileOn = () => !!D && !isGuest() && !!me() && PROFILE_PILOT.includes(S.phone8(me().phone));
+// Everyone gets it except YB (super admin, sees everything). Categories a member leads (chair, teacher...) always show.
+const PROFILE_SKIP = ["85334780"];
+const profileOn = () => !!D && !isGuest() && !!me() && !PROFILE_SKIP.includes(S.phone8(me().phone));
 function profileCats(p) {
   if (!p) return null;
   if (p.confirmed === false) return ["remaja"];
@@ -120,7 +120,7 @@ function profileCats(p) {
   if (p.married) c.push("sekolah-minggu"); // parents see Sunday School too (YB)
   return c;
 }
-const catShown = (g) => { if (g.kind !== "sermon" || !profileOn() || LS.get("allCats")) return true; const c = profileCats(me().profile); return !c || c.includes(g.id); };
+const catShown = (g) => { if (g.kind !== "sermon" || !profileOn() || isAdmin() && LS.get("allCats")) return true; const r = roleIn(g.id); if (r && r !== "member") return true; const c = profileCats(me().profile); return !c || c.includes(g.id); };
 const G = (id) => D.groups.find((g) => g.id === id);
 const gname = (g) => (g ? g["name_" + lang] || g.name_en || g.id : t("wholeChurch"));
 const firstName = (n) => String(n || "").replace(/^(Pdt|St|Sintua|Bapak|Ibu|Kak|Bang|Ev|Dr)\.?\s+/i, "").split(/\s+/)[0];
@@ -467,7 +467,7 @@ R.groups = () => {
   return shell("#/groups", `
     <h2 class="page-h">${esc(t("groupsTitle"))}</h2>
     <p class="lead">${esc(t("groupsLead"))}</p>
-    ${pf ? `<div class="card row between pf-note"><span class="small muted">${esc(t(LS.get("allCats") ? "pfAllShown" : "pfFiltered"))}</span><span class="row"><button class="btn sm ghost" data-act="profile">${esc(t("pfChange"))}</button><button class="btn sm" data-act="allCats">${esc(t(LS.get("allCats") ? "pfMine" : "pfAll"))}</button></span></div>` : ""}
+    ${pf ? `<div class="card row between pf-note"><span class="small muted">${esc(t(isAdmin() && LS.get("allCats") ? "pfAllShown" : "pfFiltered"))}</span><span class="row"><button class="btn sm ghost" data-act="profile">${esc(t("pfChange"))}</button>${isAdmin() ? `<button class="btn sm" data-act="allCats">${esc(t(LS.get("allCats") ? "pfMine" : "pfAll"))}</button>` : ""}</span></div>` : ""}
     <div class="gcards">${list.map((g) => {
       const n = D.people.filter((p) => g.id in (p.groups || {})).length; const posts = D.posts.filter((p) => p.group_id === g.id).length; const ok = canSee(g);
       return `<a class="gcard ${ok ? "" : "locked"}" href="#/g/${g.id}" style="--gc:${g.color}">
