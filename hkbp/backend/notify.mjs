@@ -36,8 +36,8 @@ const part = (k) => sg.find((p) => p.type === k).value;
 const today = `${part("year")}-${part("month")}-${part("day")}`;
 const hour = +part("hour") % 24;
 
-const members = await db("hk_members?select=id,name,phone,dob,is_admin,groups,wa_optin");
-const subs = await db("hk_push?select=endpoint,member_id,sub");
+const members = await db("hk_members?select=id,name,phone,dob,is_admin,groups,wa_optin&removed_at=is.null");
+const subs = await db("hk_push?select=endpoint,member_id,sub&revoked=is.false");
 const audience = (a) => {
   if (a === "all") return members;
   if (a === "elders") return members.filter((m) => m.is_admin || "parhalado" in (m.groups || {}));
@@ -84,7 +84,7 @@ async function draftBread() {
 
 // 1. Daily bread
 if (hour >= BREAD_HOUR) {
-  let [b] = await db(`hk_bread?day=eq.${today}&select=*`);
+  let [b] = await db(`hk_bread?day=eq.${today}&removed_at=is.null&select=*`);
   if (!b) b = await draftBread();
   if (b && await claim("bread:" + today)) {
     await push(members, { title: `📖 Renungan Harian: ${b.title || ""}`, body: `${b.verse || ""}\n${(b.body || "").slice(0, 160)}`, url: `#/bread/${today}`, tag: "bread" });
@@ -102,7 +102,7 @@ if (hour >= BDAY_HOUR) {
 }
 // 3. Event reminders
 const now = Date.now();
-const events = await db(`hk_events?starts_at=gt.${new Date(now).toISOString()}&starts_at=lt.${new Date(now + 8 * 864e5).toISOString()}&select=*`);
+const events = await db(`hk_events?starts_at=gt.${new Date(now).toISOString()}&starts_at=lt.${new Date(now + 8 * 864e5).toISOString()}&removed_at=is.null&select=*`);
 for (const e of events.filter((x) => x.remind_min > 0 && new Date(x.starts_at).getTime() - x.remind_min * 60e3 <= now)) {
   if (await claim(`event:${e.id}:${e.remind_min}:${e.starts_at}`)) {
     const when = new Intl.DateTimeFormat("id-ID", { timeZone: "Asia/Singapore", weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" }).format(new Date(e.starts_at));

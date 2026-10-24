@@ -31,6 +31,11 @@ create table if not exists hk_members (
 
 alter table hk_members add column if not exists alias text;
 
+-- Removing something only marks it (removed_at), so mistakes can be undone from the Supabase table editor.
+alter table hk_groups add column if not exists removed_at timestamptz;
+alter table hk_members add column if not exists removed_at timestamptz;
+alter table hk_members add column if not exists setup_code_hash text; -- one-time code to set a first password in the app
+
 create table if not exists hk_sessions (
   token text primary key,
   member_id uuid not null references hk_members on delete cascade,
@@ -92,6 +97,13 @@ create table if not exists hk_outbox (
 
 create table if not exists hk_sent (key text primary key, at timestamptz default now());
 
+alter table hk_posts add column if not exists removed_at timestamptz;
+alter table hk_rosters add column if not exists removed_at timestamptz;
+alter table hk_bread add column if not exists removed_at timestamptz;
+alter table hk_updates add column if not exists removed_at timestamptz;
+alter table hk_events add column if not exists removed_at timestamptz;
+alter table hk_push add column if not exists revoked boolean not null default false;
+
 -- Lock every table: only the functions (and the server's service key) may touch them.
 do $$ declare t text; begin
   foreach t in array array['hk_groups','hk_members','hk_sessions','hk_posts','hk_rosters','hk_bread','hk_updates','hk_events','hk_push','hk_outbox','hk_sent'] loop
@@ -124,7 +136,7 @@ create or replace function hk__me(p_token text) returns hk_members language plpg
 declare m hk_members;
 begin
   select mm.* into m from hk_sessions s join hk_members mm on mm.id = s.member_id
-   where s.token = p_token and s.expires_at > now();
+   where s.token = p_token and s.expires_at > now() and mm.removed_at is null;
   if m.id is null then raise exception 'not_signed_in'; end if;
   return m;
 end $$;
@@ -148,6 +160,8 @@ create or replace function hk__json(r anyelement) returns jsonb language sql imm
 -- ---------- admin setup (SQL Editor only) ----------
 create or replace function hk_make_admin(p_name text, p_phone text, p_password text) returns text language plpgsql security definer set search_path = public, extensions as $$
 begin
+  if hk__phone(p_phone) !~ '^[3689][0-9]{7}$' then raise exception 'Use your 8-digit Singapore phone number'; end if;
+  if length(coalesce(p_password, '')) < 6 or p_password in ('your-password', 'TYPE-YOUR-PASSWORD') then raise exception 'Replace TYPE-YOUR-PASSWORD with your own password (at least 6 characters)'; end if;
   insert into hk_members (name, phone, pass_hash, is_admin, groups)
   values (p_name, hk__phone(p_phone), crypt(p_password, gen_salt('bf')), true, '{"parhalado":"chair"}')
   on conflict (phone) do update set is_admin = true, pass_hash = excluded.pass_hash, name = excluded.name;
@@ -159,18 +173,43 @@ create or replace function hk_login(p_phone text, p_password text) returns jsonb
 declare m hk_members; tok text;
 begin
   perform pg_sleep(0.3); -- slows down password guessing
-  select * into m from hk_members where phone = hk__phone(p_phone);
+  select * into m from hk_members where phone = hk__phone(p_phone) and removed_at is null;
   if m.id is null or m.pass_hash is null or m.pass_hash <> crypt(coalesce(p_password, ''), m.pass_hash) then
     raise exception 'bad_login';
   end if;
   tok := encode(gen_random_bytes(24), 'hex');
   insert into hk_sessions values (tok, m.id, now() + interval '180 days');
-  delete from hk_sessions where expires_at < now();
   return jsonb_build_object('token', tok);
 end $$;
 
+-- First sign-in with a one-time setup code (given by the admin): sets the member's own password.
+create or replace function hk_claim(p_phone text, p_code text, p_password text) returns jsonb language plpgsql security definer set search_path = public, extensions as $$
+declare m hk_members; tok text;
+begin
+  perform pg_sleep(0.5);
+  select * into m from hk_members where phone = hk__phone(p_phone) and removed_at is null;
+  if m.id is null or m.setup_code_hash is null or m.setup_code_hash <> crypt(upper(trim(coalesce(p_code, ''))), m.setup_code_hash) then
+    raise exception 'bad_code';
+  end if;
+  if length(coalesce(p_password, '')) < 6 then raise exception 'short_password'; end if;
+  update hk_members set pass_hash = crypt(p_password, gen_salt('bf')), setup_code_hash = null where id = m.id;
+  tok := encode(gen_random_bytes(24), 'hex');
+  insert into hk_sessions values (tok, m.id, now() + interval '180 days');
+  return jsonb_build_object('token', tok);
+end $$;
+
+-- Admin (SQL Editor or Claude) gives a member a one-time setup code.
+create or replace function hk_make_setup_code(p_name text, p_phone text, p_code text, p_admin boolean default false) returns text language plpgsql security definer set search_path = public, extensions as $$
+begin
+  if hk__phone(p_phone) !~ '^[3689][0-9]{7}$' then raise exception 'Use an 8-digit Singapore phone number'; end if;
+  insert into hk_members (name, phone, setup_code_hash, is_admin, groups)
+  values (p_name, hk__phone(p_phone), crypt(upper(trim(p_code)), gen_salt('bf')), p_admin, case when p_admin then '{"parhalado":"chair"}'::jsonb else '{}'::jsonb end)
+  on conflict (phone) do update set setup_code_hash = excluded.setup_code_hash, is_admin = hk_members.is_admin or excluded.is_admin, removed_at = null;
+  return 'Setup code ready for ' || hk__phone(p_phone);
+end $$;
+
 create or replace function hk_logout(p_token text) returns void language sql security definer set search_path = public as $$
-  delete from hk_sessions where token = p_token
+  update hk_sessions set expires_at = now() where token = p_token
 $$;
 
 create or replace function hk_set_password(p_token text, p_old text, p_new text) returns void language plpgsql security definer set search_path = public, extensions as $$
@@ -187,33 +226,33 @@ declare m hk_members := hk__me(p_token); el boolean := hk__elder(m);
 begin
   return jsonb_build_object(
     'me', jsonb_build_object('id', m.id, 'name', m.name, 'alias', m.alias, 'phone', m.phone, 'dob', m.dob, 'is_admin', m.is_admin, 'groups', m.groups, 'wa_optin', m.wa_optin),
-    'groups', (select coalesce(jsonb_agg(to_jsonb(g) order by g.sort), '[]') from hk_groups g),
+    'groups', (select coalesce(jsonb_agg(to_jsonb(g) order by g.sort), '[]') from hk_groups g where g.removed_at is null),
     'posts', (select coalesce(jsonb_agg(to_jsonb(p) order by p.created_at desc), '[]') from
-               (select * from hk_posts where hk__sees(m, group_id) order by created_at desc limit 300) p),
+               (select * from hk_posts where removed_at is null and hk__sees(m, group_id) order by created_at desc limit 300) p),
     'rosters', (select coalesce(jsonb_agg((to_jsonb(r) - 'file_b64') || jsonb_build_object('has_file', r.file_b64 is not null) order by r.month desc, r.created_at desc), '[]')
-               from hk_rosters r where r.month >= to_char(now() - interval '12 months', 'YYYY-MM')),
+               from hk_rosters r where r.removed_at is null and r.month >= to_char(now() - interval '12 months', 'YYYY-MM')),
     'bread', (select coalesce(jsonb_agg(to_jsonb(b) order by b.day desc), '[]') from hk_bread b
-               where b.day >= current_date - 90 and (el or b.day <= (now() at time zone 'Asia/Singapore')::date)),
+               where b.removed_at is null and b.day >= current_date - 90 and (el or b.day <= (now() at time zone 'Asia/Singapore')::date)),
     'updates', (select coalesce(jsonb_agg(to_jsonb(u) order by u.pinned desc, u.created_at desc), '[]') from
-               (select * from hk_updates where audience = 'all' or el order by created_at desc limit 150) u),
+               (select * from hk_updates where removed_at is null and (audience = 'all' or el) order by created_at desc limit 150) u),
     'events', (select coalesce(jsonb_agg(to_jsonb(e) order by e.starts_at), '[]') from hk_events e
-               where e.starts_at > now() - interval '60 days' and hk__sees(m, e.group_id)),
+               where e.removed_at is null and e.starts_at > now() - interval '60 days' and hk__sees(m, e.group_id)),
     'people', (select coalesce(jsonb_agg(jsonb_build_object(
                   'id', x.id, 'name', x.name, 'alias', x.alias, 'bday', to_char(x.dob, 'MM-DD'), 'groups', x.groups, 'is_admin', x.is_admin,
                   'phone', case when m.is_admin or exists (select 1 from jsonb_each_text(m.groups) g where g.value = 'chair' and x.groups ? g.key) then x.phone end,
                   'dob', case when m.is_admin then x.dob end,
                   'wa_optin', case when m.is_admin then x.wa_optin end,
-                  'has_password', case when m.is_admin then x.pass_hash is not null end) order by x.name), '[]') from hk_members x)
+                  'has_password', case when m.is_admin then x.pass_hash is not null end) order by x.name), '[]') from hk_members x where x.removed_at is null)
   );
 end $$;
 
 create or replace function hk_roster_file(p_token text, p_id uuid) returns jsonb language plpgsql security definer set search_path = public as $$
 declare m hk_members := hk__me(p_token);
 begin
-  return (select jsonb_build_object('file_b64', file_b64, 'mime', mime, 'file_name', file_name) from hk_rosters where id = p_id);
+  return (select jsonb_build_object('file_b64', file_b64, 'mime', mime, 'file_name', file_name) from hk_rosters where id = p_id and removed_at is null);
 end $$;
 
--- ---------- save / delete with role checks ----------
+-- ---------- save and remove, with role checks ----------
 create or replace function hk_save(p_token text, p_kind text, p_data jsonb) returns jsonb language plpgsql security definer set search_path = public as $$
 declare m hk_members := hk__me(p_token); d jsonb := p_data; rid uuid := nullif(p_data ->> 'id', '')::uuid; res jsonb; gid text := nullif(p_data ->> 'group_id', '');
 begin
@@ -237,7 +276,7 @@ begin
   elsif p_kind = 'bread' then
     if not hk__elder(m) then raise exception 'not_allowed'; end if;
     insert into hk_bread (day, verse, title, body, author_name) values ((d ->> 'day')::date, d ->> 'verse', d ->> 'title', d ->> 'body', m.name)
-    on conflict (day) do update set verse = excluded.verse, title = excluded.title, body = excluded.body, author_name = excluded.author_name, updated_at = now()
+    on conflict (day) do update set verse = excluded.verse, title = excluded.title, body = excluded.body, author_name = excluded.author_name, updated_at = now(), removed_at = null
     returning to_jsonb(hk_bread.*) into res;
 
   elsif p_kind = 'update' then
@@ -259,7 +298,7 @@ begin
     if not m.is_admin then raise exception 'not_allowed'; end if;
     insert into hk_groups (id, kind, name_id, name_bt, name_en, color, icon, sort)
     values (d ->> 'id', coalesce(d ->> 'kind', 'service'), d ->> 'name_id', d ->> 'name_bt', d ->> 'name_en', coalesce(d ->> 'color', '#475569'), coalesce(d ->> 'icon', 'star'), coalesce((d ->> 'sort')::int, 50))
-    on conflict (id) do update set name_id = excluded.name_id, name_bt = excluded.name_bt, name_en = excluded.name_en, color = excluded.color, icon = excluded.icon
+    on conflict (id) do update set name_id = excluded.name_id, name_bt = excluded.name_bt, name_en = excluded.name_en, color = excluded.color, icon = excluded.icon, removed_at = null
     returning to_jsonb(hk_groups.*) into res;
   else
     raise exception 'unknown_kind';
@@ -267,33 +306,34 @@ begin
   return res;
 end $$;
 
-create or replace function hk_delete(p_token text, p_kind text, p_id text) returns void language plpgsql security definer set search_path = public as $$
+create or replace function hk_remove(p_token text, p_kind text, p_id text) returns void language plpgsql security definer set search_path = public as $$
 declare m hk_members := hk__me(p_token); gid text;
 begin
   if p_kind = 'post' then
     select group_id into gid from hk_posts where id = p_id::uuid;
     if not hk__chair(m, gid) then raise exception 'not_allowed'; end if;
-    delete from hk_posts where id = p_id::uuid;
+    update hk_posts set removed_at = now() where id = p_id::uuid;
   elsif p_kind = 'roster' then
     select group_id into gid from hk_rosters where id = p_id::uuid;
     if not hk__chair(m, gid) then raise exception 'not_allowed'; end if;
-    delete from hk_rosters where id = p_id::uuid;
+    update hk_rosters set removed_at = now() where id = p_id::uuid;
   elsif p_kind = 'bread' then
     if not hk__elder(m) then raise exception 'not_allowed'; end if;
-    delete from hk_bread where day = p_id::date;
+    update hk_bread set removed_at = now() where day = p_id::date;
   elsif p_kind = 'update' then
     if not hk__elder(m) then raise exception 'not_allowed'; end if;
-    delete from hk_updates where id = p_id::uuid;
+    update hk_updates set removed_at = now() where id = p_id::uuid;
   elsif p_kind = 'event' then
     select group_id into gid from hk_events where id = p_id::uuid;
     if not (hk__elder(m) or (gid is not null and hk__chair(m, gid))) then raise exception 'not_allowed'; end if;
-    delete from hk_events where id = p_id::uuid;
+    update hk_events set removed_at = now() where id = p_id::uuid;
   elsif p_kind = 'group' then
     if not m.is_admin then raise exception 'not_allowed'; end if;
-    delete from hk_groups where id = p_id;
+    update hk_groups set removed_at = now() where id = p_id;
   elsif p_kind = 'member' then
     if not m.is_admin or p_id::uuid = m.id then raise exception 'not_allowed'; end if;
-    delete from hk_members where id = p_id::uuid;
+    update hk_members set removed_at = now() where id = p_id::uuid;
+    update hk_sessions set expires_at = now() where member_id = p_id::uuid;
   else
     raise exception 'unknown_kind';
   end if;
@@ -316,7 +356,7 @@ begin
       name = excluded.name, alias = excluded.alias, dob = coalesce(excluded.dob, hk_members.dob),
       pass_hash = coalesce(excluded.pass_hash, hk_members.pass_hash),
       is_admin = case when hk_members.id = m.id then true else excluded.is_admin end,
-      groups = excluded.groups, wa_optin = excluded.wa_optin;
+      groups = excluded.groups, wa_optin = excluded.wa_optin, removed_at = null;
     n := n + 1;
   end loop;
   return n;
@@ -326,15 +366,17 @@ create or replace function hk_push_save(p_token text, p_sub jsonb) returns void 
 declare m hk_members := hk__me(p_token);
 begin
   insert into hk_push (endpoint, member_id, sub) values (p_sub ->> 'endpoint', m.id, p_sub)
-  on conflict (endpoint) do update set member_id = excluded.member_id, sub = excluded.sub;
+  on conflict (endpoint) do update set member_id = excluded.member_id, sub = excluded.sub, revoked = false;
 end $$;
 
-create or replace function hk_push_delete(p_token text, p_endpoint text) returns void language sql security definer set search_path = public as $$
-  delete from hk_push where endpoint = p_endpoint
-$$;
+create or replace function hk_push_remove(p_token text, p_endpoint text) returns void language plpgsql security definer set search_path = public as $$
+declare m hk_members := hk__me(p_token);
+begin
+  update hk_push set revoked = true where endpoint = p_endpoint and member_id = m.id;
+end $$;
 
 -- Only these functions are open to the app's public key.
 revoke execute on all functions in schema public from public, anon, authenticated;
-grant execute on function hk_login(text, text), hk_logout(text), hk_set_password(text, text, text), hk_data(text),
-  hk_roster_file(text, uuid), hk_save(text, text, jsonb), hk_delete(text, text, text), hk_members_upsert(text, jsonb),
-  hk_push_save(text, jsonb), hk_push_delete(text, text) to anon;
+grant execute on function hk_login(text, text), hk_claim(text, text, text), hk_logout(text), hk_set_password(text, text, text), hk_data(text),
+  hk_roster_file(text, uuid), hk_save(text, text, jsonb), hk_remove(text, text, text), hk_members_upsert(text, jsonb),
+  hk_push_save(text, jsonb), hk_push_remove(text, text) to anon;

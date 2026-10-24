@@ -286,6 +286,14 @@ R.login = async () => {
         <button class="btn primary block">${ic("lock")} ${esc(t("signIn"))}</button>
         <p class="small muted center">${esc(t("forgot"))}</p>
       </form>
+      ${!demo ? `<details class="card claim"><summary>${esc(t("haveCode"))}</summary>
+        <form class="form" data-form="claim">
+          <p class="small muted">${esc(t("claimLead"))}</p>
+          <label>${esc(t("f_phone"))}<div class="phone-in"><span>+65</span><input name="phone" inputmode="numeric" required placeholder="8123 4567"></div></label>
+          <label>${esc(t("f_code"))}<input name="code" required autocomplete="one-time-code" autocapitalize="characters"></label>
+          <label>${esc(t("f_newPw"))}<input name="pw" type="password" required minlength="6" autocomplete="new-password"></label>
+          <button class="btn primary block">${esc(t("claimBtn"))}</button>
+        </form></details>` : ""}
       ${demo ? `<p class="small muted center">${esc(t("demoLogins"))}</p>` : ""}`}
     ${demo ? `<p class="small muted center">${ic("phone")} ${esc(t("demoBanner"))}</p>` : ""}
     <p class="small muted center">${esc(t("installHint"))}</p>
@@ -849,6 +857,7 @@ document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("#she
 // ---------- forms ----------
 const F = {};
 F.login = async (f) => { await api.login(f.phone.value, f.pw.value); D = null; await refresh(); location.hash = "#/home"; localReminders(); };
+F.claim = async (f) => { if ((f.pw.value || "").length < 6) throw new S.AppError("short_password"); await api.claim(f.phone.value, f.code.value, f.pw.value); D = null; await refresh(); location.hash = "#/home"; toast(t("claimDone")); };
 F.setup = async (f) => { if (!validPhone(f.phone.value)) throw new S.AppError("bad_phone"); await api.setupAdmin(f.name.value.trim(), f.phone.value, f.pw.value); await api.login(f.phone.value, f.pw.value); D = null; await refresh(); location.hash = "#/people"; };
 F.bread = async (f) => { await api.save("bread", { day: f.day.value, verse: f.verse.value.trim(), title: f.title.value.trim(), body: f.body.value.trim() }); await refresh(); toast(t("saved")); location.hash = "#/bread/" + f.day.value; };
 F.post = async (f) => {
