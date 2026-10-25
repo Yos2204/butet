@@ -178,6 +178,7 @@ insert into hk_groups (id, kind, name_id, name_bt, name_en, color, icon, sort) v
   ('band','service','ReNa Band','ReNa Band','ReNa Band','#e11d48','drum',14),
   ('song-leader','service','Song Leader','Song Leader','Song Leader','#ca8a04','mic',15),
   ('musik','service','Pemusik','Pargonsi / Pemusik','Musicians','#0891b2','note',16),
+  ('koor','service','Koor','Koor','Koor','#be185d','mic',17),
   ('secretary','office','Sekretaris','Sekretaris','Secretary','#334155','file',21),
   ('treasurer','office','Bendahara','Bendahara','Treasurer','#15803d','coins',22),
   ('chairman','office','Ketua','Ketua','Chairman','#9f1239','gavel',23)
