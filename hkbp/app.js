@@ -86,8 +86,9 @@ const me = () => D.me;
 const viewMode = () => LS.get("view", null);
 const hasRights = () => !!(D && (D.me.is_admin || "parhalado" in (D.me.groups || {}) || Object.values(D.me.groups || {}).some((r) => ["chair", "maker", ...MAKERS, "teacher"].includes(r))));
 // Multimedia: only people on the maker list (or its chair) may open the Tata Ibadah workbench; checkers and everyone else read.
-const isMMMaker = () => !!(D && ["maker", "chair"].includes((D.me.groups || {}).multimedia));
-const mmRole = () => { try { return sessionStorage.getItem("hkbp.mm") || ""; } catch { return ""; } };
+const isMMMaker = () => !!(D && (D.me.is_admin || ["maker", "chair"].includes((D.me.groups || {}).multimedia)));
+// Maker or User comes from the maker list (no pop-up): makers can edit, everyone else reads.
+const mmRole = () => (D ? (isMMMaker() ? "maker" : "checker") : "");
 const setMMRole = (v) => { try { v ? sessionStorage.setItem("hkbp.mm", v) : sessionStorage.removeItem("hkbp.mm"); } catch {} };
 const manage = () => viewMode() === "admin" && hasRights();
 const isAdmin = () => !!(D && D.me.is_admin) && manage();
@@ -837,8 +838,7 @@ function hydrate() {
     else if (serveDue()) setTimeout(() => { if ($("#sheet").hidden && serveDue()) servePrompt(); }, 900);
   }
   if (D && /^#\/s\/multimedia/.test(location.hash) && $("#sheet").hidden && viewMode() !== null) {
-    if (!mmRole()) setTimeout(mmPrompt, 250);
-    else if (D.me.is_admin && manage() && !makers().length && !hydrate.mkAsked) { hydrate.mkAsked = true; setTimeout(A.addMaker, 400); }
+    if (D.me.is_admin && manage() && !makers().length && !hydrate.mkAsked) { hydrate.mkAsked = true; setTimeout(A.addMaker, 400); }
   }
   const tg = (location.hash.match(/^#\/g\/([\w-]+)/) || [])[1];
   // Opening Youth or Sunday School: the admin is asked for that class's missing Teacher Makers; a Maker is asked to confirm their phone.
@@ -912,7 +912,7 @@ const makers = () => D.people.filter((p) => ["maker", "chair"].includes((p.group
 function tataBlock() {
   const role = mmRole(); const list = (D.services || []).slice(0, 6); const mk = makers();
   return `<div class="card tata">
-    <div class="card-h"><h3>${ic("book")} ${esc(t("tataTitle"))}</h3>${role ? `<button class="badge ${role === "maker" ? "chair" : "member"}" data-act="mmSwitch">${esc(t("role_" + role))} · ${esc(t("change"))}</button>` : ""}</div>
+    <div class="card-h"><h3>${ic("book")} ${esc(t("tataTitle"))}</h3>${role ? `<span class="badge ${role === "maker" ? "chair" : "member"}">${esc(t("role_" + role))}</span>` : ""}</div>
     <p class="small muted">${esc(t(role === "maker" ? "tataMakerLead" : "tataReadLead"))}</p>
     ${role === "maker" ? `<button class="btn primary block" data-act="openWorkbench">${ic("edit")} ${esc(t("openWorkbench"))}</button>` : ""}
     ${list.length ? list.map((v) => `<a class="li" href="#/tata/${v.id}"><span class="date-chip"><b>${esc(v.service_date ? fmt(v.service_date, { day: "numeric" }) : "•")}</b><small>${esc(v.service_date ? fmt(v.service_date, { month: "short" }) : "")}</small></span><span class="grow"><b>${esc(v.title || t("tataTitle"))}</b><small>${esc(v.author_name || "")}</small></span>${ic("chev", "chev")}</a>`).join("") : `<p class="muted small">${esc(t("noTata"))}</p>`}
