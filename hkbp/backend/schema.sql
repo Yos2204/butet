@@ -377,7 +377,7 @@ begin
                   'counts', case when hk__teacher(m, p.group_id) or p.status = 'closed' or exists (select 1 from hk_votes v where v.poll_id = p.id and v.member_id = m.id)
                     then (select coalesce(jsonb_agg((select count(*) from hk_votes v where v.poll_id = p.id and (i - 1) = any (v.choices)) order by i), '[]')
                           from generate_series(1, jsonb_array_length(p.options)) i) end) order by p.created_at desc), '[]')
-                from hk_polls p where p.removed_at is null and hk__sees(m, p.group_id) and p.created_at > now() - interval '180 days'
+                from hk_polls p where p.removed_at is null and hk__teacher(m, p.group_id) and p.created_at > now() - interval '180 days'
                   and (p.status <> 'draft' or hk__teacher(m, p.group_id))),
     'services', (select coalesce(jsonb_agg(jsonb_build_object('id', v.id, 'service_date', v.service_date, 'title', v.title, 'author_name', v.author_name,
                   'created_at', v.created_at, 'size', length(v.html)) order by v.service_date desc nulls last, v.created_at desc), '[]')
@@ -479,7 +479,7 @@ create or replace function hk_vote(p_token text, p_id uuid, p_choices jsonb) ret
 declare m hk_members := hk__me(p_token); p hk_polls; c int[];
 begin
   select * into p from hk_polls where id = p_id and removed_at is null;
-  if p.id is null or p.status <> 'open' or not hk__sees(m, p.group_id) then raise exception 'not_allowed'; end if;
+  if p.id is null or p.status <> 'open' or not hk__teacher(m, p.group_id) then raise exception 'not_allowed'; end if;
   select array_agg(distinct v::int) into c from jsonb_array_elements_text(p_choices) v;
   if c is null or (not p.multi and array_length(c, 1) <> 1) or exists (select 1 from unnest(c) i where i < 0 or i >= jsonb_array_length(p.options)) then raise exception 'unknown_kind'; end if;
   insert into hk_votes (poll_id, member_id, choices) values (p.id, m.id, c)

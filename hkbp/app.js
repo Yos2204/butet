@@ -515,12 +515,12 @@ R.group = (gid) => {
   const news = posts.filter((p) => p.kind !== "sermon");
   const evs = D.events.filter((e) => e.group_id === gid);
   const people = D.people.filter((p) => gid in (p.groups || {}));
-  const teach = isTeachG(gid); const polls = (D.polls || []).filter((p) => p.group_id === gid);
+  const teach = isTeachG(gid); const pollsOn = teach && isTeacherIn(gid); const polls = (D.polls || []).filter((p) => p.group_id === gid);
   const teachers = people.filter((p) => [...MAKERS, "teacher"].includes(p.groups[gid]));
-  const tabs = [["sermon", "t_sermon", sermons.length], ...(teach ? [["polls", "t_polls", polls.filter((p) => p.status === "open").length]] : []), ["news", "t_news", news.length], ["events", "t_events", evs.length], ...(teach ? [["teachers", "t_teachers", teachers.length]] : []), ["members", "t_members", people.length]];
+  const tabs = [["sermon", "t_sermon", sermons.length], ...(pollsOn ? [["polls", "t_polls", polls.filter((p) => p.status === "open").length]] : []), ["news", "t_news", news.length], ["events", "t_events", evs.length], ...(teach ? [["teachers", "t_teachers", teachers.length]] : []), ["members", "t_members", people.length]];
   let body = "";
   if (!ok) body = isGuest() ? signInCard(t("signInCat")) : empty(t("membersOnlyLong"), "lock");
-  else if (tab === "polls" && teach) body = pollsTab(gid, polls);
+  else if (tab === "polls" && pollsOn) body = pollsTab(gid, polls);
   else if (tab === "teachers" && teach) body = teachersTab(gid, teachers);
   else if (tab === "sermon") body = (edit ? `<button class="btn primary block" data-act="newPost" data-g="${gid}" data-kind="sermon">${ic("plus")} ${esc(t("newSermon"))}</button>` : "") + (sermons.length ? sermons.map((p) => postCard(p, edit)).join("") : empty(t("noSermon"), "book"));
   else if (tab === "news") body = (edit ? `<button class="btn primary block" data-act="newPost" data-g="${gid}" data-kind="news">${ic("plus")} ${esc(t("newNews"))}</button>` : "") + (news.length ? news.map((p) => postCard(p, edit)).join("") : empty(t("noNews"), "bell"));
@@ -1784,12 +1784,11 @@ A.newPoll = (d) => sheet(t("newPoll"), `<form class="form" data-form="poll" data
   <label>${esc(t("f_options"))}<textarea name="options" rows="5" required placeholder="${esc(t("f_optionsPh"))}"></textarea></label>
   <label class="check"><input type="checkbox" name="multi"> ${esc(t("pollMulti"))}</label>
   <label class="check"><input type="checkbox" name="open"> ${esc(t("pollOpenNow"))}</label>
-  <label class="check"><input type="checkbox" name="notify"> ${esc(t("notifyGroup"))}</label>
   <button class="btn primary block">${esc(t("save"))}</button></form>`, (el) => el.querySelector("input").focus());
 F.poll = async (f) => {
   const options = f.options.value.split("\n").map((x) => x.replace(/^\s*(\d+[.)]|[-•*])\s*/, "").trim()).filter(Boolean);
   if (options.length < 2 || options.length > 12) throw new S.AppError("poll_opts");
-  await api.save("poll", { group_id: f.dataset.g, question: f.question.value.trim(), options, multi: f.multi.checked, status: f.open.checked ? "open" : "draft", notify: f.notify.checked });
+  await api.save("poll", { group_id: f.dataset.g, question: f.question.value.trim(), options, multi: f.multi.checked, status: f.open.checked ? "open" : "draft" }); // polls are for Makers only, so no group notification
   closeSheet(); await refresh(); toast(t("saved"));
 };
 F.vote = async (f) => {
