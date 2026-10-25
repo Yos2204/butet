@@ -2,6 +2,7 @@
 // Batak Toba wording should be checked by a fluent elder before wide use.
 window.HKBP_I18N = {
   en: {
+    pfReset: "Reset my answers", 
     asOthers: "Numbers not on the member list", asNoOthers: "No one outside the member list has tried to sign in.", asTried: (n) => n === 1 ? "Tried once" : `Tried ${n} times`, asNotListed: "Not listed", asLastTry: "Last tried", pcNotice: "If your number is not on the church list yet, it is saved so the church can add you.", 
     asTitle: "App & notification status", asShort: "App status", asSub: "Who has the app and notifications on", asSigned: "Signed in to the app", asNotifOn: "Notifications on", asInstalled: "On home screen", asAll: "All", asNoApp: "Not signed in yet", asNoNotif: "Notifications off", asApp: "App", asNotif: "Notif", asLast: "Last opened", asNever: "Never signed in", asNone: "Nobody in this list.", asNote: "Green = yes, red = not yet. \"App\" means the person has signed in at least once. Home-screen installs are counted from now on.", 
     tagline: "App for the congregation", tab_home: "Home", tab_groups: "Groups", tab_serve: "Rosters", tab_calendar: "Calendar", tab_more: "More",
@@ -154,6 +155,7 @@ window.HKBP_I18N = {
     natalTitle: "Natal Naposo 2026", natalLead: "Advent calendar, schedule, the Christmas evening programme, Kado Silang, quiz and Batak words.", natalOpen: "Open Natal Naposo", natalLive: "Live Christmas quiz (projector)", natalNewTab: "New tab", natal_advent: "Advent", natal_schedule: "Schedule", natal_program: "Evening", natal_kado: "Kado Silang", natal_quiz: "Quiz", natal_batak: "Batak words",
   },
   id: {
+    pfReset: "Ulangi jawaban saya", 
     asOthers: "Nomor yang belum ada di daftar anggota", asNoOthers: "Belum ada orang di luar daftar anggota yang mencoba masuk.", asTried: (n) => `Mencoba ${n} kali`, asNotListed: "Belum terdaftar", asLastTry: "Terakhir mencoba", pcNotice: "Jika nomor Anda belum ada di daftar gereja, nomor itu disimpan agar gereja bisa menambahkan Anda.", 
     asTitle: "Status aplikasi & notifikasi", asShort: "Status aplikasi", asSub: "Siapa yang sudah pakai aplikasi dan menyalakan notifikasi", asSigned: "Sudah masuk aplikasi", asNotifOn: "Notifikasi menyala", asInstalled: "Di layar utama", asAll: "Semua", asNoApp: "Belum masuk", asNoNotif: "Notifikasi mati", asApp: "Aplikasi", asNotif: "Notif", asLast: "Terakhir dibuka", asNever: "Belum pernah masuk", asNone: "Tidak ada orang di daftar ini.", asNote: "Hijau = sudah, merah = belum. \"Aplikasi\" berarti orang itu sudah masuk minimal sekali. Pemasangan di layar utama dihitung mulai sekarang.", 
     tagline: "Aplikasi untuk jemaat", tab_home: "Beranda", tab_groups: "Kategorial", tab_serve: "Jadwal", tab_calendar: "Kalender", tab_more: "Lainnya",
@@ -303,6 +305,7 @@ window.HKBP_I18N = {
     natalTitle: "Natal Naposo 2026", natalLead: "Kalender Adven, jadwal, acara malam Natal, Kado Silang, kuis dan kata-kata Batak.", natalOpen: "Buka Natal Naposo", natalLive: "Kuis Natal langsung (proyektor)", natalNewTab: "Tab baru", natal_advent: "Adven", natal_schedule: "Jadwal", natal_program: "Acara", natal_kado: "Kado Silang", natal_quiz: "Kuis", natal_batak: "Hata Batak",
   },
   bt: {
+    pfReset: "Ulahi alusku", 
     asOthers: "Nomor na so adong di daftar ruas", asNoOthers: "Dang adong dope halak sian ruar daftar ruas na mencoba bongot.", asTried: (n) => `Nunga dicoba ${n} hali`, asNotListed: "Dang tarsurat", asLastTry: "Parpudi dicoba", pcNotice: "Molo dang dope adong nomor muna di daftar ni huria, disimpan do asa boi dipamasuk huria ho.", 
     asTitle: "Status aplikasi & notifikasi", asShort: "Status aplikasi", asSub: "Ise na dung mamakke aplikasi dohot notifikasi", asSigned: "Nunga masuk tu aplikasi", asNotifOn: "Notifikasi hurup", asInstalled: "Di layar utama", asAll: "Sude", asNoApp: "Dang dope masuk", asNoNotif: "Notifikasi mate", asApp: "Aplikasi", asNotif: "Notif", asLast: "Parpudi dibuka", asNever: "Dang hea masuk", asNone: "Ndang adong na di daftar on.", asNote: "Rata = nunga, rara = dang dope. \"Aplikasi\" ima nunga masuk sahali nanggo. Pamasangan di layar utama dietong sian sonari.", 
     tagline: "Aplikasi tu ruas", tab_home: "Jabu", tab_groups: "Kategorial", tab_serve: "Jadwal", tab_calendar: "Kalender", tab_more: "Na asing",
