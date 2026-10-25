@@ -126,10 +126,22 @@ const Local = {
     m.pass_hash = await sha(newPw); await this.commit();
   },
   // Before signing in: the same public parts as hk_public() in backend/schema.sql.
+  // Same as 'celebrations' in hk_public(): birthdays and wedding anniversaries from today to the coming Sunday (name, kind, day only).
+  celebrations(db, today) {
+    const t0 = new Date(today + "T12:00:00Z"); const n = 7 - t0.getUTCDay(); const days = [];
+    for (let i = 0; i <= n; i++) { const d = new Date(t0); d.setUTCDate(d.getUTCDate() + i); days.push(d.toISOString().slice(0, 10)); }
+    const src = [...db.members.filter((m) => m.dob).map((m) => [m.name, m.dob, "bday"]), ...db.birthdays.map((b) => [b.name, b.dob, "bday"]), ...db.members.filter((m) => m.wed).map((m) => [m.name, m.wed, "wed"])];
+    const seen = new Set(); const out = [];
+    for (const day of days) for (const [name, date, kind] of src) {
+      const k = name.toLowerCase() + kind + date.slice(5); if (date.slice(5) !== day.slice(5) || seen.has(k)) continue; seen.add(k); out.push({ name, kind, day });
+    }
+    return out.sort((a, b) => a.day.localeCompare(b.day) || a.kind.localeCompare(b.kind) || a.name.localeCompare(b.name));
+  },
   async publicData() {
     const db = await this.load(); const today = sgToday(); const svc = (gid) => { const g = db.groups.find((x) => x.id === gid); return !!g && g.kind === "service"; };
     return {
       me: null, posts: [], people: [], birthdays: [], files: [], polls: [],
+      celebrations: this.celebrations(db, today),
       groups: db.groups.filter((g) => g.kind !== "office").sort((a, b) => a.sort - b.sort),
       rosters: db.rosters.filter((r) => svc(r.group_id)).map(({ file_b64, ...r }) => ({ ...r, has_file: !!file_b64 })).sort((a, b) => b.month.localeCompare(a.month) || b.created_at.localeCompare(a.created_at)),
       bread: db.bread.filter((b) => b.day <= today).sort((a, b) => b.day.localeCompare(a.day)),
