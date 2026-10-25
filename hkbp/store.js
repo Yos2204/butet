@@ -126,9 +126,9 @@ const Local = {
     m.pass_hash = await sha(newPw); await this.commit();
   },
   // Before signing in: the same public parts as hk_public() in backend/schema.sql.
-  // Same as 'celebrations' in hk_public(): birthdays and wedding anniversaries from today to the coming Sunday (name, kind, day only).
+  // Same as 'celebrations' in hk_public(): today's birthdays and wedding anniversaries (name, kind, day only).
   celebrations(db, today) {
-    const t0 = new Date(today + "T12:00:00Z"); const n = 7 - t0.getUTCDay(); const days = [];
+    const t0 = new Date(today + "T12:00:00Z"); const n = 0; const days = [];
     for (let i = 0; i <= n; i++) { const d = new Date(t0); d.setUTCDate(d.getUTCDate() + i); days.push(d.toISOString().slice(0, 10)); }
     const src = [...db.members.filter((m) => m.dob).map((m) => [m.name, m.dob, "bday"]), ...db.birthdays.map((b) => [b.name, b.dob, "bday"]), ...db.members.filter((m) => m.wed).map((m) => [m.name, m.wed, "wed"])];
     const seen = new Set(); const out = [];
