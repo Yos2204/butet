@@ -30,6 +30,7 @@ const standalone = () => matchMedia("(display-mode: standalone)").matches || nav
 
 // ---------- icons (24px line icons) ----------
 const IC = {
+  redo: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>',
   home: '<path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/>',
   groups: '<circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><path d="M15 14.5c3 0 6 1.8 6 5.5"/>',
   roster: '<rect x="3" y="4" width="18" height="17" rx="3"/><path d="M3 9h18M8 2v4M16 2v4M7 13h4M7 17h7"/>',
@@ -798,7 +799,8 @@ R.more = () => {
     <section class="profile card">
       <span class="avatar lg">${esc(initials(m.name))}</span>
       <div class="grow"><h3>${esc(m.name)}</h3><p class="small muted">${esc(fmtPhone(m.phone))}${m.dob ? " · " + esc(fmt(m.dob, { day: "numeric", month: "long" })) : ""}</p>
-        <div class="chips">${m.is_admin ? `<span class="badge admin">${esc(t("role_admin"))}</span>` : ""}${roles.map(([g, r]) => `<span class="chip" style="--gc:${(G(g) || {}).color}">${esc(gname(G(g)))}${r === "chair" ? " · " + esc(t("role_chair")) : ""}</span>`).join("")}</div></div>
+        <div class="chips">${m.is_admin ? `<span class="badge admin">${esc(t("role_admin"))}</span>` : ""}${roles.map(([g, r]) => `<span class="chip" style="--gc:${(G(g) || {}).color}">${esc(gname(G(g)))}${r === "chair" ? " · " + esc(t("role_chair")) : ""}</span>`).join("")}</div>
+        <button class="btn sm pf-reset" data-act="pfReset">${ic("redo")} ${esc(t("pfReset"))}</button></div>
     </section>
     <div class="menu card">
       <a class="li" href="#/elders">${ic("book")}<span class="grow"><b>${esc(t("eldersUpdates"))}</b></span>${ic("chev", "chev")}</a>
@@ -890,8 +892,11 @@ const A = {};
 const F = {};
 A.lang = (d) => { lang = d.l; LS.set("lang", lang); render(); };
 A.pickView = (d) => { LS.set("view", d.v || null); closeSheet(); render(); };
-function profilePrompt() {
-  const p = me().profile || {};
+// Reset (YB 2026-10-25): opens both pop-ups again with empty answers; old answers stay until the new ones are saved.
+let pfBlank = false;
+function profilePrompt(blank) {
+  pfBlank = !!blank;
+  const p = blank ? {} : me().profile || {};
   const q = (name, key, a, b) => `<fieldset class="yn"><legend>${esc(t(key))}</legend><div class="row2">
     <label><input type="radio" name="${name}" value="1" required ${p[name] === true ? "checked" : ""}><span>${esc(t(a))}</span></label>
     <label><input type="radio" name="${name}" value="0" ${p[name] === false ? "checked" : ""}><span>${esc(t(b))}</span></label></div></fieldset>`;
@@ -904,6 +909,7 @@ function profilePrompt() {
     <button class="btn primary block">${esc(t("save"))}</button></form>`);
 }
 A.profile = () => profilePrompt();
+A.pfReset = () => profilePrompt(true);
 A.pfTest = () => {
   if (LS.get("pfTest")) { LS.set("pfTest", null); toast(t("pfTestDone")); render(); return; }
   LS.set("pfTest", 1); LS.set("allCats", null); location.hash = "#/groups"; setTimeout(profilePrompt, 300);
@@ -914,10 +920,10 @@ F.profile = async (f) => {
   const p = { married: v("married"), male: v("male"), pelaut: v("pelaut"), confirmed: v("confirmed") };
   const res = await api.profileSave(p); D.me.profile = res || p; LS.set("allCats", null);
   closeSheet(); toast(t("pfSaved") + " " + profileCats(D.me.profile).map((id) => gname(G(id))).filter(Boolean).join(", ")); render();
-  if (serveOn()) setTimeout(servePrompt, 350); // second layer
+  if (serveOn()) setTimeout(() => servePrompt(pfBlank), 350); // second layer
 };
-function servePrompt() {
-  const sv = (me().profile || {}).serve || [];
+function servePrompt(blank) {
+  const sv = blank ? [] : (me().profile || {}).serve || [];
   sheet(t("svTitle"), `<form class="form" data-form="serve">
     <p class="muted">${esc(t("svLead"))}</p>
     <div class="pick-list">${D.groups.filter((g) => g.kind === "service").map((g) => `<label class="pick" style="--gc:${g.color}"><input type="checkbox" name="sv" value="${esc(g.id)}" ${sv.includes(g.id) ? "checked" : ""}><span class="gicon">${ic(g.icon)}</span><b>${esc(gname(g))}</b><i class="tick">${ic("check")}</i></label>`).join("")}</div>
