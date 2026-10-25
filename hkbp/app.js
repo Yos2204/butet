@@ -387,7 +387,8 @@ R.login = async () => {
       <form class="card form" data-form="login">
         <label>${esc(t("f_phone"))}<div class="phone-in"><span>+65</span><input name="phone" inputmode="numeric" required placeholder="8123 4567" autocomplete="username" data-phonecheck></div></label>
         <p class="small muted pc-hint" aria-live="polite"></p>
-        <p class="small muted">${esc(t("pcNotice"))}</p>
+        <p class="small muted pc-note">${esc(t("pcNotice"))}</p>
+        <div class="pc-reg" hidden><label>${esc(t("f_name"))}<input name="rname" maxlength="80" autocomplete="name"></label></div>
         <div class="pc-pw" hidden><label>${esc(t("f_password"))}<input name="pw" type="password" autocomplete="current-password"></label></div>
         <div class="pc-new" hidden>
           <label>${esc(t("f_newPw"))}<input name="npw" type="password" minlength="6" autocomplete="new-password"></label>
@@ -395,6 +396,7 @@ R.login = async () => {
         </div>
         <button class="btn primary block" disabled>${ic("lock")} <span class="pc-btn">${esc(t("signIn"))}</span></button>
         <p class="small muted center pc-forgot" hidden>${esc(t("forgot"))}</p>
+        <p class="center pc-browse" hidden><a class="small" href="#/home">${esc(t("pcBrowse"))}</a></p>
       </form>
       ${demo ? `<p class="small muted center">${esc(t("demoLogins"))}</p>` : ""}`}
     ${demo ? `<p class="small muted center">${ic("phone")} ${esc(t("demoBanner"))}</p>` : ""}
@@ -831,7 +833,7 @@ function asFill() {
   el.innerHTML = `
     <div class="as-totals"><div class="card"><b>${si}/${n}</b><small>${esc(t("asSigned"))}</small></div><div class="card"><b>${no}/${n}</b><small>${esc(t("asNotifOn"))}</small></div><div class="card"><b>${ins}/${n}</b><small>${esc(t("asInstalled"))}</small></div></div>
     <div class="chips">${[["all", "asAll"], ["noapp", "asNoApp"], ["nonotif", "asNoNotif"]].map(([f, k]) => `<button class="chip ${AS.f === f ? "on" : ""}" data-act="asFilter" data-f="${f}">${esc(t(k))}</button>`).join("")}</div>
-    <div class="card menu">${show.length ? show.map((r) => `<div class="li as-row"><span class="avatar">${esc(initials(r.name))}</span><span class="grow"><b>${esc(r.name)}</b><small>${esc(fmtPhone(r.phone))} · ${esc(r.last_seen ? t("asLast") + " " + fmt(r.last_seen, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : t("asNever"))}</small></span><span class="as-pills">${asDot(r.signed_in, t("asApp"))}${asDot(r.notif, t("asNotif"))}</span></div>`).join("") : empty(t("asNone"))}</div>
+    <div class="card menu">${show.length ? show.map((r) => `<div class="li as-row"><span class="avatar">${esc(initials(r.name))}</span><span class="grow"><b>${esc(r.name)}</b>${r.self_reg ? ` <span class="badge chair">${esc(t("asSelfReg"))}</span>` : ""}<small>${esc(fmtPhone(r.phone))} · ${esc(r.last_seen ? t("asLast") + " " + fmt(r.last_seen, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : t("asNever"))}</small></span><span class="as-pills">${asDot(r.signed_in, t("asApp"))}${asDot(r.notif, t("asNotif"))}</span></div>`).join("") : empty(t("asNone"))}</div>
     <h3 class="sec-h">${esc(t("asOthers"))}</h3>
     <div class="card menu">${AS.tries.length ? AS.tries.map((r) => `<div class="li as-row"><span class="avatar">?</span><span class="grow"><b>${esc(fmtPhone(r.phone))}</b><small>${esc(t("asTried", r.tries))} · ${esc(t("asLastTry") + " " + fmt(r.last_at, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }))}</small></span><span class="as-pills">${asDot(false, t("asNotListed"))}</span></div>`).join("") : `<p class="small muted pad">${esc(t("asNoOthers"))}</p>`}</div>
     <p class="small muted pad">${esc(t("asNote"))}</p>`;
@@ -1449,11 +1451,11 @@ const pwIsPhone = (pw, phone) => /^[+0-9 ()-]+$/.test(pw || "") && S.phone8(pw) 
 function pcShow(f, kind) {
   f.dataset.kind = kind || ""; f.dataset.kphone = kind ? S.phone8(f.phone.value) : "";
   const q = (c) => f.querySelector(c);
-  q(".pc-pw").hidden = kind !== "maker"; q(".pc-new").hidden = kind !== "maker_new"; q(".pc-forgot").hidden = kind !== "maker";
+  q(".pc-pw").hidden = kind !== "maker"; q(".pc-new").hidden = kind !== "maker_new"; q(".pc-forgot").hidden = kind !== "maker"; q(".pc-reg").hidden = q(".pc-browse").hidden = kind !== "unknown"; q(".pc-note").hidden = !!kind;
   q(".pc-hint").textContent = kind ? t("pc_" + kind) : "";
-  q(".pc-btn").textContent = t(kind === "maker_new" ? "firstPwBtn" : kind === "unknown" ? "pcBrowse" : "signIn");
+  q(".pc-btn").textContent = t(kind === "maker_new" ? "firstPwBtn" : kind === "unknown" ? "pcRegister" : "signIn");
   q("button").disabled = !kind;
-  const focus = kind === "maker" ? f.pw : kind === "maker_new" ? f.npw : null; if (focus) setTimeout(() => focus.focus(), 50);
+  const focus = kind === "maker" ? f.pw : kind === "maker_new" ? f.npw : kind === "unknown" ? f.rname : null; if (focus) setTimeout(() => focus.focus(), 50);
 }
 async function pcCheck(f) {
   const ph = S.phone8(f.phone.value);
@@ -1479,7 +1481,12 @@ F.login = async (f) => {
   const phone = S.phone8(f.phone.value);
   if (!validPhone(phone)) throw new S.AppError("bad_phone");
   const kind = await pcCheck(f);
-  if (kind === "unknown") { LS.set("afterLogin", null); location.hash = "#/home"; return; }
+  // Not on the list: register with name + phone, no password (YB 2026-10-26). Read only, like other members.
+  if (kind === "unknown") {
+    const name = (f.rname.value || "").replace(/\s+/g, " ").trim();
+    if (name.length < 2) { f.rname.focus(); throw new S.AppError("bad_name"); }
+    await api.register(phone, name); D = null; await refresh(); afterSignIn(); backAfterLogin(); toast(t("registered")); localReminders(); return;
+  }
   if (kind === "maker_new") {
     const pw = f.npw.value || "";
     if (pw.length < 6) throw new S.AppError("short_password");

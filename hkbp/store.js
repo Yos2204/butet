@@ -117,6 +117,14 @@ const Local = {
     if (pwIsPhone(pw, m.phone)) throw new AppError("pw_is_phone");
     m.pass_hash = await sha(pw); await this.commit(); LS.set("local.me", m.id);
   },
+  async register(phone, name) {
+    const db = await this.load(); const ph = phone8(phone); const nm = String(name || "").replace(/\s+/g, " ").trim();
+    if (!/^\d{8,15}$/.test(ph)) throw new AppError("bad_phone");
+    if (nm.length < 2 || nm.length > 80) throw new AppError("bad_name");
+    if (db.members.some((x) => x.phone === ph)) throw new AppError("bad_login");
+    const m = { id: uid(), name: nm, phone: ph, groups: {}, is_admin: false, pass_hash: null, self_reg: new Date().toISOString() };
+    db.members.push(m); await this.commit(); LS.set("local.me", m.id);
+  },
   async logout() { LS.set("local.me", null); },
   async setPassword(oldPw, newPw) {
     const m = await this.me();
@@ -332,7 +340,7 @@ const Local = {
   async phoneTries() { const m = await this.me(); if (!m.is_admin) throw new AppError("not_allowed"); return []; },
   async appStatus() {
     const m = await this.me(); if (!m.is_admin) throw new AppError("not_allowed");
-    return this.dbo.members.filter((x) => !x.removed_at).map((x) => ({ id: x.id, name: x.name, phone: x.phone, signed_in: !!x.app_seen, last_seen: x.app_seen || null, installed: !!x.app_installed, notif: false })).sort((a, b) => a.name.localeCompare(b.name));
+    return this.dbo.members.filter((x) => !x.removed_at).map((x) => ({ id: x.id, name: x.name, phone: x.phone, signed_in: !!x.app_seen, last_seen: x.app_seen || null, installed: !!x.app_installed, self_reg: x.self_reg || null, notif: false })).sort((a, b) => a.name.localeCompare(b.name));
   },
 };
 
@@ -362,6 +370,7 @@ const Remote = {
   async needsSetup() { return false; },
   async login(phone, pw) { const r = await this.rpc("hk_login", { p_phone: phone, p_password: pw }); LS.set("remote.token", r.token); return r; },
   async phoneCheck(phone) { return this.rpc("hk_phone_check", { p_phone: phone }); },
+  async register(phone, name) { const r = await this.rpc("hk_register", { p_phone: phone, p_name: name }); LS.set("remote.token", r.token); },
   async firstPassword(phone, pw) { const r = await this.rpc("hk_first_password", { p_phone: phone, p_password: pw }); LS.set("remote.token", r.token); },
   async logout() { const t = this.token; LS.set("remote.token", null); LS.set("remote.cache", null); try { await this.rpc("hk_logout", { p_token: t }); } catch {} },
   async setPassword(o, n) { return this.rpc("hk_set_password", { p_token: this.token, p_old: o, p_new: n }); },
