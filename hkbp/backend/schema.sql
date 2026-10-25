@@ -279,11 +279,17 @@ $$;
 -- The sign-in screen checks the phone as it is typed: 'maker' (has a password), 'maker_new' (must create one),
 -- 'member' (phone only, read only) or 'unknown' (not on the list).
 create or replace function hk_phone_check(p_phone text) returns text language plpgsql security definer set search_path = public as $$
-declare m hk_members;
+declare m hk_members; ph text := hk__phone(p_phone);
 begin
   perform pg_sleep(0.2);
-  select * into m from hk_members where phone = hk__phone(p_phone) and removed_at is null;
-  if m.id is null then return 'unknown'; end if;
+  select * into m from hk_members where phone = ph and removed_at is null;
+  if m.id is null then
+    -- Numbers not on the member list are kept so the admin can add them (the sign-in screen says so).
+    if length(ph) between 8 and 15 then
+      insert into hk_phone_tries(phone) values (ph) on conflict (phone) do update set last_at = now(), tries = hk_phone_tries.tries + 1;
+    end if;
+    return 'unknown';
+  end if;
   if not hk__leader(m) then return 'member'; end if;
   return case when m.pass_hash is null then 'maker_new' else 'maker' end;
 end $$;
@@ -807,3 +813,18 @@ begin
 end $$;
 
 grant execute on function hk_ping(text, boolean), hk_app_status(text) to anon;
+
+-- Phone numbers typed on the sign-in screen that are not on the member list (YB 2026-10-25, with a notice on that screen).
+create table if not exists hk_phone_tries (phone text primary key, first_at timestamptz not null default now(), last_at timestamptz not null default now(), tries int not null default 1);
+alter table hk_phone_tries enable row level security;
+revoke all on hk_phone_tries from anon, authenticated;
+
+create or replace function hk_phone_tries_list(p_token text) returns jsonb language plpgsql security definer set search_path = public as $$
+declare m hk_members := hk__me(p_token);
+begin
+  if not coalesce(m.is_admin, false) then raise exception 'not_allowed'; end if;
+  return coalesce((select jsonb_agg(jsonb_build_object('phone', t.phone, 'first_at', t.first_at, 'last_at', t.last_at, 'tries', t.tries) order by t.last_at desc)
+    from hk_phone_tries t where not exists (select 1 from hk_members h where h.phone = t.phone and h.removed_at is null)), '[]'::jsonb);
+end $$;
+
+grant execute on function hk_phone_tries_list(text) to anon;
