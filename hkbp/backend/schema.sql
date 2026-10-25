@@ -784,3 +784,26 @@ grant execute on function hk_login(text, text), hk_first_password(text, text), h
   hk_roster_file(text, uuid), hk_save(text, text, jsonb), hk_remove(text, text, text), hk_members_upsert(text, jsonb),
   hk_push_save(text, jsonb), hk_push_remove(text, text), hk_birthdays_import(text, jsonb), hk_settings_save(text, jsonb), hk_service_html(text, uuid), hk_set_role(text, text, text, text, text), hk_file(text, uuid),
   hk_set_teacher(text, text, text, text, text), hk_poll_state(text, uuid, text), hk_vote(text, uuid, jsonb), hk_public(), hk_group_walink(text, text, text), hk_cal_token(text), hk_profile_save(text, jsonb), hk_phone_check(text) to anon;
+-- App status for the admin: who has signed in / opened the app, who installed it, who has notifications on.
+alter table hk_members add column if not exists app_seen timestamptz, add column if not exists app_installed boolean not null default false;
+
+create or replace function hk_ping(p_token text, p_installed boolean) returns void language plpgsql security definer set search_path = public as $$
+declare m hk_members := hk__me(p_token);
+begin
+  update hk_members set app_seen = now(), app_installed = app_installed or coalesce(p_installed, false) where id = m.id;
+end $$;
+
+create or replace function hk_app_status(p_token text) returns jsonb language plpgsql security definer set search_path = public as $$
+declare m hk_members := hk__me(p_token);
+begin
+  if not coalesce(m.is_admin, false) then raise exception 'not_allowed'; end if;
+  return coalesce((select jsonb_agg(x order by x->>'name') from (
+    select jsonb_build_object('id', h.id, 'name', h.name, 'phone', h.phone,
+      'signed_in', h.app_seen is not null or exists (select 1 from hk_sessions s where s.member_id = h.id),
+      'last_seen', coalesce(h.app_seen, (select max(s.expires_at) - interval '180 days' from hk_sessions s where s.member_id = h.id)),
+      'installed', h.app_installed,
+      'notif', exists (select 1 from hk_push p where p.member_id = h.id)) x
+    from hk_members h where h.removed_at is null) q), '[]'::jsonb);
+end $$;
+
+grant execute on function hk_ping(text, boolean), hk_app_status(text) to anon;
