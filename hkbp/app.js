@@ -333,6 +333,7 @@ const GUEST = () => ({ id: null, name: "", alias: null, phone: null, dob: null, 
 async function refresh() {
   D = await api.data();
   if (D && !D.me) { D.me = GUEST(); D.guest = true; }
+  if (D && !D.guest && api.ping) { let k = "pinged"; try { if (!sessionStorage.getItem(k)) { sessionStorage.setItem(k, "1"); api.ping(standalone()).catch(() => {}); } } catch {} }
 }
 const isGuest = () => !D || !!D.guest;
 // Go to sign-in, and come back to the same page afterwards.
@@ -805,6 +806,7 @@ R.more = () => {
       <a class="li" href="#/people">${ic("cake")}<span class="grow"><b>${esc(t("people"))}</b><small>${esc(isAdmin() ? t("peopleAdmin") : t("peopleSub"))}</small></span>${ic("chev", "chev")}</a>
       <button class="li" data-act="notify">${ic("bell")}<span class="grow"><b>${esc(t("notifications"))}</b><small>${esc(perm === "granted" ? t("notifyOnTxt") : perm === "denied" ? t("notifyDenied") : t("notifyAskBody"))}</small></span>${ic("chev", "chev")}</button>
       ${hasRights() ? `<button class="li" data-act="toggleView">${ic("people")}<span class="grow"><b>${esc(t("layout"))}: ${esc(t(manage() ? "viewAdmin" : "viewMember"))}</b><small>${esc(t(manage() ? "toMember" : "toAdmin"))}</small></span>${ic("chev", "chev")}</button>` : ""}
+      ${isAdmin() ? `<a class="li" href="#/appstatus">${ic("phone")}<span class="grow"><b>${esc(t("asTitle"))}</b><small>${esc(t("asSub"))}</small></span>${ic("chev", "chev")}</a>` : ""}
       ${isAdmin() ? `<button class="li" data-act="breadSetup">${ic("bread")}<span class="grow"><b>${esc(t("bs_title"))}</b><small>${esc(t("src_" + ((D.settings || {}).bread_source || "elders")))}</small></span>${ic("chev", "chev")}</button>` : ""}
       ${serveOn() ? `<button class="li" data-act="servePick">${ic("calendar")}<span class="grow"><b>${esc(t("svTitle"))}</b><small>${esc((me().profile || {}).serve ? me().profile.serve.map((id) => gname(G(id))).filter(Boolean).join(", ") || t("svNone") : t("pfNotYet"))}</small></span>${ic("chev", "chev")}</button>` : ""}
       ${pfSkipped() ? `<button class="li" data-act="pfTest">${ic("spark")}<span class="grow"><b>${esc(t(LS.get("pfTest") ? "pfTestEnd" : "pfTestStart"))}</b><small>${esc(t(LS.get("pfTest") ? "pfTestOnSub" : "pfTestSub"))}</small></span>${ic("chev", "chev")}</button>` : ""}
@@ -815,6 +817,25 @@ R.more = () => {
       <button class="li" data-act="logout">${ic("logout")}<span class="grow"><b>${esc(t("signOut"))}</b></span></button>
     </div>
     <p class="small muted center pad">HKBP Singapore · ${esc(t("logoNote"))}</p>`);
+};
+// Admin only: who has signed in to the app, installed it and turned notifications on.
+let AS = { rows: null, f: "all" };
+const asDot = (on, label) => `<span class="as-pill ${on ? "on" : "off"}"><i></i>${esc(label)}</span>`;
+function asFill() {
+  const el = $("#asList"); if (!el || !AS.rows) return;
+  const rows = AS.rows, n = rows.length, si = rows.filter((r) => r.signed_in).length, no = rows.filter((r) => r.notif).length, ins = rows.filter((r) => r.installed).length;
+  const show = rows.filter((r) => AS.f === "all" || (AS.f === "noapp" && !r.signed_in) || (AS.f === "nonotif" && !r.notif));
+  el.innerHTML = `
+    <div class="as-totals"><div class="card"><b>${si}/${n}</b><small>${esc(t("asSigned"))}</small></div><div class="card"><b>${no}/${n}</b><small>${esc(t("asNotifOn"))}</small></div><div class="card"><b>${ins}/${n}</b><small>${esc(t("asInstalled"))}</small></div></div>
+    <div class="chips">${[["all", "asAll"], ["noapp", "asNoApp"], ["nonotif", "asNoNotif"]].map(([f, k]) => `<button class="chip ${AS.f === f ? "on" : ""}" data-act="asFilter" data-f="${f}">${esc(t(k))}</button>`).join("")}</div>
+    <div class="card menu">${show.length ? show.map((r) => `<div class="li as-row"><span class="avatar">${esc(initials(r.name))}</span><span class="grow"><b>${esc(r.name)}</b><small>${esc(fmtPhone(r.phone))} · ${esc(r.last_seen ? t("asLast") + " " + fmt(r.last_seen, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : t("asNever"))}</small></span><span class="as-pills">${asDot(r.signed_in, t("asApp"))}${asDot(r.notif, t("asNotif"))}</span></div>`).join("") : empty(t("asNone"))}</div>
+    <p class="small muted pad">${esc(t("asNote"))}</p>`;
+}
+R.appstatus = () => {
+  if (!isAdmin()) return shell("#/more", empty(t("notFound")), { back: "#/more" });
+  AS.rows = null;
+  api.appStatus().then((r) => { AS.rows = r || []; asFill(); }).catch((e) => { const el = $("#asList"); if (el) el.innerHTML = empty(errMsg(e)); });
+  return shell("#/more", `<div id="asList"><p class="center pad"><span class="spin"></span></p></div>`, { back: "#/more", title: t("asShort"), sub: t("asSub") });
 };
 R.notFound = () => shell("#/home", empty(t("notFound")), { back: "#/home" });
 
@@ -829,7 +850,7 @@ async function render() {
     if (!api.hasSession() && await api.needsSetup()) { await R.login(); return; }
     if (!D) await refresh();
     if (!r) { history.replaceState(null, "", "#/home"); r = "home"; }
-    const map = { tata: R.tata, home: R.home, groups: R.groups, g: R.group, serve: R.serve, s: R.section, calendar: R.calendar, bread: R.bread, elders: R.elders, berita: R.berita, people: R.people, more: R.more, o: R.office, warta: R.warta };
+    const map = { tata: R.tata, home: R.home, groups: R.groups, g: R.group, serve: R.serve, s: R.section, calendar: R.calendar, bread: R.bread, elders: R.elders, berita: R.berita, people: R.people, more: R.more, appstatus: R.appstatus, o: R.office, warta: R.warta };
     const html = (map[r] || R.notFound)(arg);
     if (typeof html === "string") view().innerHTML = html;
     draftRestore(view()); wAutoBase();
@@ -906,6 +927,7 @@ F.serve = async (f) => {
   const res = await api.profileSave({ serve }); D.me.profile = res || { ...(D.me.profile || {}), serve }; LS.set("allServe", null);
   closeSheet(); toast(t("svSaved")); if (/^#\/serve/.test(location.hash)) render(); else location.hash = "#/serve";
 };
+A.asFilter = (d) => { AS.f = d.f; asFill(); };
 A.toggleView = () => { LS.set("view", manage() ? "member" : "admin"); toast(t(manage() ? "nowAdmin" : "nowMember")); render(); };
 function rolePrompt() {
   if (!$("#sheet").hidden) return;
