@@ -513,7 +513,7 @@ begin
     if (d ->> 'notify')::boolean then insert into hk_outbox (audience, title, body, url) values ('group:' || gid, coalesce(d ->> 'title', 'Roster'), 'New roster: ' || (d ->> 'month'), '#/s/' || gid); end if;
 
   elsif p_kind = 'bread' then
-    if not hk__elder(m) then raise exception 'not_allowed'; end if;
+    if not hk__chair(m, 'parhalado') then raise exception 'not_allowed'; end if; -- Elders Makers and the admin
     insert into hk_bread (day, verse, title, body, author_name) values ((d ->> 'day')::date, d ->> 'verse', d ->> 'title', d ->> 'body', m.name)
     on conflict (day) do update set verse = excluded.verse, title = excluded.title, body = excluded.body, author_name = excluded.author_name, updated_at = now(), removed_at = null
     returning to_jsonb(hk_bread.*) into res;
@@ -607,7 +607,7 @@ begin
     if not hk__chair(m, gid) then raise exception 'not_allowed'; end if;
     update hk_rosters set removed_at = now() where id = p_id::uuid;
   elsif p_kind = 'bread' then
-    if not hk__elder(m) then raise exception 'not_allowed'; end if;
+    if not hk__chair(m, 'parhalado') then raise exception 'not_allowed'; end if; -- Elders Makers and the admin
     update hk_bread set removed_at = now() where day = p_id::date;
   elsif p_kind = 'update' then
     if not (case when exists (select 1 from hk_updates where id = p_id::uuid and kind = 'berita') then hk__chair(m, 'secretary') else hk__elder(m) end) then raise exception 'not_allowed'; end if;
