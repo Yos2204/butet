@@ -98,7 +98,7 @@ const roleIn = (gid) => (D.me.groups || {})[gid] || null;
 const TEACH = S.TEACH || ["naposo", "sekolah-minggu", "remaja", "ama", "ina", "pelaut"];
 const MAKERS = S.MAKERS || ["tmaker", "ychair", "ytreasurer", "ysecretary"];
 // Youth's Makers are its officers (YB 2026-10-25); the other teacher-run classes have Teacher Makers.
-const roleLabel = (gid, r) => t(r === "tmaker" && ["ama", "ina", "pelaut"].includes(gid) ? "role_k" + gid : r === "chair" && (gid === "band" || gid === "parhalado") ? "role_maker" : "role_" + r);
+const roleLabel = (gid, r) => t(r === "tmaker" && ["ama", "ina", "pelaut"].includes(gid) ? "role_k" + gid : r === "chair" && ["band", "parhalado", "song-leader", "musik"].includes(gid) ? "role_maker" : "role_" + r);
 const makerRoles = (gid) => (gid === "naposo" ? ["ychair", "ytreasurer", "ysecretary"] : ["tmaker"]);
 const isTeachG = (gid) => TEACH.includes(gid);
 const isTMaker = (gid) => !!D && (D.me.is_admin || MAKERS.includes(roleIn(gid)));
