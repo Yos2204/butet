@@ -171,7 +171,7 @@ const Local = {
         phone: m.is_admin || chairOf.some((g) => g in (x.groups || {})) ? x.phone : null,
         dob: m.is_admin ? x.dob : null, wed: m.is_admin ? x.wed || null : null, wa_optin: m.is_admin ? x.wa_optin : null, has_password: m.is_admin ? !!x.pass_hash : null,
       })).sort((a, b) => a.name.localeCompare(b.name)),
-      polls: db.polls.filter((p) => this.sees(m, p.group_id) && p.created_at > since && (p.status !== "draft" || this.teacher(m, p.group_id))).map((p) => {
+      polls: db.polls.filter((p) => this.teacher(m, p.group_id) && p.created_at > since).map((p) => {
         const vs = db.votes.filter((v) => v.poll_id === p.id); const mine = vs.find((v) => v.member_id === m.id);
         return { ...p, mine: mine ? mine.choices : null, voters: vs.length,
           counts: this.teacher(m, p.group_id) || p.status === "closed" || mine ? p.options.map((_, i) => vs.filter((v) => v.choices.includes(i)).length) : null };
@@ -303,7 +303,7 @@ const Local = {
   },
   async vote(id, choices) {
     const m = await this.me(); const p = this.dbo.polls.find((x) => x.id === id);
-    if (!p || p.status !== "open" || !this.sees(m, p.group_id)) throw new AppError("not_allowed");
+    if (!p || p.status !== "open" || !this.teacher(m, p.group_id)) throw new AppError("not_allowed");
     const c = [...new Set((choices || []).map(Number))];
     if (!c.length || (!p.multi && c.length !== 1) || c.some((i) => !(i >= 0 && i < p.options.length))) throw new AppError("unknown_kind");
     this.dbo.votes = this.dbo.votes.filter((v) => !(v.poll_id === id && v.member_id === m.id)); this.dbo.votes.push({ poll_id: id, member_id: m.id, choices: c });
