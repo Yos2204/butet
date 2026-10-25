@@ -386,6 +386,7 @@ R.login = async () => {
       <form class="card form" data-form="login">
         <label>${esc(t("f_phone"))}<div class="phone-in"><span>+65</span><input name="phone" inputmode="numeric" required placeholder="8123 4567" autocomplete="username" data-phonecheck></div></label>
         <p class="small muted pc-hint" aria-live="polite"></p>
+        <p class="small muted">${esc(t("pcNotice"))}</p>
         <div class="pc-pw" hidden><label>${esc(t("f_password"))}<input name="pw" type="password" autocomplete="current-password"></label></div>
         <div class="pc-new" hidden>
           <label>${esc(t("f_newPw"))}<input name="npw" type="password" minlength="6" autocomplete="new-password"></label>
@@ -819,7 +820,7 @@ R.more = () => {
     <p class="small muted center pad">HKBP Singapore · ${esc(t("logoNote"))}</p>`);
 };
 // Admin only: who has signed in to the app, installed it and turned notifications on.
-let AS = { rows: null, f: "all" };
+let AS = { rows: null, tries: [], f: "all" };
 const asDot = (on, label) => `<span class="as-pill ${on ? "on" : "off"}"><i></i>${esc(label)}</span>`;
 function asFill() {
   const el = $("#asList"); if (!el || !AS.rows) return;
@@ -829,12 +830,14 @@ function asFill() {
     <div class="as-totals"><div class="card"><b>${si}/${n}</b><small>${esc(t("asSigned"))}</small></div><div class="card"><b>${no}/${n}</b><small>${esc(t("asNotifOn"))}</small></div><div class="card"><b>${ins}/${n}</b><small>${esc(t("asInstalled"))}</small></div></div>
     <div class="chips">${[["all", "asAll"], ["noapp", "asNoApp"], ["nonotif", "asNoNotif"]].map(([f, k]) => `<button class="chip ${AS.f === f ? "on" : ""}" data-act="asFilter" data-f="${f}">${esc(t(k))}</button>`).join("")}</div>
     <div class="card menu">${show.length ? show.map((r) => `<div class="li as-row"><span class="avatar">${esc(initials(r.name))}</span><span class="grow"><b>${esc(r.name)}</b><small>${esc(fmtPhone(r.phone))} · ${esc(r.last_seen ? t("asLast") + " " + fmt(r.last_seen, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : t("asNever"))}</small></span><span class="as-pills">${asDot(r.signed_in, t("asApp"))}${asDot(r.notif, t("asNotif"))}</span></div>`).join("") : empty(t("asNone"))}</div>
+    <h3 class="sec-h">${esc(t("asOthers"))}</h3>
+    <div class="card menu">${AS.tries.length ? AS.tries.map((r) => `<div class="li as-row"><span class="avatar">?</span><span class="grow"><b>${esc(fmtPhone(r.phone))}</b><small>${esc(t("asTried", r.tries))} · ${esc(t("asLastTry") + " " + fmt(r.last_at, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }))}</small></span><span class="as-pills">${asDot(false, t("asNotListed"))}</span></div>`).join("") : `<p class="small muted pad">${esc(t("asNoOthers"))}</p>`}</div>
     <p class="small muted pad">${esc(t("asNote"))}</p>`;
 }
 R.appstatus = () => {
   if (!isAdmin()) return shell("#/more", empty(t("notFound")), { back: "#/more" });
   AS.rows = null;
-  api.appStatus().then((r) => { AS.rows = r || []; asFill(); }).catch((e) => { const el = $("#asList"); if (el) el.innerHTML = empty(errMsg(e)); });
+  Promise.all([api.appStatus(), api.phoneTries ? api.phoneTries().catch(() => []) : []]).then(([r, tr]) => { AS.rows = r || []; AS.tries = tr || []; asFill(); }).catch((e) => { const el = $("#asList"); if (el) el.innerHTML = empty(errMsg(e)); });
   return shell("#/more", `<div id="asList"><p class="center pad"><span class="spin"></span></p></div>`, { back: "#/more", title: t("asShort"), sub: t("asSub") });
 };
 R.notFound = () => shell("#/home", empty(t("notFound")), { back: "#/home" });

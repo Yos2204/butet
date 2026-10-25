@@ -329,6 +329,7 @@ const Local = {
   async calToken() { throw new AppError("demo_only"); }, // a calendar feed needs the shared database
   async pushSave() { /* no server in local mode: reminders show when the app is opened */ },
   async ping(installed) { const m = await this.me(); m.app_seen = new Date().toISOString(); m.app_installed = !!(m.app_installed || installed); await this.commit(); },
+  async phoneTries() { const m = await this.me(); if (!m.is_admin) throw new AppError("not_allowed"); return []; },
   async appStatus() {
     const m = await this.me(); if (!m.is_admin) throw new AppError("not_allowed");
     return this.dbo.members.filter((x) => !x.removed_at).map((x) => ({ id: x.id, name: x.name, phone: x.phone, signed_in: !!x.app_seen, last_seen: x.app_seen || null, installed: !!x.app_installed, notif: false })).sort((a, b) => a.name.localeCompare(b.name));
@@ -397,6 +398,7 @@ const Remote = {
   pushSave(sub) { return this.rpc("hk_push_save", { p_token: this.token, p_sub: sub }); },
   ping(installed) { return this.rpc("hk_ping", { p_token: this.token, p_installed: !!installed }); },
   appStatus() { return this.rpc("hk_app_status", { p_token: this.token }); },
+  phoneTries() { return this.rpc("hk_phone_tries_list", { p_token: this.token }); },
 };
 
 function pick() {
