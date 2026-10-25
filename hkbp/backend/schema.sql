@@ -807,7 +807,7 @@ begin
     select jsonb_build_object('id', h.id, 'name', h.name, 'phone', h.phone,
       'signed_in', h.app_seen is not null or exists (select 1 from hk_sessions s where s.member_id = h.id),
       'last_seen', coalesce(h.app_seen, (select max(s.expires_at) - interval '180 days' from hk_sessions s where s.member_id = h.id)),
-      'installed', h.app_installed,
+      'installed', h.app_installed, 'self_reg', h.self_reg,
       'notif', exists (select 1 from hk_push p where p.member_id = h.id)) x
     from hk_members h where h.removed_at is null) q), '[]'::jsonb);
 end $$;
@@ -828,3 +828,19 @@ begin
 end $$;
 
 grant execute on function hk_phone_tries_list(text) to anon;
+
+-- Self-registration (YB 2026-10-26): anyone not on the member list registers with name + phone, no password, read-only member.
+alter table hk_members add column if not exists self_reg timestamptz;
+create or replace function hk_register(p_phone text, p_name text) returns jsonb language plpgsql security definer set search_path = public, extensions as $$
+declare ph text := hk__phone(p_phone); nm text := btrim(regexp_replace(coalesce(p_name, ''), '\s+', ' ', 'g')); mid uuid; tok text;
+begin
+  perform pg_sleep(0.5);
+  if length(ph) not between 8 and 15 then raise exception 'bad_phone'; end if;
+  if length(nm) < 2 or length(nm) > 80 then raise exception 'bad_name'; end if;
+  if exists (select 1 from hk_members where phone = ph) then raise exception 'bad_login'; end if; -- already listed (or removed by the admin)
+  insert into hk_members (name, phone, groups, self_reg) values (nm, ph, '{}'::jsonb, now()) returning id into mid;
+  tok := encode(gen_random_bytes(24), 'hex');
+  insert into hk_sessions values (tok, mid, now() + interval '180 days');
+  return jsonb_build_object('token', tok);
+end $$;
+grant execute on function hk_register(text, text) to anon;
