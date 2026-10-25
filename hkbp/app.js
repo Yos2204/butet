@@ -440,10 +440,10 @@ R.home = () => {
         ${inDays === 0 && p.phone && p.id !== m.id ? `<a class="icon-btn wa" href="${wa(t("hbdWish", firstName(p.name)), p.phone)}" target="_blank" rel="noopener" aria-label="WhatsApp">${ic("wa")}</a>` : inDays === 0 ? `<span class="party">🎉</span>` : ""}</div>`).join("")}
     </article>` : ""}
 
-    ${isGuest() && (D.celebrations || []).length ? `<article class="card">
-      <div class="card-h"><h3>${ic("cake")} ${esc(t("celebTitle"))}</h3></div>
-      ${D.celebrations.map((c) => { const n = Math.round((new Date(c.day + "T12:00:00Z") - new Date(day + "T12:00:00Z")) / 864e5); return `<div class="li"><span class="avatar">${c.kind === "wed" ? "💍" : "🎂"}</span><span class="grow"><b>${esc(c.name)}</b><small>${esc(t(c.kind === "wed" ? "celebWed" : "celebBday"))} · ${esc(n === 0 ? t("today") : n === 1 ? t("tomorrow") : fmt(c.day, { weekday: "long", day: "numeric", month: "short" }))}</small></span>${n === 0 ? `<span class="party">🎉</span>` : ""}</div>`; }).join("")}
-    </article>` : ""}
+    ${isGuest() ? [["bday", "🎂", "celebBdayTitle", "celebNoBday"], ["wed", "💍", "celebWedTitle", "celebNoWed"]].map(([k, emo, title, none]) => { const list = (D.celebrations || []).filter((c) => c.kind === k); return `<article class="card">
+      <div class="card-h"><h3>${emo} ${esc(t(title))}</h3></div>
+      ${list.length ? list.map((c) => { const n = Math.round((new Date(c.day + "T12:00:00Z") - new Date(day + "T12:00:00Z")) / 864e5); return `<div class="li"><span class="avatar">${esc(initials(c.name))}</span><span class="grow"><b>${esc(c.name)}</b><small>${esc(n === 0 ? t("today") : n === 1 ? t("tomorrow") : fmt(c.day, { weekday: "long", day: "numeric", month: "short" }))}</small></span>${n === 0 ? `<span class="party">🎉</span>` : ""}</div>`; }).join("") : `<p class="muted small">${esc(t(none))}</p>`}
+    </article>`; }).join("") : ""}
 
     ${isGuest() ? "" : `<article class="card">
       <div class="card-h"><h3>${ic("roster")} ${esc(t("myDuties"))}</h3><a class="small" href="#/serve">${esc(t("rosters"))}</a></div>
