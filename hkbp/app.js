@@ -93,6 +93,8 @@ const setMMRole = (v) => { try { v ? sessionStorage.setItem("hkbp.mm", v) : sess
 const manage = () => viewMode() === "admin" && hasRights();
 const isAdmin = () => !!(D && D.me.is_admin) && manage();
 const isElder = () => manage() && (D.me.is_admin || "parhalado" in (D.me.groups || {}));
+// Daily bread is written only by the Elders Makers (chair of Parhalado) and the admin.
+const isBreadMaker = () => manage() && (D.me.is_admin || (D.me.groups || {}).parhalado === "chair");
 const roleIn = (gid) => (D.me.groups || {})[gid] || null;
 // Youth and Sunday School are run by teachers: only a Teacher Maker (phone checked once per session) posts materials, news, events and polls.
 // A Teacher reads everything and starts or ends polls in class. Other categories: the chair (and the admin) post.
@@ -427,9 +429,9 @@ R.home = () => {
         <p class="verse-ref">${esc(b.verse || "")}</p>
         <h2>${esc(b.title || "")}</h2>
         <p class="clamp">${esc(b.body || "")}</p>
-        <div class="row"><a class="btn primary" href="#/bread/${b.day}">${esc(t("readMore"))}</a><a class="btn wa" href="${wa(breadText(b))}" target="_blank" rel="noopener">${ic("wa")} WhatsApp</a></div>` : `
+        ${isGuest() ? `<div class="row"><a class="btn primary" href="#/bread/${b.day}">${esc(t("seeMore"))}</a></div>` : `<div class="row"><a class="btn primary" href="#/bread/${b.day}">${esc(t("readMore"))}</a><a class="btn wa" href="${wa(breadText(b))}" target="_blank" rel="noopener">${ic("wa")} WhatsApp</a></div>`}` : `
         <p class="muted">${esc(t("noBread"))}</p>
-        ${isElder() ? `<a class="btn primary" href="#/bread/new">${ic("edit")} ${esc(t("writeBread"))}</a>` : `<a class="btn" href="#/bread">${esc(t("breadArchive"))}</a>`}`}
+        ${isGuest() ? `<a class="btn" href="#/bread">${esc(t("seeMore"))}</a>` : isBreadMaker() ? `<a class="btn primary" href="#/bread/new">${ic("edit")} ${esc(t("writeBread"))}</a>` : `<a class="btn" href="#/bread">${esc(t("breadArchive"))}</a>`}`}
     </article>
 
     ${bdays.length ? `<article class="card">
@@ -662,10 +664,10 @@ function bdayRow(b, d) {
 
 R.bread = (arg) => {
   const day = today();
-  if (arg === "new" || (arg && arg.startsWith("edit-"))) return breadEditor(arg === "new" ? day : arg.slice(5));
-  const list = D.bread.filter((b) => isElder() || b.day <= day);
+  if ((arg === "new" || (arg && arg.startsWith("edit-"))) && isBreadMaker()) return breadEditor(arg === "new" ? day : arg.slice(5));
+  const list = D.bread.filter((b) => isBreadMaker() || b.day <= day);
   const b = list.find((x) => x.day === (arg || day)) || (!arg ? list.find((x) => x.day <= day) : null);
-  const future = isElder() ? D.bread.filter((x) => x.day > day).sort((a, c) => a.day.localeCompare(c.day)) : [];
+  const future = isBreadMaker() ? D.bread.filter((x) => x.day > day).sort((a, c) => a.day.localeCompare(c.day)) : [];
   return shell("#/home", `
     ${b ? `<article class="bread-full">
       <div class="kicker">${ic("bread")} ${esc(t("breadTitle"))} · ${esc(fmtDay(b.day))}</div>
@@ -675,11 +677,11 @@ R.bread = (arg) => {
       <p class="small muted">${esc(b.author_name || "")}</p>
       ${/[?&]wa=1/.test(location.hash) ? `<div class="card wa-send"><b>${ic("wa")} ${esc(t("waSendTitle"))}</b><p class="small">${esc(t("waSendSteps"))}</p><a class="btn wa block" href="${wa(breadText(b))}" target="_blank" rel="noopener">${ic("wa")} ${esc(t("waSendBtn"))}</a></div>` : ""}
       <div class="row two"><a class="btn wa" href="${wa(breadText(b))}" target="_blank" rel="noopener">${ic("wa")} ${esc(t("shareWa"))}</a><button class="btn" data-act="copyBread" data-day="${b.day}">${ic("share")} ${esc(t("copy"))}</button></div>
-      ${isElder() ? `<div class="row two"><a class="btn" href="#/bread/edit-${b.day}">${ic("edit")} ${esc(t("edit"))}</a><button class="btn danger" data-act="del" data-kind="bread" data-id="${b.day}">${ic("trash")} ${esc(t("delete"))}</button></div>` : ""}
+      ${isBreadMaker() ? `<div class="row two"><a class="btn" href="#/bread/edit-${b.day}">${ic("edit")} ${esc(t("edit"))}</a><button class="btn danger" data-act="del" data-kind="bread" data-id="${b.day}">${ic("trash")} ${esc(t("delete"))}</button></div>` : ""}
     </article>` : empty(t("noBread"), "bread")}
     ${(D.settings || {}).wa_group_link ? `<a class="btn wa block" href="${esc(D.settings.wa_group_link)}" target="_blank" rel="noopener">${ic("wa")} ${esc(t("joinWaGroup"))}</a>` : ""}
     ${isAdmin() ? `<button class="card li" data-act="breadSetup">${ic("gear")}<span class="grow"><b>${esc(t("bs_title"))}</b><small>${esc(t("src_" + ((D.settings || {}).bread_source || "elders")))} · ${String((D.settings || {}).bread_hour ?? 6).padStart(2, "0")}:00</small></span>${ic("chev", "chev")}</button>` : ""}
-    ${isElder() ? `<div class="card"><h3>${ic("edit")} ${esc(t("breadPlan"))}</h3><p class="small muted">${esc(t("breadPlanLead"))}</p>
+    ${isBreadMaker() ? `<div class="card"><h3>${ic("edit")} ${esc(t("breadPlan"))}</h3><p class="small muted">${esc(t("breadPlanLead"))}</p>
       <div class="row two"><a class="btn primary" href="#/bread/new">${ic("plus")} ${esc(t("writeBread"))}</a><button class="btn" data-act="genWeek">${ic("ai")} ${esc(t("genWeek"))}</button></div>
       ${future.length ? `<div class="chips">${future.map((x) => `<a class="chip" href="#/bread/${x.day}">${esc(fmtShort(x.day))}</a>`).join("")}</div>` : ""}</div>` : ""}
     <h3 class="sec-h">${esc(t("breadArchive"))}</h3>

@@ -184,7 +184,7 @@ const Local = {
       if (!this.chair(m, gid)) deny();
       res = upsert(db.rosters, { id: d.id || uid(), group_id: gid, month: d.month, title: d.title, file_name: d.file_name, mime: d.mime, file_b64: d.file_b64 || null, link: d.link || null, table_json: d.table_json || null, text_content: d.text_content || "", author_name: m.name, created_at: now });
     } else if (kind === "bread") {
-      if (!this.elder(m)) deny();
+      if (!this.chair(m, "parhalado")) deny(); // only Elders Makers (and the admin) write the daily bread
       res = upsert(db.bread, { day: d.day, verse: d.verse, title: d.title, body: d.body, author_name: m.name, updated_at: now }, "day");
     } else if (kind === "update") {
       const berita = d.kind === "berita"; // Berita Pelayanan: only the Secretary (and the admin) posts it
@@ -226,7 +226,8 @@ const Local = {
     if ((kind === "post" || kind === "poll") && !this.poster(m, row.group_id)) deny();
     if (kind === "roster" && !this.chair(m, row.group_id)) deny();
     if (kind === "update" && row.kind === "berita") { if (!this.chair(m, "secretary")) deny(); }
-    else if ((kind === "bread" || kind === "update" || kind === "birthday") && !this.elder(m)) deny();
+    else if (kind === "bread") { if (!this.chair(m, "parhalado")) deny(); }
+    else if ((kind === "update" || kind === "birthday") && !this.elder(m)) deny();
     if (kind === "service" && !this.maker(m)) deny();
     if (kind === "file" && !(m.is_admin || row.group_id in (m.groups || {}))) deny();
     if (kind === "event" && !(this.teach(row.group_id) ? this.poster(m, row.group_id) : this.elder(m) || (row.group_id && this.chair(m, row.group_id)))) deny();
