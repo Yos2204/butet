@@ -26,6 +26,7 @@ const DEFAULT_GROUPS = [
   ["band", "service", "ReNa Band", "ReNa Band", "ReNa Band", "#e11d48", "drum", 14],
   ["song-leader", "service", "Song Leader", "Song Leader", "Song Leader", "#ca8a04", "mic", 15],
   ["musik", "service", "Pemusik", "Pargonsi / Pemusik", "Musicians", "#0891b2", "note", 16],
+  ["koor", "service", "Koor", "Koor", "Koor", "#be185d", "mic", 17],
   // Office categories: only the office holders (set by the admin by phone number) and the admin see them.
   ["secretary", "office", "Sekretaris", "Sekretaris", "Secretary", "#334155", "file", 21],
   ["treasurer", "office", "Bendahara", "Bendahara", "Treasurer", "#15803d", "coins", 22],
