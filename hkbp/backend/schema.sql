@@ -393,6 +393,15 @@ begin
   return jsonb_build_object(
     'me', null,
     'groups', (select coalesce(jsonb_agg(to_jsonb(g) order by g.sort), '[]') from hk_groups g where g.removed_at is null and g.kind <> 'office'),
+    -- Birthdays and wedding anniversaries from today to the coming Sunday: name, date and kind only (no phone, no year).
+    'celebrations', (with t as (select (now() at time zone 'Asia/Singapore')::date d0),
+        days as (select gs::date d from t, generate_series(t.d0, t.d0 + (7 - extract(dow from t.d0)::int), interval '1 day') gs),
+        x as (select name, to_char(dob, 'MM-DD') md, 'bday' kind from hk_members where removed_at is null and dob is not null
+              union select name, to_char(dob, 'MM-DD'), 'bday' from hk_birthdays where removed_at is null
+              union select name, to_char(wed, 'MM-DD'), 'wed' from hk_members where removed_at is null and wed is not null),
+        u as (select distinct on (lower(x.name), x.kind, x.md) x.* from x)
+      select coalesce(jsonb_agg(jsonb_build_object('name', u.name, 'kind', u.kind, 'day', days.d) order by days.d, u.kind, u.name), '[]')
+      from u join days on to_char(days.d, 'MM-DD') = u.md),
     'posts', '[]'::jsonb, 'people', '[]'::jsonb, 'birthdays', '[]'::jsonb, 'files', '[]'::jsonb, 'polls', '[]'::jsonb,
     'rosters', (select coalesce(jsonb_agg((to_jsonb(r) - 'file_b64') || jsonb_build_object('has_file', r.file_b64 is not null) order by r.month desc, r.created_at desc), '[]')
                from hk_rosters r join hk_groups g on g.id = r.group_id and g.kind = 'service'
