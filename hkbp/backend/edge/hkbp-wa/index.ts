@@ -8,6 +8,7 @@
 //   Meta Cloud API directly (the route in use since 2026-10-27, free Meta test number): WA_TOKEN (permanent system-user token), WA_PHONE_ID (or hk_settings wa_phone_id), WA_TEMPLATE (default "tata_ibadah": header DOCUMENT, body {{1}} Sunday, {{2}} file name), WA_LANG (default "id").
 // Recipient: hk_settings tata_send_to = {name, phone}. Each file is sent once per day (hk_sent), so a repeated "go" does not spam.
 // POST {token, dry: true, id} stores the file and returns its public URL without sending (for checking the setup).
+// POST {token, check: true} checks the Meta token, phone number and template status without sending.
 const E = Deno.env.toObject();
 const BASE = (E.SUPABASE_URL || "").replace(/\/$/, "");
 const KEY = E.SUPABASE_SERVICE_ROLE_KEY || "";
@@ -59,6 +60,21 @@ Deno.serve(async (req) => {
     // Meta: the token is a secret (WA_TOKEN); the phone number id is only an identifier, so it may live in hk_settings wa_phone_id instead of a secret
     const PHONE_ID = String(E.WA_PHONE_ID || (await setting("wa_phone_id")) || "");
     if (!twilio && !(E.WA_TOKEN && PHONE_ID) && !b.dry) return json({ error: "not_configured" }, 503);
+    // POST {token, check: true} proves the Meta setup without sending: the token against the phone number id, and the template's review status
+    // (WABA id from WA_WABA_ID or hk_settings wa_waba_id). Nothing secret is returned.
+    if (b.check) {
+      if (!(E.WA_TOKEN && PHONE_ID)) return json({ error: "not_configured" }, 503);
+      const A = { authorization: "Bearer " + E.WA_TOKEN };
+      const p = await fetch(`${GRAPH}/${PHONE_ID}?fields=display_phone_number,verified_name,quality_rating,platform_type`, { headers: A });
+      const pj = await p.json().catch(() => ({}));
+      const waba = String(E.WA_WABA_ID || (await setting("wa_waba_id")) || "");
+      let template: unknown = null;
+      if (waba) {
+        const t = await fetch(`${GRAPH}/${waba}/message_templates?name=${encodeURIComponent(E.WA_TEMPLATE || "tata_ibadah")}&fields=name,status,language,rejected_reason,category`, { headers: A });
+        template = await t.json().catch(() => ({}));
+      }
+      return json({ ok: p.ok, phone: pj, template, phone_id: PHONE_ID, waba });
+    }
     const to = (await setting("tata_send_to")) as { name?: string; phone?: string } | null;
     const phone = to && String(to.phone || "").replace(/\D/g, "");
     if (!phone) return json({ error: "no_recipient" }, 404);
