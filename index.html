@@ -140,7 +140,7 @@ button.openbtn { border: 0; cursor: pointer; }
 .sheet h2 { margin: 0; font-family: var(--font-display); font-size: 14px; letter-spacing: .24em; color: var(--holo); font-weight: 600; }
 .field { display: flex; flex-direction: column; gap: 6px; }
 .field label, .row label { font-size: 13px; color: var(--muted); }
-.field select, .field input[type="text"] {
+.field input[type="tel"], .field select, .field input[type="text"] {
   height: 40px; border-radius: 8px; border: 1px solid var(--line); background: var(--void); color: var(--text); padding: 0 10px; font: inherit;
 }
 .field textarea { min-height: 70px; border-radius: 8px; border: 1px solid var(--line); background: var(--void); color: var(--text); padding: 8px 10px; font: inherit; font-size: 14px; resize: vertical; }
@@ -221,6 +221,10 @@ html, body { margin: 0; }
     <div class="row"><label for="followUp">Keep listening for a follow-up after each reply</label><input id="followUp" type="checkbox"></div>
     <div class="row" id="webRow"><label for="webOn">Let Jarvis search the web (news, weather, facts)</label><input id="webOn" type="checkbox"></div>
     <div class="row"><label for="deep">Deep thinking (slower, smarter answers)</label><input id="deep" type="checkbox"></div>
+    <div class="field"><label for="goPhone">"Go" routine: where the Tata Ibadah is sent on WhatsApp</label>
+      <input id="goName" type="text" placeholder="Name, e.g. the Tata Ibadah group" autocomplete="off">
+      <input id="goPhone" type="text" placeholder="Group link (chat.whatsapp.com/...) or phone number" autocomplete="off" spellcheck="false">
+      <p class="note">Say "go" and Jarvis opens this WhatsApp group or chat. Save the latest Tata Ibadah file, come back, and Jarvis opens the workbench in Sada HKBPS to make the slides. The link stays on this phone only.</p></div>
     <div class="field"><label for="myApps">My apps (one per line: Name = link)</label><textarea id="myApps" rows="3" spellcheck="false" placeholder="BCA = bcamobile://&#10;Church site = https://example.org"></textarea></div>
     <p class="note">Jarvis can open common apps by name (WhatsApp, YouTube, Spotify, Maps, Gojek and more). For any other app, add its link above, or make an iPhone Shortcut that opens it and say "Jarvis, run shortcut" and its name.</p>
     <p class="note">WAKE keeps the mic on while this app is open. Say "Jarvis" to start a conversation and "Done" (or "selesai") to end it. Phones don't let web apps listen in the background or with the screen locked. On iPhone, turn off silent mode to hear the voice.</p>
@@ -236,6 +240,6 @@ html, body { margin: 0; }
 window.addEventListener("error", function (e) { var c = document.getElementById("caption"); if (c && !window.__jarvisOK) c.textContent = "Jarvis hit a problem starting: " + (e.message || "script error") + ". Close the app fully and open it again."; });
 setTimeout(function () { if (!window.__jarvisOK) { var c = document.getElementById("caption"); if (c && c.textContent.indexOf("problem") < 0) c.textContent = "Jarvis didn't start. Close the app fully and open it again, or check your internet."; } }, 8000);
 </script>
-<script type="module" src="app.js?v=25"></script>
+<script type="module" src="app.js?v=26"></script>
 </body>
 </html>

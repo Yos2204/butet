@@ -1,5 +1,5 @@
 // Jarvis: voice assistant with a talking avatar. Brain: Claude API with the user's own key (default), or free Claude through Puter as a backup.
-import { startAvatar } from "./avatar.js?v=25";
+import { startAvatar } from "./avatar.js?v=26";
 // The Claude SDK loads on demand, so the app still starts if the CDN is slow or blocked.
 const SDK_URL = "https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk@0.131.0/+esm";
 let Anthropic = null;
@@ -17,7 +17,7 @@ const store = {
 };
 const settings = Object.assign({
   apiKey: "", name: "", voice: "", rate: 0.95, pitch: 1,
-  speak: true, followUp: false, web: true, deep: false, wake: false, brain: "key", voiceV: 0, avatar: "auto", avatarV: 0, needName: false, myApps: "", pause: 0.8, idVoice: "", listenLang: "id-ID",
+  speak: true, followUp: false, web: true, deep: false, wake: false, brain: "key", voiceV: 0, avatar: "auto", avatarV: 0, needName: false, myApps: "", goName: "the Tata Ibadah group", goLink: "", pause: 0.8, idVoice: "", listenLang: "id-ID",
 }, store.get("settings", {}));
 const saveSettings = () => store.set("settings", settings);
 if (settings.avatarV !== 1) { settings.avatar = "auto"; settings.avatarV = 1; saveSettings(); } // new default: face only while talking
@@ -296,13 +296,15 @@ setInterval(() => {
 // or make an iPhone Shortcut and say "run shortcut <name>".
 const APPS = [
   // The HTML workbench is served next to Jarvis, so it opens for anyone using Jarvis on any device.
-  { name: "Tata Ibadah Workbench", url: new URL("workbench/", location.href).href, alias: "tata ibadah|workbench|church workbench|liturgi|tata ibadah workbench" },
+  // The workbench only opens inside Sada HKBPS (for Multimedia makers), so Jarvis opens it there.
+  { name: "Tata Ibadah Workbench", url: new URL("hkbp/#/s/multimedia?wb=1", location.href).href, alias: "tata ibadah|workbench|church workbench|liturgi|tata ibadah workbench" },
   // The owner's own copy inside Claude (only opens for the owner's Claude account).
   // Gugah! youth sermon games (teacher screen + phones join by QR code), also served next to Jarvis.
   { name: "Gugah Youth", url: new URL("youth/", location.href).href, alias: "gugah|youth|youth app|youth sermon|pemuda|naposo|remaja|sekolah minggu remaja|kuis pemuda|youth quiz" },
   // Christmas (Natal) app for the youth, also served next to Jarvis.
   { name: "Natal", url: new URL("natal/", location.href).href, alias: "natal|christmas|christmas app|natal naposo|buka natal|advent" },
   { name: "Tata Ibadah Workbench in Claude", url: "https://claude.ai/artifact/85CBgHbEwL7LBAJ8eKR2iH", alias: "workbench in claude|claude workbench|tata ibadah in claude" },
+  { name: "Sada HKBPS", url: new URL("hkbp/", location.href).href, alias: "sada hkbps|sada|hkbps|hkbp" },
   { name: "WhatsApp", url: "whatsapp://", alias: "wa|whatsapp|watsap" },
   { name: "Telegram", url: "tg://", alias: "telegram" },
   { name: "Instagram", url: "instagram://", alias: "instagram|ig" },
@@ -488,6 +490,10 @@ const localTools = {
     schema: { properties: { app: { type: "string", description: "The app's name as the user said it" } }, required: ["app"] },
     run: (i) => openApp(i.app),
   },
+  tata_ibadah_go: {
+    description: "Runs the user's Sunday Tata Ibadah routine (also triggered by saying just 'go'): opens the WhatsApp chat of the person who sends the Tata Ibadah, then the Tata Ibadah workbench in Sada HKBPS when the user comes back.",
+    run: () => runGo(),
+  },
   search_youtube: {
     description: "Opens YouTube on the phone. Give query to show YouTube search results for what the user asked (songs, sermons, tutorials, news, anything). If the user wants one specific video played and you found its link with web search, give video_url (a youtube.com or youtu.be link) instead to open that video directly.",
     schema: { properties: { query: { type: "string", description: "What to search for, in the user's words, e.g. 'lagu rohani batak terbaru'" }, video_url: { type: "string" } } },
@@ -604,7 +610,44 @@ function trimHistory() {
   }
 }
 
+// ---------- "Go": the Sunday Tata Ibadah routine ----------
+// 1) open the sender's WhatsApp chat so the user can save his Tata Ibadah file,
+// 2) when the user comes back to Jarvis, open the workbench in Sada HKBPS, where Autopilot takes the file
+//    and makes the slides; the user checks them and taps "OK · save HTML".
+// Web apps can't read WhatsApp or press buttons in other apps, so the user does the two taps in between.
+const GO = /^\s*(?:jarvis[\s,]*)?(?:go|gas|ayo|let'?s go|mulai|go go)[\s.!]*$/i;
+let goPending = false;
+// Where the Tata Ibadah arrives: a WhatsApp group invite link, a wa.me link, or a phone number (Settings).
+// The link is kept on the phone only, never in the code, so the group stays private.
+function goTarget() {
+  const v = String(settings.goLink || "").trim();
+  if (/^https:\/\/(chat\.whatsapp\.com|wa\.me|api\.whatsapp\.com)\//i.test(v)) return v.split("?")[0];
+  const num = v.replace(/[^\d]/g, "").replace(/^0/, "62");
+  return num.length >= 8 ? "whatsapp://send?phone=" + num : "";
+}
+function runGo() {
+  const who = (settings.goName || "the Tata Ibadah group").trim();
+  const target = goTarget();
+  const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  const line = isIOS
+    ? `Right. Opening ${who}. Tap the latest Tata Ibadah file, Share, Save to Files, then come back to me and I'll open the workbench.`
+    : `Right. Opening ${who}. Tap the latest Tata Ibadah file, Share, and pick Tata Ibadah, or save it and come back to me.`;
+  addMsg("ai", line); caption(line); speak(line);
+  goPending = true;
+  if (target) launch("WhatsApp: " + who, target);
+  else { launch("WhatsApp", "whatsapp://"); addMsg("sys", "Tip: add the group's WhatsApp link in Settings so Jarvis opens it directly."); }
+  return { started: true };
+}
+function goReturn() {
+  if (!goPending) return; goPending = false;
+  const line = "Welcome back. Opening the Tata Ibadah workbench. Choose the file, check the slides, then tap OK, save HTML.";
+  addMsg("ai", line); caption(line); speak(line);
+  launch("Tata Ibadah Workbench", new URL("hkbp/#/s/multimedia?wb=1", location.href).href);
+}
+document.addEventListener("visibilitychange", () => { if (!document.hidden) setTimeout(goReturn, 600); });
+
 function ask(text) {
+  if (GO.test(text)) { addMsg("user", text); runGo(); return; }
   unlockAudio();
   if (busy) abortTurn();
   stopSpeaking(); stopListening();
@@ -799,7 +842,7 @@ function syncSettingsUI() {
   $("apiKey").value = settings.apiKey; $("userName").value = settings.name; $("voice").value = settings.voice;
   $("rate").value = settings.rate; $("pitch").value = settings.pitch;
   $("rateVal").textContent = Number(settings.rate).toFixed(2) + "×"; $("pitchVal").textContent = Number(settings.pitch).toFixed(2);
-  $("speakOn").checked = settings.speak; $("deep").checked = settings.deep; $("followUp").checked = settings.followUp; $("webOn").checked = settings.web; $("myApps").value = settings.myApps || "";
+  $("speakOn").checked = settings.speak; $("deep").checked = settings.deep; $("followUp").checked = settings.followUp; $("webOn").checked = settings.web; $("myApps").value = settings.myApps || ""; $("goName").value = settings.goName || ""; $("goPhone").value = settings.goLink || "";
 }
 $("openSettings").onclick = () => openSheet(true);
 $("closeSettings").onclick = $("scrim").onclick = () => openSheet(false);
@@ -855,6 +898,13 @@ $("pause").oninput = (e) => { settings.pause = Number(e.target.value); saveSetti
 $("followUp").onchange = (e) => { settings.followUp = e.target.checked; saveSettings(); };
 $("webOn").onchange = (e) => { settings.web = e.target.checked; saveSettings(); };
 $("myApps").oninput = (e) => { settings.myApps = e.target.value; saveSettings(); };
+$("goName").oninput = (e) => { settings.goName = e.target.value; saveSettings(); };
+$("goPhone").oninput = (e) => { settings.goLink = e.target.value; saveSettings(); };
+// One-time setup link: ?golink=<WhatsApp link>&goname=<name> saves them on this phone and is removed from the address.
+(() => { const q = new URLSearchParams(location.search); if (!q.has("golink")) return;
+  settings.goLink = q.get("golink"); if (q.get("goname")) settings.goName = q.get("goname"); saveSettings();
+  q.delete("golink"); q.delete("goname"); try { window.history.replaceState(null, "", location.pathname + (q.toString() ? "?" + q : "") + location.hash); } catch {}
+  addMsg("sys", "\u201cGo\u201d routine set up: " + settings.goName); })();
 $("deep").onchange = (e) => { settings.deep = e.target.checked; saveSettings(); };
 $("testVoice").onclick = () => { unlockAudio(); stopSpeaking(); speak("At your service, " + callName() + ". All systems are online."); speak("Horas! Jarvis siap membantu kamu hari ini."); };
 $("clearChat").onclick = () => { history = []; store.set("history", history); freeHistory = []; store.set("freeHistory", freeHistory); logEl.innerHTML = ""; greet(); openSheet(false); };
