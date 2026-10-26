@@ -1,5 +1,5 @@
 // Jarvis: voice assistant with a talking avatar. Brain: Claude API with the user's own key (default), or free Claude through Puter as a backup.
-import { startAvatar } from "./avatar.js?v=26";
+import { startAvatar } from "./avatar.js?v=27";
 // The Claude SDK loads on demand, so the app still starts if the CDN is slow or blocked.
 const SDK_URL = "https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk@0.131.0/+esm";
 let Anthropic = null;
@@ -17,7 +17,7 @@ const store = {
 };
 const settings = Object.assign({
   apiKey: "", name: "", voice: "", rate: 0.95, pitch: 1,
-  speak: true, followUp: false, web: true, deep: false, wake: false, brain: "key", voiceV: 0, avatar: "auto", avatarV: 0, needName: false, myApps: "", goName: "the Tata Ibadah group", goLink: "", pause: 0.8, idVoice: "", listenLang: "id-ID",
+  speak: true, followUp: false, web: true, deep: false, wake: false, brain: "key", voiceV: 0, avatar: "auto", avatarV: 0, needName: false, myApps: "", goSource: "whatsapp", goName: "the Tata Ibadah group", goLink: "", pause: 0.8, idVoice: "", listenLang: "id-ID",
 }, store.get("settings", {}));
 const saveSettings = () => store.set("settings", settings);
 if (settings.avatarV !== 1) { settings.avatar = "auto"; settings.avatarV = 1; saveSettings(); } // new default: face only while talking
@@ -626,6 +626,12 @@ function goTarget() {
   return num.length >= 8 ? "whatsapp://send?phone=" + num : "";
 }
 function runGo() {
+  if (settings.goSource === "drive") { // the file is already in Google Drive: straight to the workbench, which finds it
+    const line = "Right. Opening the workbench. It'll find this Sunday's Tata Ibadah in your Google Drive and make the slides.";
+    addMsg("ai", line); caption(line); speak(line);
+    launch("Tata Ibadah Workbench", new URL("hkbp/#/s/multimedia?wb=1", location.href).href);
+    return { started: true, source: "drive" };
+  }
   const who = (settings.goName || "the Tata Ibadah group").trim();
   const target = goTarget();
   const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
@@ -842,7 +848,7 @@ function syncSettingsUI() {
   $("apiKey").value = settings.apiKey; $("userName").value = settings.name; $("voice").value = settings.voice;
   $("rate").value = settings.rate; $("pitch").value = settings.pitch;
   $("rateVal").textContent = Number(settings.rate).toFixed(2) + "×"; $("pitchVal").textContent = Number(settings.pitch).toFixed(2);
-  $("speakOn").checked = settings.speak; $("deep").checked = settings.deep; $("followUp").checked = settings.followUp; $("webOn").checked = settings.web; $("myApps").value = settings.myApps || ""; $("goName").value = settings.goName || ""; $("goPhone").value = settings.goLink || "";
+  $("speakOn").checked = settings.speak; $("deep").checked = settings.deep; $("followUp").checked = settings.followUp; $("webOn").checked = settings.web; $("myApps").value = settings.myApps || ""; $("goName").value = settings.goName || ""; $("goSource").value = settings.goSource || "whatsapp"; $("goPhone").value = settings.goLink || "";
 }
 $("openSettings").onclick = () => openSheet(true);
 $("closeSettings").onclick = $("scrim").onclick = () => openSheet(false);
@@ -898,12 +904,14 @@ $("pause").oninput = (e) => { settings.pause = Number(e.target.value); saveSetti
 $("followUp").onchange = (e) => { settings.followUp = e.target.checked; saveSettings(); };
 $("webOn").onchange = (e) => { settings.web = e.target.checked; saveSettings(); };
 $("myApps").oninput = (e) => { settings.myApps = e.target.value; saveSettings(); };
+$("goSource").onchange = (e) => { settings.goSource = e.target.value; saveSettings(); };
 $("goName").oninput = (e) => { settings.goName = e.target.value; saveSettings(); };
 $("goPhone").oninput = (e) => { settings.goLink = e.target.value; saveSettings(); };
 // One-time setup link: ?golink=<WhatsApp link>&goname=<name> saves them on this phone and is removed from the address.
-(() => { const q = new URLSearchParams(location.search); if (!q.has("golink")) return;
-  settings.goLink = q.get("golink"); if (q.get("goname")) settings.goName = q.get("goname"); saveSettings();
-  q.delete("golink"); q.delete("goname"); try { window.history.replaceState(null, "", location.pathname + (q.toString() ? "?" + q : "") + location.hash); } catch {}
+(() => { const q = new URLSearchParams(location.search); if (!q.has("golink") && !q.has("gosource")) return;
+  if (q.has("golink")) settings.goLink = q.get("golink"); if (q.get("goname")) settings.goName = q.get("goname");
+  if (["drive", "whatsapp"].includes(q.get("gosource"))) settings.goSource = q.get("gosource"); saveSettings();
+  q.delete("golink"); q.delete("goname"); q.delete("gosource"); try { window.history.replaceState(null, "", location.pathname + (q.toString() ? "?" + q : "") + location.hash); } catch {}
   addMsg("sys", "\u201cGo\u201d routine set up: " + settings.goName); })();
 $("deep").onchange = (e) => { settings.deep = e.target.checked; saveSettings(); };
 $("testVoice").onclick = () => { unlockAudio(); stopSpeaking(); speak("At your service, " + callName() + ". All systems are online."); speak("Horas! Jarvis siap membantu kamu hari ini."); };

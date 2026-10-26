@@ -222,6 +222,7 @@ html, body { margin: 0; }
     <div class="row" id="webRow"><label for="webOn">Let Jarvis search the web (news, weather, facts)</label><input id="webOn" type="checkbox"></div>
     <div class="row"><label for="deep">Deep thinking (slower, smarter answers)</label><input id="deep" type="checkbox"></div>
     <div class="field"><label for="goPhone">"Go" routine: where the Tata Ibadah is sent on WhatsApp</label>
+      <select id="goSource"><option value="whatsapp">WhatsApp: open the group, I save the file</option><option value="drive">Google Drive: fully automatic (file is saved in my Drive)</option></select>
       <input id="goName" type="text" placeholder="Name, e.g. the Tata Ibadah group" autocomplete="off">
       <input id="goPhone" type="text" placeholder="Group link (chat.whatsapp.com/...) or phone number" autocomplete="off" spellcheck="false">
       <p class="note">Say "go" and Jarvis opens this WhatsApp group or chat. Save the latest Tata Ibadah file, come back, and Jarvis opens the workbench in Sada HKBPS to make the slides. The link stays on this phone only.</p></div>
@@ -240,6 +241,6 @@ html, body { margin: 0; }
 window.addEventListener("error", function (e) { var c = document.getElementById("caption"); if (c && !window.__jarvisOK) c.textContent = "Jarvis hit a problem starting: " + (e.message || "script error") + ". Close the app fully and open it again."; });
 setTimeout(function () { if (!window.__jarvisOK) { var c = document.getElementById("caption"); if (c && c.textContent.indexOf("problem") < 0) c.textContent = "Jarvis didn't start. Close the app fully and open it again, or check your internet."; } }, 8000);
 </script>
-<script type="module" src="app.js?v=26"></script>
+<script type="module" src="app.js?v=27"></script>
 </body>
 </html>
