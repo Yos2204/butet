@@ -2727,6 +2727,7 @@ async function wartaPdf(W) {
 
 // ---------- start ----------
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+window.addEventListener("message", (e) => { if (e.origin !== location.origin || !e.data || e.data.wb !== "present") return; const el = $("#wb"); if (el) el.classList.toggle("present", !!e.data.on); });
 navigator.serviceWorker && navigator.serviceWorker.addEventListener("message", (e) => { if (e.data && e.data.url) location.hash = e.data.url; });
 const qs = new URLSearchParams(location.search);
 (async () => {
