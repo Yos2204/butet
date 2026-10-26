@@ -339,6 +339,9 @@ button.gtile { width: 100%; text-align: left; font: inherit; border: 1px solid v
 #wb .wb-bar { display: flex; align-items: center; gap: 10px; padding: calc(8px + env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) 8px max(12px, env(safe-area-inset-left)); border-bottom: 1px solid var(--line); background: var(--surface); }
 #wb .wb-bar b { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #wb iframe { flex: 1; width: 100%; border: 0; }
+#wb.present { background: #000; z-index: 50; }
+#wb.present .wb-bar { display: none; }
+#wb.present iframe { position: fixed; inset: 0; width: 100vw; height: 100vh; height: 100dvh; }
 
 /* fits every phone: notches, small screens, tilting */
 html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
@@ -528,10 +531,10 @@ p, h1, h2, h3, h4, li, label, small, b { overflow-wrap: break-word; }
 <div id="view"><div class="login"><img class="logo-xl" src="logo.png" alt="HKBP"><h1>HKBP Singapore</h1></div></div>
 <div id="sheet" hidden></div>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
-<script src="config.js?v=57"></script>
-<script src="i18n.js?v=57"></script>
-<script src="store.js?v=57"></script>
-<script src="parse.js?v=57"></script>
-<script src="app.js?v=57"></script>
+<script src="config.js?v=58"></script>
+<script src="i18n.js?v=58"></script>
+<script src="store.js?v=58"></script>
+<script src="parse.js?v=58"></script>
+<script src="app.js?v=58"></script>
 </body>
 </html>
