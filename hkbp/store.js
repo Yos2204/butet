@@ -4,6 +4,8 @@
 // The role rules in Local mirror backend/schema.sql. Keep them in step.
 (() => {
 "use strict";
+// YB (owner) chose to sign in without a password (2026-10-26); every other Maker keeps theirs.
+const NOPW = "85334780";
 const LS = {
   get(k, d) { try { const v = localStorage.getItem("hkbp." + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
   set(k, v) { try { if (v == null) localStorage.removeItem("hkbp." + k); else localStorage.setItem("hkbp." + k, JSON.stringify(v)); } catch {} },
@@ -99,12 +101,12 @@ const Local = {
   isMaker(db, m) { return !!m.is_admin || Object.entries(m.groups || {}).some(([g, r]) => r !== "member" || g === "parhalado" || (db.groups.find((x) => x.id === g) || {}).kind === "office"); },
   async phoneCheck(phone) {
     const db = await this.load(); const m = db.members.find((x) => x.phone === phone8(phone));
-    if (!m) return "unknown"; if (!this.isMaker(db, m)) return "member"; return m.pass_hash ? "maker" : "maker_new";
+    if (!m) return "unknown"; if (!this.isMaker(db, m) || m.phone === NOPW) return "member"; return m.pass_hash ? "maker" : "maker_new";
   },
   async login(phone, pw) {
     const db = await this.load(); const h = await sha(pw);
     const m = db.members.find((x) => x.phone === phone8(phone));
-    if (m && !pw && !this.isMaker(db, m)) { LS.set("local.me", m.id); return {}; }
+    if (m && !pw && (!this.isMaker(db, m) || m.phone === NOPW)) { LS.set("local.me", m.id); return {}; }
     if (m && !m.pass_hash) throw new AppError("needs_password");
     if (!m || m.pass_hash !== h) throw new AppError("bad_login");
     LS.set("local.me", m.id);
