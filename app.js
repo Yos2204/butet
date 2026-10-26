@@ -1,5 +1,5 @@
 // Jarvis: voice assistant with a talking avatar. Brain: Claude API with the user's own key (default), or free Claude through Puter as a backup.
-import { startAvatar } from "./avatar.js?v=24";
+import { startAvatar } from "./avatar.js?v=25";
 // The Claude SDK loads on demand, so the app still starts if the CDN is slow or blocked.
 const SDK_URL = "https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk@0.131.0/+esm";
 let Anthropic = null;
@@ -488,6 +488,17 @@ const localTools = {
     schema: { properties: { app: { type: "string", description: "The app's name as the user said it" } }, required: ["app"] },
     run: (i) => openApp(i.app),
   },
+  search_youtube: {
+    description: "Opens YouTube on the phone. Give query to show YouTube search results for what the user asked (songs, sermons, tutorials, news, anything). If the user wants one specific video played and you found its link with web search, give video_url (a youtube.com or youtu.be link) instead to open that video directly.",
+    schema: { properties: { query: { type: "string", description: "What to search for, in the user's words, e.g. 'lagu rohani batak terbaru'" }, video_url: { type: "string" } } },
+    run: (i) => {
+      const v = String(i.video_url || "").trim();
+      if (/^https:\/\/(www\.|m\.)?(youtube\.com|youtu\.be)\//i.test(v)) { launch("YouTube video", v); return { opened: v }; }
+      const q = String(i.query || "").trim(); if (!q) return { error: "Nothing to search for." };
+      launch("YouTube: " + q, "https://www.youtube.com/results?search_query=" + encodeURIComponent(q));
+      return { searching: q, note: "YouTube opens with the results (in the YouTube app if it's installed). A button is also in the chat in case the phone blocks it." };
+    },
+  },
   run_shortcut: {
     description: "Runs one of the user's iPhone Shortcuts by its exact name. Use for apps open_app doesn't know, if the user has made a Shortcut for them, or when they ask to run a shortcut.",
     schema: { properties: { name: { type: "string" } }, required: ["name"] },
@@ -556,6 +567,7 @@ const persona = () => `You are J.A.R.V.I.S. (Jarvis), a personal AI assistant mo
 - This is a live, spoken back-and-forth conversation. Talk naturally, like a person in the room: react to what they said, remember everything said earlier in the conversation, and ask a short follow-up question when it helps. Keep it short: one to three sentences unless the user asks for detail.
 - Speech recognition can mishear words. If a message seems garbled, make your best guess from context, or briefly ask what they meant.
 - When the user says \"done\" the app ends the conversation itself; you don't need to handle that.
+- When the user asks to search or play something on YouTube (\"cari di YouTube...\", \"putar lagu...\"), call search_youtube with their words as the query. To play one particular video, first find its YouTube link with web search, then pass video_url.
 - When the user asks to open an app (\"open WhatsApp\", \"buka YouTube\", \"open my tata ibadah workbench\"), call open_app and say in a few words that you're opening it. If it isn't known, say so and mention they can add it under My apps in Settings or make a Shortcut for it.
 - You can build apps: when the user asks you to make, code or build something (an app, a tool, a game, a page), call build_app with full instructions and say in one sentence that you're on it. To change it later, call build_app with change_existing. You can't see the user's Claude chats, projects or GitHub; for jobs that need those, offer send_to_claude.
 - Use your tools when they help: time, timers, notes, battery, location, and web search for current events, weather, scores and facts you aren't sure of. Never invent the time or date; call get_current_time.
