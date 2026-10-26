@@ -11,11 +11,21 @@ const json = (o: unknown, status = 200) => new Response(JSON.stringify(o), { sta
 const rpc = async (fn: string, body: unknown) => { const r = await fetch(`${BASE}/rest/v1/rpc/${fn}`, { method: "POST", headers: { apikey: KEY, authorization: "Bearer " + KEY, "content-type": "application/json" }, body: JSON.stringify(body) }); return r.ok ? r.json() : null; };
 const unent = (s: string) => s.replace(/&amp;/g, "&").replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&#(\d+);/g, (_, n) => String.fromCharCode(+n));
 
+async function setting(key: string): Promise<unknown> {
+  const r = await fetch(`${BASE}/rest/v1/hk_settings?key=eq.${key}&select=value`, { headers: { apikey: KEY, authorization: "Bearer " + KEY } });
+  const rows = r.ok ? await r.json() : []; return rows[0] && rows[0].value;
+}
 async function folderId(): Promise<string> {
-  const r = await fetch(`${BASE}/rest/v1/hk_settings?key=eq.tata_drive_folder&select=value`, { headers: { apikey: KEY, authorization: "Bearer " + KEY } });
-  const rows = r.ok ? await r.json() : []; const v = rows[0] && rows[0].value;
+  const v = await setting("tata_drive_folder");
   return typeof v === "string" && /^[\w-]{10,}$/.test(v) ? v : "";
 }
+// Who gets the Tata Ibadah on WhatsApp after Jarvis "go" builds the preview (hk_settings tata_send_to = {name, phone}); YB 2026-10-26: the chairman.
+async function sendTo(): Promise<{ name: string; phone: string } | null> {
+  const v = (await setting("tata_send_to")) as { name?: unknown; phone?: unknown } | null;
+  const phone = v && String(v.phone || "").replace(/\D/g, "");
+  return phone ? { name: String(v!.name || ""), phone } : null;
+}
+const link = (f: { id: string; kind: string }) => f.kind === "gdoc" ? `https://docs.google.com/document/d/${f.id}/view` : `https://drive.google.com/file/d/${f.id}/view`;
 async function list(folder: string) {
   const r = await fetch(`https://drive.google.com/embeddedfolderview?id=${folder}`, { headers: { "user-agent": "Mozilla/5.0" } });
   if (!r.ok) throw new Error("drive_" + r.status);
@@ -34,7 +44,7 @@ Deno.serve(async (req) => {
     if (!(await rpc("hk_wb_access", { p_token: String(b.token || "") }))) return json({ error: "not_allowed" }, 403);
     const folder = await folderId(); if (!folder) return json({ error: "no_folder" }, 404);
     const files = await list(folder);
-    if (!b.id) return json({ files });
+    if (!b.id) return json({ files: files.map((f) => ({ ...f, link: link(f) })), send_to: await sendTo() });
     const f = files.find((x) => x.id === b.id); if (!f) return json({ error: "not_in_folder" }, 404);
     const url = f.kind === "gdoc" ? `https://docs.google.com/document/d/${f.id}/export?format=docx` : `https://drive.usercontent.google.com/download?id=${f.id}&export=download&confirm=t`;
     const r = await fetch(url, { redirect: "follow", headers: { "user-agent": "Mozilla/5.0" } });
