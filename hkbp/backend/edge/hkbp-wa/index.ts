@@ -64,7 +64,12 @@ Deno.serve(async (req) => {
     const twilio = !!(E.TWILIO_SID && E.TWILIO_TOKEN && E.TWILIO_FROM && E.TWILIO_CONTENT_SID);
     // Meta: the token is a secret (WA_TOKEN); the phone number id is only an identifier, so it may live in hk_settings wa_phone_id instead of a secret
     const PHONE_ID = String(E.WA_PHONE_ID || (await setting("wa_phone_id")) || "");
-    if (!twilio && !(E.WA_TOKEN && PHONE_ID) && !b.dry) return json({ error: "not_configured" }, 503);
+    if (!twilio && !(E.WA_TOKEN && PHONE_ID) && !b.dry) {
+      // which pieces are missing (names only, never values), so a mistyped secret name can be spotted from the log
+      const have = { WA_TOKEN: !!E.WA_TOKEN, phone_id: !!PHONE_ID, env_wa_names: Object.keys(E).filter((k) => /^(WA|TWILIO)/i.test(k)).join(",") };
+      await log(false, "not_configured", have);
+      return json({ error: "not_configured", ...have }, 503);
+    }
     // POST {token, check: true} proves the Meta setup without sending: the token against the phone number id, and the template's review status
     // (WABA id from WA_WABA_ID or hk_settings wa_waba_id). Nothing secret is returned.
     if (b.check) {
