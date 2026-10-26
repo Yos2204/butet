@@ -867,6 +867,11 @@ async function render() {
   finally { rendering = false; }
 }
 function hydrate() {
+  // Jarvis "go" (YB 2026-10-26) opens #/s/multimedia?wb=1: open the workbench straight away for a Multimedia Maker.
+  if (/^#\/s\/multimedia\?(.*&)?wb=1\b/.test(location.hash) && D && !isGuest() && !document.getElementById("wb")) {
+    history.replaceState(null, "", "#/s/multimedia");
+    if (isMMMaker()) setTimeout(() => A.openWorkbench(), 150); else toast(t("notMaker"), true);
+  }
   if (D && !isGuest() && api.hasSession() && $("#sheet").hidden) {
     if (viewMode() === null) { if (hasRights()) setTimeout(rolePrompt, 300); else LS.set("view", "member"); }
     else if (profileOn() && !me().profile) setTimeout(() => { if ($("#sheet").hidden && profileOn() && !me().profile) profilePrompt(); }, 900);
@@ -1011,7 +1016,7 @@ A.tataFull = async (d) => { const html = await tataHtml(d.id); const el = $(".ta
 A.openWorkbench = () => {
   if (!(mmRole() === "maker" && isMMMaker())) { toast(t("notMaker"), true); return; }
   const el = document.createElement("div"); el.id = "wb";
-  el.innerHTML = `<div class="wb-bar"><button class="icon-btn" data-act="closeWb" aria-label="${esc(t("close"))}">${ic("x")}</button><b>${esc(t("tataTitle"))} · Workbench</b><button class="btn primary sm" data-act="publishWb">${ic("upload")} ${esc(t("publish"))}</button></div><iframe src="../workbench/index.html" title="Workbench"></iframe>`;
+  el.innerHTML = `<div class="wb-bar"><button class="icon-btn" data-act="closeWb" aria-label="${esc(t("close"))}">${ic("x")}</button><b>${esc(t("tataTitle"))} · Workbench</b><button class="btn primary sm" data-act="publishWb">${ic("upload")} ${esc(t("publish"))}</button></div><iframe src="../workbench/index.html" title="Workbench" allow="fullscreen"></iframe>`;
   document.body.appendChild(el); document.body.classList.add("noscroll");
 };
 A.openNatal = (d) => {
