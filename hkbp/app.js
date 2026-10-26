@@ -385,7 +385,7 @@ R.login = async () => {
       </form>
       <button class="btn block ghost" data-act="seedDemo">${ic("spark")} ${esc(t("demoBtn"))}</button>` : `
       <form class="card form" data-form="login">
-        <label>${esc(t("f_phone"))}<div class="phone-in"><span>+65</span><input name="phone" inputmode="numeric" required placeholder="8123 4567" autocomplete="username" data-phonecheck></div></label>
+        <label>${esc(t("f_phone"))}<div class="phone-in"><span>+65</span><input name="phone" inputmode="numeric" required placeholder="8123 4567" autocomplete="username" data-phonecheck value="${esc(LS.get("remote.phone") || "")}"></div></label>
         <p class="small muted pc-hint" aria-live="polite"></p>
         <p class="small muted pc-note">${esc(t("pcNotice"))}</p>
         <div class="pc-reg" hidden><label>${esc(t("f_name"))}<input name="rname" maxlength="80" autocomplete="name"></label></div>
@@ -853,7 +853,7 @@ async function render() {
   try {
     const h = location.hash.replace(/^#\/?/, "").split("?")[0];
     let [r, arg] = h.split("/");
-    if (r === "login") { if (api.hasSession()) { location.replace("#/home"); return; } await R.login(); return; }
+    if (r === "login") { if (api.hasSession()) { location.replace("#/home"); return; } await R.login(); const lf = $('form[data-form="login"]'); if (lf && lf.phone && lf.phone.value) pcCheck(lf).catch(() => {}); return; }
     if (!api.hasSession() && await api.needsSetup()) { await R.login(); return; }
     if (!D) await refresh();
     if (!r) { history.replaceState(null, "", "#/home"); r = "home"; }
