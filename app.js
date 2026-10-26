@@ -368,13 +368,22 @@ function launch(name, url) {
   if (/^https?:/.test(url)) { a.target = "_blank"; a.rel = "noopener"; }
   row.appendChild(a);
   const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone;
-  setTimeout(() => {
+  afterTalk(() => {
     const sameSite = url.startsWith(location.origin);
     // Our own pages (Sada HKBPS, workbench) open in this same tab: no "pop-up window" warning (YB 2026-10-26).
     if (!/^https?:/.test(url) || sameSite || standalone) { location.href = url; return; } // apps, or home-screen mode: opens on top of Jarvis
     const w = window.open(url, "_blank"); if (w) try { w.opener = null; } catch {}
     if (!w) caption("Tap “Open " + name + "” below to open it.", true);
-  }, 1500); // let Jarvis say it's opening first
+  }); // Jarvis finishes the whole sentence first (YB 2026-10-26)
+}
+// Runs fn once Jarvis has finished speaking (checks the speech engine too, since iPhone can drop the end event).
+function afterTalk(fn) {
+  const t0 = Date.now();
+  const talking = () => (synth ? synth.speaking || synth.pending : S.speaking);
+  (function check() {
+    if (Date.now() - t0 < 700 || (talking() && Date.now() - t0 < 30000)) { setTimeout(check, 150); return; }
+    setTimeout(fn, 250);
+  })();
 }
 function openApp(q) {
   const app = findApp(q);
