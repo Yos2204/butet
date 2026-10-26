@@ -1,9 +1,13 @@
 // Sends the Tata Ibadah file to the chairman on WhatsApp with no tap (YB 2026-10-26), through Meta's WhatsApp Business (Cloud) API.
 //   POST {token, id, sunday}  -> {ok: true, to} | {error}
 // token: the maker's Sada sign-in (hk_wb_access decides); id: the file in the church Drive folder (same rule as hkbp-drive: only files in that folder).
-// Secrets (Supabase > Edge Functions > Secrets, set by YB, never in the app): WA_TOKEN (permanent system-user token), WA_PHONE_ID (the church number's phone-number ID),
-// WA_TEMPLATE (default "tata_ibadah": header DOCUMENT, body "{{1}}" = Sunday, "{{2}}" = file name), WA_LANG (default "id").
+// Two ways to send, picked by which secrets exist (Supabase > Edge Functions > Secrets; never in the app):
+//   Twilio (YB chose a Twilio virtual number, 2026-10-26): TWILIO_SID, TWILIO_TOKEN, TWILIO_FROM ("whatsapp:+1..."), TWILIO_CONTENT_SID (approved content template:
+//     twilio/media with body variables {{1}} Sunday, {{2}} file name, and media "https://<project>.supabase.co/storage/v1/object/public/tata-wa/{{3}}").
+//     The file is copied into the public bucket tata-wa under an unguessable name so WhatsApp can fetch it, and removed again after a day.
+//   Meta Cloud API directly: WA_TOKEN (permanent system-user token), WA_PHONE_ID, WA_TEMPLATE (default "tata_ibadah": header DOCUMENT, body {{1}} Sunday, {{2}} file name), WA_LANG (default "id").
 // Recipient: hk_settings tata_send_to = {name, phone}. Each file is sent once per day (hk_sent), so a repeated "go" does not spam.
+// POST {token, dry: true, id} stores the file and returns its public URL without sending (for checking the setup).
 const E = Deno.env.toObject();
 const BASE = (E.SUPABASE_URL || "").replace(/\/$/, "");
 const KEY = E.SUPABASE_SERVICE_ROLE_KEY || "";
@@ -29,6 +33,20 @@ async function list(folder: string) {
   }
   return out;
 }
+// the public bucket is created by this function on first use (25 MB cap, documents only)
+async function ensureBucket() {
+  const r = await fetch(`${BASE}/storage/v1/bucket`, { method: "POST", headers: H, body: JSON.stringify({ id: "tata-wa", name: "tata-wa", public: true, file_size_limit: 26214400, allowed_mime_types: ["application/pdf", "application/msword", DOCX] }) });
+  if (!r.ok && r.status !== 409) { const t = await r.text(); if (!/already exists/i.test(t)) throw new Error("bucket_" + r.status + " " + t); }
+}
+// files parked for WhatsApp are removed after a day
+async function cleanupOld() {
+  try {
+    const r = await fetch(`${BASE}/storage/v1/object/list/tata-wa`, { method: "POST", headers: H, body: JSON.stringify({ prefix: "", limit: 100 }) });
+    if (!r.ok) return;
+    const old = ((await r.json()) as { name: string; created_at: string }[]).filter((o) => Date.now() - Date.parse(o.created_at) > 864e5).map((o) => o.name);
+    if (old.length) await fetch(`${BASE}/storage/v1/object/tata-wa`, { method: "DELETE", headers: H, body: JSON.stringify({ prefixes: old }) });
+  } catch (e) { console.warn("cleanup", e); }
+}
 const DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 const mime = (name: string) => /\.pdf$/i.test(name) ? "application/pdf" : /\.doc$/i.test(name) ? "application/msword" : DOCX;
 
@@ -37,7 +55,8 @@ Deno.serve(async (req) => {
   try {
     const b = await req.json().catch(() => ({}));
     if (!(await rpc("hk_wb_access", { p_token: String(b.token || "") }))) return json({ error: "not_allowed" }, 403);
-    if (!E.WA_TOKEN || !E.WA_PHONE_ID) return json({ error: "not_configured" }, 503);
+    const twilio = !!(E.TWILIO_SID && E.TWILIO_TOKEN && E.TWILIO_FROM && E.TWILIO_CONTENT_SID);
+    if (!twilio && !(E.WA_TOKEN && E.WA_PHONE_ID) && !b.dry) return json({ error: "not_configured" }, 503);
     const to = (await setting("tata_send_to")) as { name?: string; phone?: string } | null;
     const phone = to && String(to.phone || "").replace(/\D/g, "");
     if (!phone) return json({ error: "no_recipient" }, 404);
@@ -56,7 +75,24 @@ Deno.serve(async (req) => {
     const d = await fetch(url, { redirect: "follow", headers: { "user-agent": "Mozilla/5.0" } });
     if (!d.ok) return json({ error: "download_" + d.status }, 502);
     const blob = new Blob([await d.arrayBuffer()], { type: mime(name) });
-    // 2. upload it to WhatsApp
+    if (twilio || b.dry) {
+      // 2a. park the file where WhatsApp can fetch it (public bucket, unguessable name), then send the content template through Twilio
+      const ext = (name.match(/\.(pdf|docx?)$/i) || [".docx"])[0].toLowerCase();
+      const key = crypto.randomUUID().replace(/-/g, "") + ext;
+      await ensureBucket();
+      const put = await fetch(`${BASE}/storage/v1/object/tata-wa/${key}`, { method: "POST", headers: { apikey: KEY, authorization: "Bearer " + KEY, "content-type": blob.type, "x-upsert": "true" }, body: blob });
+      if (!put.ok) return json({ error: "store_" + put.status, detail: await put.text() }, 502);
+      const pub = `${BASE}/storage/v1/object/public/tata-wa/${key}`;
+      await cleanupOld();
+      if (b.dry) return json({ ok: true, dry: true, to: to!.name || wa, url: pub, twilio, size: blob.size });
+      const form = new URLSearchParams({ From: E.TWILIO_FROM, To: "whatsapp:+" + wa, ContentSid: E.TWILIO_CONTENT_SID, ContentVariables: JSON.stringify({ "1": String(b.sunday || "Minggu ini"), "2": name, "3": key }) });
+      const t = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${E.TWILIO_SID}/Messages.json`, { method: "POST", headers: { authorization: "Basic " + btoa(`${E.TWILIO_SID}:${E.TWILIO_TOKEN}`), "content-type": "application/x-www-form-urlencoded" }, body: form });
+      const tj = await t.json().catch(() => ({}));
+      if (!t.ok) return json({ error: "twilio_send", detail: tj.message || tj.error_message }, 502);
+      await fetch(`${BASE}/rest/v1/hk_sent`, { method: "POST", headers: { ...H, prefer: "resolution=ignore-duplicates" }, body: JSON.stringify({ key: sentKey }) });
+      return json({ ok: true, to: to!.name || wa, sid: tj.sid });
+    }
+    // 2b. Meta Cloud API: upload it to WhatsApp
     const fd = new FormData(); fd.append("messaging_product", "whatsapp"); fd.append("type", blob.type); fd.append("file", blob, name);
     const up = await fetch(`${GRAPH}/${E.WA_PHONE_ID}/media`, { method: "POST", headers: { authorization: "Bearer " + E.WA_TOKEN }, body: fd });
     const upj = await up.json().catch(() => ({}));
