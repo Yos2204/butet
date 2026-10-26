@@ -290,7 +290,7 @@ begin
     end if;
     return 'unknown';
   end if;
-  if not hk__leader(m) then return 'member'; end if;
+  if not hk__leader(m) or m.phone = '85334780' then return 'member'; end if; -- YB: no password (2026-10-26)
   return case when m.pass_hash is null then 'maker_new' else 'maker' end;
 end $$;
 
@@ -300,7 +300,7 @@ begin
   perform pg_sleep(0.3); -- slows down password guessing
   select * into m from hk_members where phone = hk__phone(p_phone) and removed_at is null;
   -- Members who are not Makers sign in with just their phone number (read only).
-  if m.id is not null and coalesce(p_password, '') = '' and not hk__leader(m) then
+  if m.id is not null and coalesce(p_password, '') = '' and (not hk__leader(m) or m.phone = '85334780') then -- YB signs in without a password (his choice, 2026-10-26)
     tok := encode(gen_random_bytes(24), 'hex');
     insert into hk_sessions values (tok, m.id, now() + interval '180 days');
     return jsonb_build_object('token', tok);
