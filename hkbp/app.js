@@ -870,7 +870,7 @@ function hydrate() {
   // Jarvis "go" (YB 2026-10-26) opens #/s/multimedia?wb=1: open the workbench straight away for a Multimedia Maker.
   if (/^#\/s\/multimedia\?(.*&)?wb=1\b/.test(location.hash) && D && !isGuest() && !document.getElementById("wb")) {
     history.replaceState(null, "", "#/s/multimedia");
-    if (isMMMaker()) setTimeout(() => A.openWorkbench(), 150); else toast(t("notMaker"), true);
+    if (isMMMaker()) setTimeout(() => A.openWorkbench({ go: 1 }), 150); else toast(t("notMaker"), true);
   }
   if (D && !isGuest() && api.hasSession() && $("#sheet").hidden) {
     if (viewMode() === null) { if (hasRights()) setTimeout(rolePrompt, 300); else LS.set("view", "member"); }
@@ -1013,10 +1013,10 @@ const tataCache = {};
 async function tataHtml(id) { if (!tataCache[id]) tataCache[id] = await api.serviceHtml(id); return tataCache[id]; }
 function tataIframe(html) { const f = document.createElement("iframe"); f.setAttribute("sandbox", "allow-scripts"); f.title = t("tataTitle"); f.src = URL.createObjectURL(new Blob([html], { type: "text/html" })); return f; }
 A.tataFull = async (d) => { const html = await tataHtml(d.id); const el = $(".tata-frame"); if (el && el.requestFullscreen) el.requestFullscreen().catch(() => {}); else window.open(URL.createObjectURL(new Blob([html], { type: "text/html" })), "_blank"); };
-A.openWorkbench = () => {
+A.openWorkbench = (d) => {
   if (!(mmRole() === "maker" && isMMMaker())) { toast(t("notMaker"), true); return; }
   const el = document.createElement("div"); el.id = "wb";
-  el.innerHTML = `<div class="wb-bar"><button class="icon-btn" data-act="closeWb" aria-label="${esc(t("close"))}">${ic("x")}</button><b>${esc(t("tataTitle"))} · Workbench</b><button class="btn primary sm" data-act="publishWb">${ic("upload")} ${esc(t("publish"))}</button></div><iframe src="../workbench/index.html" title="Workbench" allow="fullscreen"></iframe>`;
+  el.innerHTML = `<div class="wb-bar"><button class="icon-btn" data-act="closeWb" aria-label="${esc(t("close"))}">${ic("x")}</button><b>${esc(t("tataTitle"))} · Workbench</b><button class="btn primary sm" data-act="publishWb">${ic("upload")} ${esc(t("publish"))}</button></div><iframe src="../workbench/index.html${d && d.go ? "?go=1" : ""}" title="Workbench" allow="fullscreen"></iframe>`;
   document.body.appendChild(el); document.body.classList.add("noscroll");
 };
 A.openNatal = (d) => {
