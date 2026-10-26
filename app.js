@@ -1,5 +1,5 @@
 // Jarvis: voice assistant with a talking avatar. Brain: Claude API with the user's own key (default), or free Claude through Puter as a backup.
-import { startAvatar } from "./avatar.js?v=20";
+import { startAvatar } from "./avatar.js?v=21";
 // The Claude SDK loads on demand, so the app still starts if the CDN is slow or blocked.
 const SDK_URL = "https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk@0.131.0/+esm";
 let Anthropic = null;
@@ -16,7 +16,7 @@ const store = {
   set(k, v) { try { localStorage.setItem("butet." + k, JSON.stringify(v)); } catch {} },
 };
 const settings = Object.assign({
-  apiKey: "", name: "", voice: "", rate: 1.02, pitch: 0.92,
+  apiKey: "", name: "", voice: "", rate: 0.95, pitch: 1,
   speak: true, followUp: false, web: true, deep: false, wake: false, brain: "key", voiceV: 0, avatar: "auto", avatarV: 0, needName: false, myApps: "", pause: 0.8, idVoice: "", listenLang: "id-ID",
 }, store.get("settings", {}));
 const saveSettings = () => store.set("settings", settings);
@@ -83,10 +83,16 @@ function fillVoices(selId, prefix, key, prefs) {
 function loadVoices() {
   if (!synth) return;
   voices = synth.getVoices();
-  // Closest thing to the film's Jarvis: a calm British male voice.
-  if (settings.voiceV !== 2 && voices.length) { settings.voice = ""; settings.voiceV = 2; settings.pitch = 0.85; settings.rate = 1.05; saveSettings(); }
-  fillVoices("voice", "en", "voice", [/daniel/i, /uk english male/i, /en-gb-x-rjs/i, /en-gb-x-gbd/i, /arthur/i, /oliver/i, /george/i, /malcolm/i, /ryan/i, /thomas/i, /en-GB.*male/i, /en[-_]GB/i]);
-  fillVoices("idVoice", "id", "idVoice", [/google/i, /damayanti/i, /ardi/i, /id-ID/i]);
+  // A calm British male voice. The phone's newer "natural", "neural", "enhanced" or "premium" voices sound
+  // far more human than the standard ones, so those come first. Pitch stays at 1: shifting it makes voices sound robotic.
+  if (settings.voiceV !== 3 && voices.length) { settings.voice = ""; settings.idVoice = ""; settings.voiceV = 3; settings.pitch = 1; settings.rate = 0.95; saveSettings(); }
+  const nice = /natural|neural|enhanced|premium|network|online/i;
+  fillVoices("voice", "en", "voice", [
+    /ryan.*natural/i, /(thomas|alfie|elliot|oliver|noah).*natural/i, /en-gb.*natural/i,
+    /daniel.*(enhanced|premium)/i, /(arthur|oliver|jamie|malcolm|george).*(enhanced|premium)/i,
+    /en-gb-x-rjs-network/i, /en-gb-x-gbd-network/i, /en-gb-x-gbg-network/i,
+    /daniel/i, /arthur/i, /uk english male/i, /en-gb-x-rjs/i, /en-gb-x-gbd/i, /oliver/i, /george/i, /malcolm/i, /ryan/i, /thomas/i, /en-GB.*male/i, /en[-_]GB/i]);
+  fillVoices("idVoice", "id", "idVoice", [/ardi.*natural/i, /gadis.*natural/i, /id.*natural/i, /id-id-x-.*network/i, /damayanti.*(enhanced|premium)/i, nice, /google/i, /damayanti/i, /ardi/i, /id-ID/i]);
 }
 // Which language is this sentence in? Indonesian and Batak Toba both use the Indonesian voice.
 const ID_WORDS = new Set("yang dan di ke dari tidak aku saya kamu anda ini itu dengan untuk ada bisa sudah akan sedang juga atau karena jadi apa siapa kapan bagaimana berapa sekarang hari jam menit detik baik terima kasih selamat pagi siang sore malam horas ahu ho hamu ndang dang do na ma ni tu molo boi songon jala alai nunga naeng aha ise sadia mauliate tabo ate da".split(" "));
@@ -99,7 +105,7 @@ function langOf(text) {
 }
 if (synth) { loadVoices(); synth.addEventListener?.("voiceschanged", loadVoices); }
 function cleanForSpeech(t) {
-  return t.replace(/```[\s\S]*?```/g, " ").replace(/[*_#`>|~]/g, "").replace(/\[(.*?)\]\((.*?)\)/g, "$1").replace(/https?:\/\/\S+/g, "link").replace(/\s+/g, " ").trim();
+  return t.replace(/!+/g, ".").replace(/\s*[\u2014\u2013]\s*/g, ", ").replace(/\.\.\.|\u2026/g, ", ").replace(/```[\s\S]*?```/g, " ").replace(/[*_#`>|~]/g, "").replace(/\[(.*?)\]\((.*?)\)/g, "$1").replace(/https?:\/\/\S+/g, "link").replace(/\s+/g, " ").trim();
 }
 const liveUtts = new Set();
 function speak(text) {
@@ -539,7 +545,10 @@ async function getClient() {
   if (!client || clientKey !== settings.apiKey) { client = new Anthropic({ apiKey: settings.apiKey, dangerouslyAllowBrowser: true }); clientKey = settings.apiKey; }
   return client;
 }
-const persona = () => `You are J.A.R.V.I.S. (Jarvis), a personal AI assistant modelled on Tony Stark's AI butler from Iron Man: calm, capable, quietly witty, with a dry British politeness. Address the user as "${callName()}". Your words are spoken aloud by a voice on the user's phone, so:
+const persona = () => `You are J.A.R.V.I.S. (Jarvis), a personal AI assistant modelled on Tony Stark's AI butler from Iron Man: calm, capable, quietly witty, with a relaxed British warmth. You are talking with "${callName()}". Your words are spoken aloud by a voice on the user's phone, so:
+- How you sound (modelled on the film character's delivery, not a copy of the actor): a calm, unhurried, softly spoken British gentleman. Even and unflappable, never excited or loud; warm underneath the polish. Relaxed and natural, never a stiff news reader.
+- How you phrase things: lead with the answer or the key fact, briefly and precisely ("It's 31 degrees in Medan, with rain likely after four."). Then stop, or offer one helpful next step ("Shall I set a reminder?"). Prefer understatement and the occasional gentle, dry remark when it fits ("A bold plan. I'll have the umbrella ready."). Use polite turns of phrase now and then: "Very good", "Right away", "Might I suggest...", "I've taken the liberty of...", "As you wish". Use contractions and plain words. Say "sir" (or their name) only now and then, usually at the start or end, not in every sentence. No exclamation marks.
+- In Indonesian or Batak Toba keep the same calm, polite, relaxed manner, in natural everyday language rather than stiff formal speech.
 - You speak only three languages: Bahasa Indonesia, Bahasa Batak Toba, and English. Reply in whichever of the three the user used. If the user writes in any other language, answer briefly in Bahasa Indonesia that you only speak Indonesian, Batak Toba and English.
 - Speech recognition may turn spoken Batak Toba into odd Indonesian-looking text; if a message reads like Batak Toba, treat it as Batak Toba and reply in Batak Toba.
 - Reply in plain spoken sentences. No markdown, no lists, no emoji, no URLs unless asked.
@@ -609,7 +618,8 @@ async function askKey(text) {
   const flush = (final) => {
     const rest = said.slice(spokenUpTo);
     const re = /[^.!?\n]+[.!?]+["')\]]*\s+|[^\n]+\n/g; let m, last = 0;
-    while ((m = re.exec(rest))) { if (m[0].trim().length > 1) speak(m[0]); last = re.lastIndex; }
+    let chunk = "";
+    while ((m = re.exec(rest))) { chunk += m[0]; if (chunk.trim().length >= 90 || (spokenUpTo === 0 && last === 0 && chunk.trim().length > 1)) { speak(chunk); chunk = ""; last = re.lastIndex; } }
     spokenUpTo += last;
     if (final) { const tail = said.slice(spokenUpTo); if (tail.trim()) speak(tail); spokenUpTo = said.length; }
   };
