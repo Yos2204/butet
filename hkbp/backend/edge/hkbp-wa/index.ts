@@ -9,6 +9,7 @@
 // Recipient: hk_settings tata_send_to = {name, phone}. Each file is sent once per day (hk_sent), so a repeated "go" does not spam.
 // POST {token, dry: true, id} stores the file and returns its public URL without sending (for checking the setup).
 // POST {token, check: true} checks the Meta token, phone number and template status without sending.
+// Every attempt (check, download, upload, send) is recorded in hk_wa_log (service role only; see backend/sql/hk_wa_log.sql).
 const E = Deno.env.toObject();
 const BASE = (E.SUPABASE_URL || "").replace(/\/$/, "");
 const KEY = E.SUPABASE_SERVICE_ROLE_KEY || "";
@@ -22,6 +23,10 @@ const unent = (s: string) => s.replace(/&amp;/g, "&").replace(/&#39;/g, "'").rep
 async function setting(key: string): Promise<unknown> {
   const r = await fetch(`${BASE}/rest/v1/hk_settings?key=eq.${key}&select=value`, { headers: H });
   const rows = r.ok ? await r.json() : []; return rows[0] && rows[0].value;
+}
+// every attempt is recorded in hk_wa_log (service role only) so the maker's failures can be read without their phone
+async function log(ok: boolean, step: string, detail?: unknown, file?: string, to?: string) {
+  try { await fetch(`${BASE}/rest/v1/hk_wa_log`, { method: "POST", headers: H, body: JSON.stringify({ ok, step, detail: detail == null ? null : String(typeof detail === "string" ? detail : JSON.stringify(detail)).slice(0, 2000), file: file || null, to_phone: to || null }) }); } catch (e) { console.warn("log", e); }
 }
 async function list(folder: string) {
   const r = await fetch(`https://drive.google.com/embeddedfolderview?id=${folder}`, { headers: { "user-agent": "Mozilla/5.0" } });
@@ -73,6 +78,7 @@ Deno.serve(async (req) => {
         const t = await fetch(`${GRAPH}/${waba}/message_templates?name=${encodeURIComponent(E.WA_TEMPLATE || "tata_ibadah")}&fields=name,status,language,rejected_reason,category`, { headers: A });
         template = await t.json().catch(() => ({}));
       }
+      await log(p.ok, "check", { phone: pj, template });
       return json({ ok: p.ok, phone: pj, template, phone_id: PHONE_ID, waba });
     }
     const to = (await setting("tata_send_to")) as { name?: string; phone?: string } | null;
@@ -91,7 +97,7 @@ Deno.serve(async (req) => {
     // 1. the file from Drive
     const url = f.kind === "gdoc" ? `https://docs.google.com/document/d/${f.id}/export?format=docx` : `https://drive.usercontent.google.com/download?id=${f.id}&export=download&confirm=t`;
     const d = await fetch(url, { redirect: "follow", headers: { "user-agent": "Mozilla/5.0" } });
-    if (!d.ok) return json({ error: "download_" + d.status }, 502);
+    if (!d.ok) { await log(false, "download", d.status, name, wa); return json({ error: "download_" + d.status }, 502); }
     const blob = new Blob([await d.arrayBuffer()], { type: mime(name) });
     if (twilio || b.dry) {
       // 2a. park the file where WhatsApp can fetch it (public bucket, unguessable name), then send the content template through Twilio
@@ -114,7 +120,7 @@ Deno.serve(async (req) => {
     const fd = new FormData(); fd.append("messaging_product", "whatsapp"); fd.append("type", blob.type); fd.append("file", blob, name);
     const up = await fetch(`${GRAPH}/${PHONE_ID}/media`, { method: "POST", headers: { authorization: "Bearer " + E.WA_TOKEN }, body: fd });
     const upj = await up.json().catch(() => ({}));
-    if (!up.ok || !upj.id) return json({ error: "wa_upload", detail: upj.error && upj.error.message }, 502);
+    if (!up.ok || !upj.id) { await log(false, "wa_upload", upj.error || upj, name, wa); return json({ error: "wa_upload", detail: upj.error && upj.error.message }, 502); }
     // 3. the approved template with the document as its header
     const msg = {
       messaging_product: "whatsapp", to: wa, type: "template",
@@ -125,8 +131,9 @@ Deno.serve(async (req) => {
     };
     const s = await fetch(`${GRAPH}/${PHONE_ID}/messages`, { method: "POST", headers: { authorization: "Bearer " + E.WA_TOKEN, "content-type": "application/json" }, body: JSON.stringify(msg) });
     const sj = await s.json().catch(() => ({}));
-    if (!s.ok) return json({ error: "wa_send", detail: sj.error && sj.error.message }, 502);
+    if (!s.ok) { await log(false, "wa_send", sj.error || sj, name, wa); return json({ error: "wa_send", detail: sj.error && sj.error.message }, 502); }
     await fetch(`${BASE}/rest/v1/hk_sent`, { method: "POST", headers: { ...H, prefer: "resolution=ignore-duplicates" }, body: JSON.stringify({ key: sentKey }) });
+    await log(true, "sent", sj.messages && sj.messages[0] && sj.messages[0].id, name, wa);
     return json({ ok: true, to: to!.name || wa });
   } catch (e) { console.error(e); return json({ error: String((e as Error).message || e) }, 500); }
 });
