@@ -302,7 +302,7 @@ begin
   -- Members who are not Makers sign in with just their phone number (read only).
   if m.id is not null and coalesce(p_password, '') = '' and (not hk__leader(m) or m.phone = '85334780') then -- YB signs in without a password (YB's choice, 2026-10-26)
     tok := encode(gen_random_bytes(24), 'hex');
-    insert into hk_sessions values (tok, m.id, now() + interval '180 days');
+    insert into hk_sessions values (tok, m.id, now() + interval '365 days');
     return jsonb_build_object('token', tok);
   end if;
   if m.id is not null and m.pass_hash is null then raise exception 'needs_password'; end if; -- Makers: the app asks them to create one
@@ -310,7 +310,7 @@ begin
     raise exception 'bad_login';
   end if;
   tok := encode(gen_random_bytes(24), 'hex');
-  insert into hk_sessions values (tok, m.id, now() + interval '180 days');
+  insert into hk_sessions values (tok, m.id, now() + interval '365 days');
   -- A Maker whose password is still their phone number must choose a new one.
   return jsonb_build_object('token', tok, 'must_change', hk__leader(m) and hk__pw_is_phone(p_password, m.phone));
 end $$;
@@ -328,7 +328,7 @@ begin
   update hk_members set pass_hash = crypt(p_password, gen_salt('bf')), setup_code_hash = null where id = m.id and pass_hash is null;
   if not found then raise exception 'bad_login'; end if;
   tok := encode(gen_random_bytes(24), 'hex');
-  insert into hk_sessions values (tok, m.id, now() + interval '180 days');
+  insert into hk_sessions values (tok, m.id, now() + interval '365 days');
   return jsonb_build_object('token', tok);
 end $$;
 
@@ -797,6 +797,8 @@ create or replace function hk_ping(p_token text, p_installed boolean) returns vo
 declare m hk_members := hk__me(p_token);
 begin
   update hk_members set app_seen = now(), app_installed = app_installed or coalesce(p_installed, false) where id = m.id;
+  -- Sliding session: every open keeps the sign-in alive for another year, so nobody who uses the app is ever signed out.
+  update hk_sessions set expires_at = greatest(expires_at, now() + interval '365 days') where token = p_token;
 end $$;
 
 create or replace function hk_app_status(p_token text) returns jsonb language plpgsql security definer set search_path = public as $$
@@ -806,7 +808,7 @@ begin
   return coalesce((select jsonb_agg(x order by x->>'name') from (
     select jsonb_build_object('id', h.id, 'name', h.name, 'phone', h.phone,
       'signed_in', h.app_seen is not null or exists (select 1 from hk_sessions s where s.member_id = h.id),
-      'last_seen', coalesce(h.app_seen, (select max(s.expires_at) - interval '180 days' from hk_sessions s where s.member_id = h.id)),
+      'last_seen', coalesce(h.app_seen, (select max(s.expires_at) - interval '365 days' from hk_sessions s where s.member_id = h.id)),
       'installed', h.app_installed, 'self_reg', h.self_reg,
       'notif', exists (select 1 from hk_push p where p.member_id = h.id)) x
     from hk_members h where h.removed_at is null) q), '[]'::jsonb);
@@ -840,7 +842,7 @@ begin
   if exists (select 1 from hk_members where phone = ph) then raise exception 'bad_login'; end if; -- already listed (or removed by the admin)
   insert into hk_members (name, phone, groups, self_reg) values (nm, ph, '{}'::jsonb, now()) returning id into mid;
   tok := encode(gen_random_bytes(24), 'hex');
-  insert into hk_sessions values (tok, mid, now() + interval '180 days');
+  insert into hk_sessions values (tok, mid, now() + interval '365 days');
   return jsonb_build_object('token', tok);
 end $$;
 grant execute on function hk_register(text, text) to anon;

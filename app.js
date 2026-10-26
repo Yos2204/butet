@@ -19,7 +19,13 @@ const settings = Object.assign({
   apiKey: "", name: "", voice: "", rate: 0.95, pitch: 1,
   speak: true, followUp: false, web: true, deep: false, wake: false, brain: "key", voiceV: 0, avatar: "auto", avatarV: 0, needName: false, myApps: "", goSource: "drive", goName: "the Tata Ibadah group", goLink: "", pause: 0.8, idVoice: "", listenLang: "id-ID",
 }, store.get("settings", {}));
-const saveSettings = () => store.set("settings", settings);
+// Cookie copy of the API key: iPhone can drop localStorage for sites not on the Home Screen; the key comes back from here.
+const keyCookie = {
+  get() { try { const m = document.cookie.match(/(?:^|; )butet_k=([^;]*)/); return m ? decodeURIComponent(m[1]) : ""; } catch { return ""; } },
+  set(v) { try { document.cookie = `butet_k=${encodeURIComponent(v || "")}; max-age=${v ? 34560000 : 0}; path=${location.pathname.replace(/[^/]*$/, "")}; SameSite=Lax${location.protocol === "https:" ? "; Secure" : ""}`; } catch {} },
+};
+if (!settings.apiKey && keyCookie.get()) { settings.apiKey = keyCookie.get(); store.set("settings", settings); }
+const saveSettings = () => { store.set("settings", settings); keyCookie.set(settings.apiKey); };
 if (settings.avatarV !== 1) { settings.avatar = "auto"; settings.avatarV = 1; saveSettings(); } // new default: face only while talking
 let notes = store.get("notes", []);
 let history = store.get("history", []);

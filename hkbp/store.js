@@ -10,6 +10,11 @@ const LS = {
   get(k, d) { try { const v = localStorage.getItem("hkbp." + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
   set(k, v) { try { if (v == null) localStorage.removeItem("hkbp." + k); else localStorage.setItem("hkbp." + k, JSON.stringify(v)); } catch {} },
 };
+// Cookie copy of the sign-in token: if the browser drops localStorage (iPhone clears it for sites not on the Home Screen), the token comes back from here.
+const CK = {
+  get(n) { try { const m = document.cookie.match(new RegExp("(?:^|; )" + n + "=([^;]*)")); return m ? decodeURIComponent(m[1]) : null; } catch { return null; } },
+  set(n, v) { try { document.cookie = `${n}=${v == null ? "" : encodeURIComponent(v)}; max-age=${v == null ? 0 : 34560000}; path=${location.pathname.replace(/[^/]*$/, "")}; SameSite=Lax${location.protocol === "https:" ? "; Secure" : ""}`; } catch {} },
+};
 const pwIsPhone = (pw, phone) => /^[+0-9 ()-]+$/.test(pw || "") && phone8(pw) === phone;
 const phone8 = (p) => { const d = String(p || "").replace(/\D/g, ""); return d.length === 10 && d.startsWith("65") ? d.slice(2) : d; };
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(16).slice(2));
@@ -362,19 +367,29 @@ const Remote = {
     const txt = await res.text(); let j = null; try { j = txt ? JSON.parse(txt) : null; } catch {}
     if (!res.ok) {
       const code = ((j && j.message) || "").match(/not_signed_in|bad_login|needs_password|not_allowed|short_password|pw_is_phone|file_too_big|unknown_kind|bad_phone|need_name/);
-      if (code && code[0] === "not_signed_in") LS.set("remote.token", null);
+      if (code && code[0] === "not_signed_in") {
+        this.setToken(null);
+        // Session gone (expired or cleared): sign the remembered number in again without asking when the account needs no password, then retry once.
+        const ph = LS.get("remote.phone");
+        if (ph && fn !== "hk_login" && args && "p_token" in args && !this._relog) {
+          this._relog = true;
+          try { const r = await this.rpc("hk_login", { p_phone: ph, p_password: "" }); this.setToken(r.token); return await this.rpc(fn, Object.assign({}, args, { p_token: r.token })); }
+          catch {} finally { this._relog = false; }
+        }
+      }
       throw new AppError(code ? code[0] : "server");
     }
     return j;
   },
-  get token() { return LS.get("remote.token"); },
+  get token() { let t = LS.get("remote.token"); if (!t) { t = CK.get("hkbp_t"); if (t) LS.set("remote.token", t); } return t; },
+  setToken(t) { LS.set("remote.token", t); CK.set("hkbp_t", t); },
   hasSession() { return !!this.token; },
   async needsSetup() { return false; },
-  async login(phone, pw) { const r = await this.rpc("hk_login", { p_phone: phone, p_password: pw }); LS.set("remote.token", r.token); return r; },
+  async login(phone, pw) { const r = await this.rpc("hk_login", { p_phone: phone, p_password: pw }); this.setToken(r.token); LS.set("remote.phone", phone); return r; },
   async phoneCheck(phone) { return this.rpc("hk_phone_check", { p_phone: phone }); },
-  async register(phone, name) { const r = await this.rpc("hk_register", { p_phone: phone, p_name: name }); LS.set("remote.token", r.token); },
-  async firstPassword(phone, pw) { const r = await this.rpc("hk_first_password", { p_phone: phone, p_password: pw }); LS.set("remote.token", r.token); },
-  async logout() { const t = this.token; LS.set("remote.token", null); LS.set("remote.cache", null); try { await this.rpc("hk_logout", { p_token: t }); } catch {} },
+  async register(phone, name) { const r = await this.rpc("hk_register", { p_phone: phone, p_name: name }); this.setToken(r.token); LS.set("remote.phone", phone); },
+  async firstPassword(phone, pw) { const r = await this.rpc("hk_first_password", { p_phone: phone, p_password: pw }); this.setToken(r.token); LS.set("remote.phone", phone); },
+  async logout() { const t = this.token; this.setToken(null); LS.set("remote.phone", null); LS.set("remote.cache", null); try { await this.rpc("hk_logout", { p_token: t }); } catch {} },
   async setPassword(o, n) { return this.rpc("hk_set_password", { p_token: this.token, p_old: o, p_new: n }); },
   async data() {
     if (!this.token) return this.publicData();
