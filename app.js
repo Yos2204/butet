@@ -370,7 +370,8 @@ function launch(name, url) {
   const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone;
   setTimeout(() => {
     const sameSite = url.startsWith(location.origin);
-    if (!/^https?:/.test(url) || (standalone && !sameSite)) { location.href = url; return; } // apps, or home-screen mode: opens on top of Jarvis
+    // Our own pages (Sada HKBPS, workbench) open in this same tab: no "pop-up window" warning (YB 2026-10-26).
+    if (!/^https?:/.test(url) || sameSite || standalone) { location.href = url; return; } // apps, or home-screen mode: opens on top of Jarvis
     const w = window.open(url, "_blank"); if (w) try { w.opener = null; } catch {}
     if (!w) caption("Tap “Open " + name + "” below to open it.", true);
   }, 1500); // let Jarvis say it's opening first
