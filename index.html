@@ -241,6 +241,6 @@ html, body { margin: 0; }
 window.addEventListener("error", function (e) { var c = document.getElementById("caption"); if (c && !window.__jarvisOK) c.textContent = "Jarvis hit a problem starting: " + (e.message || "script error") + ". Close the app fully and open it again."; });
 setTimeout(function () { if (!window.__jarvisOK) { var c = document.getElementById("caption"); if (c && c.textContent.indexOf("problem") < 0) c.textContent = "Jarvis didn't start. Close the app fully and open it again, or check your internet."; } }, 8000);
 </script>
-<script type="module" src="app.js?v=27"></script>
+<script type="module" src="app.js?v=28"></script>
 </body>
 </html>

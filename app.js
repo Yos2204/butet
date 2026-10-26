@@ -1,5 +1,5 @@
 // Jarvis: voice assistant with a talking avatar. Brain: Claude API with the user's own key (default), or free Claude through Puter as a backup.
-import { startAvatar } from "./avatar.js?v=27";
+import { startAvatar } from "./avatar.js?v=28";
 // The Claude SDK loads on demand, so the app still starts if the CDN is slow or blocked.
 const SDK_URL = "https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk@0.131.0/+esm";
 let Anthropic = null;
@@ -17,7 +17,7 @@ const store = {
 };
 const settings = Object.assign({
   apiKey: "", name: "", voice: "", rate: 0.95, pitch: 1,
-  speak: true, followUp: false, web: true, deep: false, wake: false, brain: "key", voiceV: 0, avatar: "auto", avatarV: 0, needName: false, myApps: "", goSource: "whatsapp", goName: "the Tata Ibadah group", goLink: "", pause: 0.8, idVoice: "", listenLang: "id-ID",
+  speak: true, followUp: false, web: true, deep: false, wake: false, brain: "key", voiceV: 0, avatar: "auto", avatarV: 0, needName: false, myApps: "", goSource: "drive", goName: "the Tata Ibadah group", goLink: "", pause: 0.8, idVoice: "", listenLang: "id-ID",
 }, store.get("settings", {}));
 const saveSettings = () => store.set("settings", settings);
 if (settings.avatarV !== 1) { settings.avatar = "auto"; settings.avatarV = 1; saveSettings(); } // new default: face only while talking
@@ -848,7 +848,7 @@ function syncSettingsUI() {
   $("apiKey").value = settings.apiKey; $("userName").value = settings.name; $("voice").value = settings.voice;
   $("rate").value = settings.rate; $("pitch").value = settings.pitch;
   $("rateVal").textContent = Number(settings.rate).toFixed(2) + "×"; $("pitchVal").textContent = Number(settings.pitch).toFixed(2);
-  $("speakOn").checked = settings.speak; $("deep").checked = settings.deep; $("followUp").checked = settings.followUp; $("webOn").checked = settings.web; $("myApps").value = settings.myApps || ""; $("goName").value = settings.goName || ""; $("goSource").value = settings.goSource || "whatsapp"; $("goPhone").value = settings.goLink || "";
+  $("speakOn").checked = settings.speak; $("deep").checked = settings.deep; $("followUp").checked = settings.followUp; $("webOn").checked = settings.web; $("myApps").value = settings.myApps || ""; $("goName").value = settings.goName || ""; $("goSource").value = settings.goSource || "drive"; $("goPhone").value = settings.goLink || "";
 }
 $("openSettings").onclick = () => openSheet(true);
 $("closeSettings").onclick = $("scrim").onclick = () => openSheet(false);
