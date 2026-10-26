@@ -844,3 +844,12 @@ begin
   return jsonb_build_object('token', tok);
 end $$;
 grant execute on function hk_register(text, text) to anon;
+
+-- The Tata Ibadah workbench opens only inside Sada HKBPS for a signed-in Multimedia maker/chair or the admin (YB 2026-10-26).
+create or replace function hk_wb_access(p_token text) returns boolean language plpgsql security definer set search_path = public as $$
+declare m hk_members;
+begin
+  begin m := hk__me(p_token); exception when others then return false; end;
+  return coalesce(m.is_admin, false) or coalesce(m.groups ->> 'multimedia', '') in ('maker', 'chair');
+end $$;
+grant execute on function hk_wb_access(text) to anon;
