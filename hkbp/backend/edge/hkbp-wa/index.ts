@@ -5,7 +5,7 @@
 //   Twilio (YB chose a Twilio virtual number, 2026-10-26): TWILIO_SID, TWILIO_TOKEN, TWILIO_FROM ("whatsapp:+1..."), TWILIO_CONTENT_SID (approved content template:
 //     twilio/media with body variables {{1}} Sunday, {{2}} file name, and media "https://<project>.supabase.co/storage/v1/object/public/tata-wa/{{3}}").
 //     The file is copied into the public bucket tata-wa under an unguessable name so WhatsApp can fetch it, and removed again after a day.
-//   Meta Cloud API directly: WA_TOKEN (permanent system-user token), WA_PHONE_ID, WA_TEMPLATE (default "tata_ibadah": header DOCUMENT, body {{1}} Sunday, {{2}} file name), WA_LANG (default "id").
+//   Meta Cloud API directly (the route in use since 2026-10-27, free Meta test number): WA_TOKEN (permanent system-user token), WA_PHONE_ID (or hk_settings wa_phone_id), WA_TEMPLATE (default "tata_ibadah": header DOCUMENT, body {{1}} Sunday, {{2}} file name), WA_LANG (default "id").
 // Recipient: hk_settings tata_send_to = {name, phone}. Each file is sent once per day (hk_sent), so a repeated "go" does not spam.
 // POST {token, dry: true, id} stores the file and returns its public URL without sending (for checking the setup).
 const E = Deno.env.toObject();
@@ -56,7 +56,9 @@ Deno.serve(async (req) => {
     const b = await req.json().catch(() => ({}));
     if (!(await rpc("hk_wb_access", { p_token: String(b.token || "") }))) return json({ error: "not_allowed" }, 403);
     const twilio = !!(E.TWILIO_SID && E.TWILIO_TOKEN && E.TWILIO_FROM && E.TWILIO_CONTENT_SID);
-    if (!twilio && !(E.WA_TOKEN && E.WA_PHONE_ID) && !b.dry) return json({ error: "not_configured" }, 503);
+    // Meta: the token is a secret (WA_TOKEN); the phone number id is only an identifier, so it may live in hk_settings wa_phone_id instead of a secret
+    const PHONE_ID = String(E.WA_PHONE_ID || (await setting("wa_phone_id")) || "");
+    if (!twilio && !(E.WA_TOKEN && PHONE_ID) && !b.dry) return json({ error: "not_configured" }, 503);
     const to = (await setting("tata_send_to")) as { name?: string; phone?: string } | null;
     const phone = to && String(to.phone || "").replace(/\D/g, "");
     if (!phone) return json({ error: "no_recipient" }, 404);
@@ -94,7 +96,7 @@ Deno.serve(async (req) => {
     }
     // 2b. Meta Cloud API: upload it to WhatsApp
     const fd = new FormData(); fd.append("messaging_product", "whatsapp"); fd.append("type", blob.type); fd.append("file", blob, name);
-    const up = await fetch(`${GRAPH}/${E.WA_PHONE_ID}/media`, { method: "POST", headers: { authorization: "Bearer " + E.WA_TOKEN }, body: fd });
+    const up = await fetch(`${GRAPH}/${PHONE_ID}/media`, { method: "POST", headers: { authorization: "Bearer " + E.WA_TOKEN }, body: fd });
     const upj = await up.json().catch(() => ({}));
     if (!up.ok || !upj.id) return json({ error: "wa_upload", detail: upj.error && upj.error.message }, 502);
     // 3. the approved template with the document as its header
@@ -105,7 +107,7 @@ Deno.serve(async (req) => {
         { type: "body", parameters: [{ type: "text", text: String(b.sunday || "Minggu ini") }, { type: "text", text: name }] },
       ] },
     };
-    const s = await fetch(`${GRAPH}/${E.WA_PHONE_ID}/messages`, { method: "POST", headers: { authorization: "Bearer " + E.WA_TOKEN, "content-type": "application/json" }, body: JSON.stringify(msg) });
+    const s = await fetch(`${GRAPH}/${PHONE_ID}/messages`, { method: "POST", headers: { authorization: "Bearer " + E.WA_TOKEN, "content-type": "application/json" }, body: JSON.stringify(msg) });
     const sj = await s.json().catch(() => ({}));
     if (!s.ok) return json({ error: "wa_send", detail: sj.error && sj.error.message }, 502);
     await fetch(`${BASE}/rest/v1/hk_sent`, { method: "POST", headers: { ...H, prefer: "resolution=ignore-duplicates" }, body: JSON.stringify({ key: sentKey }) });
