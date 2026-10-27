@@ -94,7 +94,7 @@ create table if not exists hk_push (
 
 create table if not exists hk_outbox (
   id bigserial primary key,
-  audience text not null,              -- 'all' | 'elders' | 'group:<id>' | 'member:<uuid>'
+  audience text not null,              -- 'all' | 'elders' | 'group:<id>' | 'makers:<id>' (that category's Makers) | 'member:<uuid>'
   title text, body text, url text,
   created_at timestamptz default now(), sent_at timestamptz
 );

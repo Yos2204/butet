@@ -7,7 +7,7 @@
 //  - 08:00: birthday and wedding-anniversary wishes to the member, a "today in your category" notice to the rest of the category,
 //    and to each category leader a "tap to send the wishes to the WhatsApp group" notification
 //  - event reminders at each event's reminder time, to the event's category (or the whole church)
-//  - announcements queued from the app ("notify members now")
+//  - announcements queued from the app ("notify members now") and by the Tata Ibadah watcher (hkbp-tata; audience makers:<category>)
 // Every message is logged in hk_sent, so nothing is sent twice even if a run repeats.
 //
 // SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are provided by Supabase. Everything else lives in the locked hk_settings table:
@@ -59,6 +59,8 @@ async function run(S: Record<string, any>) {
     if (a === "all") return members;
     if (a === "elders") return members.filter((m: any) => m.is_admin || "parhalado" in (m.groups || {}));
     if (a.startsWith("group:")) { const g = a.slice(6); return members.filter((m: any) => g in (m.groups || {})); }
+    // the Makers of a category only (e.g. makers:multimedia = the Multimedia makers and chair, plus the admin), used by the Tata Ibadah watcher
+    if (a.startsWith("makers:")) { const g = a.slice(7); return members.filter((m: any) => m.is_admin || ["maker", "chair", "tmaker", "ychair", "ytreasurer", "ysecretary"].includes((m.groups || {})[g])); }
     if (a.startsWith("member:")) return members.filter((m: any) => m.id === a.slice(7));
     return [];
   };

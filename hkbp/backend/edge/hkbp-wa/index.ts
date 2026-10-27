@@ -6,7 +6,8 @@
 //     twilio/media with body variables {{1}} Sunday, {{2}} file name, and media "https://<project>.supabase.co/storage/v1/object/public/tata-wa/{{3}}").
 //     The file is copied into the public bucket tata-wa under an unguessable name so WhatsApp can fetch it, and removed again after a day.
 //   Meta Cloud API directly (the route in use since 2026-10-27, free Meta test number): WA_TOKEN (permanent system-user token), WA_PHONE_ID (or hk_settings wa_phone_id), WA_TEMPLATE (default "tata_ibadah": header DOCUMENT, body {{1}} Sunday, {{2}} file name), WA_LANG (default "id"), WA_PIN (optional two-step PIN used to register the number on first send).
-// Recipient: hk_settings tata_send_to = {name, phone}. Each file is sent once per day (hk_sent), so a repeated "go" does not spam.
+// Recipient: hk_settings tata_send_to = {name, phone}. Each file is sent once per day (hk_sent), so a repeated "go" does not spam;
+// the Tata Ibadah watcher (hkbp-tata, an internal caller) passes force: true because it only calls when the file really changed.
 // POST {token, dry: true, id} stores the file and returns its public URL without sending (for checking the setup).
 // POST {token, check: true} checks the Meta token, phone number, account and template status without sending.
 // Callers: a Multimedia maker's Sada token, or the database (pg_net) with header x-cron-key = hk_settings cron_key (same as hkbp-notify) plus the public anon key as the JWT.
@@ -107,7 +108,7 @@ Deno.serve(async (req) => {
     // once a day per file and recipient
     const sentKey = `wa:${wa}:${f.id}:${new Date().toISOString().slice(0, 10)}`;
     const dup = await fetch(`${BASE}/rest/v1/hk_sent?key=eq.${encodeURIComponent(sentKey)}&select=key`, { headers: H });
-    if (dup.ok && (await dup.json()).length) return json({ ok: true, to: to!.name || wa, already: true });
+    if (dup.ok && (await dup.json()).length && !(internal && b.force)) return json({ ok: true, to: to!.name || wa, already: true });
     // 1. the file from Drive
     const url = f.kind === "gdoc" ? `https://docs.google.com/document/d/${f.id}/export?format=docx` : `https://drive.usercontent.google.com/download?id=${f.id}&export=download&confirm=t`;
     const d = await fetch(url, { redirect: "follow", headers: { "user-agent": "Mozilla/5.0" } });
