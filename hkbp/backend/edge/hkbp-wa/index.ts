@@ -5,7 +5,7 @@
 //   Twilio (YB chose a Twilio virtual number, 2026-10-26): TWILIO_SID, TWILIO_TOKEN, TWILIO_FROM ("whatsapp:+1..."), TWILIO_CONTENT_SID (approved content template:
 //     twilio/media with body variables {{1}} Sunday, {{2}} file name, and media "https://<project>.supabase.co/storage/v1/object/public/tata-wa/{{3}}").
 //     The file is copied into the public bucket tata-wa under an unguessable name so WhatsApp can fetch it, and removed again after a day.
-//   Meta Cloud API directly (the route in use since 2026-10-27, free Meta test number): WA_TOKEN (permanent system-user token), WA_PHONE_ID (or hk_settings wa_phone_id), WA_TEMPLATE (default "tata_ibadah": header DOCUMENT, body {{1}} Sunday, {{2}} file name), WA_LANG (default "id").
+//   Meta Cloud API directly (the route in use since 2026-10-27, free Meta test number): WA_TOKEN (permanent system-user token), WA_PHONE_ID (or hk_settings wa_phone_id), WA_TEMPLATE (default "tata_ibadah": header DOCUMENT, body {{1}} Sunday, {{2}} file name), WA_LANG (default "id"), WA_PIN (optional two-step PIN used to register the number on first send).
 // Recipient: hk_settings tata_send_to = {name, phone}. Each file is sent once per day (hk_sent), so a repeated "go" does not spam.
 // POST {token, dry: true, id} stores the file and returns its public URL without sending (for checking the setup).
 // POST {token, check: true} checks the Meta token, phone number and template status without sending.
@@ -122,10 +122,22 @@ Deno.serve(async (req) => {
       return json({ ok: true, to: to!.name || wa, sid: tj.sid });
     }
     // 2b. Meta Cloud API: upload it to WhatsApp
-    const fd = new FormData(); fd.append("messaging_product", "whatsapp"); fd.append("type", blob.type); fd.append("file", blob, name);
-    const up = await fetch(`${GRAPH}/${PHONE_ID}/media`, { method: "POST", headers: { authorization: "Bearer " + E.WA_TOKEN }, body: fd });
-    const upj = await up.json().catch(() => ({}));
-    if (!up.ok || !upj.id) { await log(false, "wa_upload", upj.error || upj, name, wa); return json({ error: "wa_upload", detail: upj.error && upj.error.message }, 502); }
+    const upload = async () => {
+      const fd = new FormData(); fd.append("messaging_product", "whatsapp"); fd.append("type", blob.type); fd.append("file", blob, name);
+      const up = await fetch(`${GRAPH}/${PHONE_ID}/media`, { method: "POST", headers: { authorization: "Bearer " + E.WA_TOKEN }, body: fd });
+      return { ok: up.ok, j: await up.json().catch(() => ({})) };
+    };
+    let u = await upload();
+    // (#133010) Account not registered: a number must be registered on the Cloud API once before it can send (two-step PIN: WA_PIN secret, else derived from the phone number id). Register, then try again.
+    if (!u.ok && u.j.error && u.j.error.code === 133010) {
+      const pin = String(E.WA_PIN || PHONE_ID.slice(-6)).padStart(6, "0");
+      const reg = await fetch(`${GRAPH}/${PHONE_ID}/register`, { method: "POST", headers: { authorization: "Bearer " + E.WA_TOKEN, "content-type": "application/json" }, body: JSON.stringify({ messaging_product: "whatsapp", pin }) });
+      const rj = await reg.json().catch(() => ({}));
+      await log(reg.ok, "register", rj.error || rj, name, wa);
+      if (reg.ok) u = await upload();
+    }
+    const upj = u.j;
+    if (!u.ok || !upj.id) { await log(false, "wa_upload", upj.error || upj, name, wa); return json({ error: "wa_upload", detail: upj.error && upj.error.message }, 502); }
     // 3. the approved template with the document as its header
     const msg = {
       messaging_product: "whatsapp", to: wa, type: "template",
