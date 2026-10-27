@@ -6,7 +6,8 @@
 //     twilio/media with body variables {{1}} Sunday, {{2}} file name, and media "https://<project>.supabase.co/storage/v1/object/public/tata-wa/{{3}}").
 //     The file is copied into the public bucket tata-wa under an unguessable name so WhatsApp can fetch it, and removed again after a day.
 //   Meta Cloud API directly (the route in use since 2026-10-27, free Meta test number): WA_TOKEN (permanent system-user token), WA_PHONE_ID (or hk_settings wa_phone_id), WA_TEMPLATE (default "tata_ibadah": header DOCUMENT, body {{1}} Sunday, {{2}} file name), WA_LANG (default "id"), WA_PIN (optional two-step PIN used to register the number on first send).
-// Recipient: hk_settings tata_send_to = {name, phone}. Each file is sent once per day (hk_sent), so a repeated "go" does not spam;
+// Recipient: hk_settings tata_send_to = {name, phone}. Each file is sent once per day (hk_sent), so a repeated "go" does not spam; a send only
+// counts once a delivered/read receipt (hkbp-wa-hook) follows it, so a message Meta accepted and dropped is tried again (v16 2026-10-27);
 // the Tata Ibadah watcher (hkbp-tata, an internal caller) passes force: true because it only calls when the file really changed.
 // POST {token, dry: true, id} stores the file and returns its public URL without sending (for checking the setup).
 // POST {token, check: true} checks the Meta token, phone number, account, template status and webhook subscription without sending.
@@ -157,10 +158,17 @@ Deno.serve(async (req) => {
     const f = (await list(folder)).find((x) => x.id === String(b.id || ""));
     if (!f) return json({ error: "not_in_folder" }, 404);
     const name = f.kind === "gdoc" ? f.name + ".docx" : f.name;
-    // once a day per file and recipient
+    // once a day per file and recipient, but only once it really reached him: hk_sent remembers the send, and the day counts as done
+    // only if hkbp-wa-hook has logged a delivered/read receipt for this recipient since then. Meta "accepts" a plain document outside
+    // the 24-hour window and drops it later (2026-10-27: the 10:05 send blocked the whole day), so an unconfirmed send is tried again.
     const sentKey = `wa:${wa}:${f.id}:${new Date().toISOString().slice(0, 10)}`;
-    const dup = await fetch(`${BASE}/rest/v1/hk_sent?key=eq.${encodeURIComponent(sentKey)}&select=key`, { headers: H });
-    if (dup.ok && (await dup.json()).length && !(internal && b.force)) return json({ ok: true, to: to!.name || wa, already: true });
+    const dup = await fetch(`${BASE}/rest/v1/hk_sent?key=eq.${encodeURIComponent(sentKey)}&select=key,at`, { headers: H });
+    const dupRow = dup.ok ? ((await dup.json()) as { key: string; at: string }[])[0] : null;
+    if (dupRow && !(internal && b.force)) {
+      const got = await fetch(`${BASE}/rest/v1/hk_wa_log?step=in.(status_delivered,status_read)&to_phone=eq.${wa}&at=gte.${encodeURIComponent(dupRow.at)}&select=id&limit=1`, { headers: H });
+      if (got.ok && (await got.json()).length) { await log(true, "already", { since: dupRow.at }, name, wa); return json({ ok: true, to: to!.name || wa, already: true, since: dupRow.at }); }
+      await log(true, "retry", { since: dupRow.at, reason: "no delivery receipt" }, name, wa);
+    }
     // 1. the file from Drive
     const d = await drive(f);
     if (!d.ok || !d.blob) { await log(false, "download", d.status, name, wa); return json({ error: "download_" + d.status }, 502); }
@@ -203,16 +211,20 @@ Deno.serve(async (req) => {
       ] },
     };
     let r = await send(msg);
+    let viaTemplate = true;
     // While the template is still in Meta's review (132001 "does not exist", 132015 paused, 132012 format), a plain document message still goes through
-    // if the chairman has written to the number in the last 24 hours (WhatsApp's customer-service window). Outside it Meta answers 131047; the log says so.
+    // if the chairman has written to the number in the last 24 hours (WhatsApp's customer-service window). Outside it Meta still answers with a
+    // message id and drops it later (status_failed 131047 in the log, when it reports at all); the dedupe above only trusts a delivery receipt.
     if (!r.ok && r.j.error && [132001, 132015, 132012, 132000].includes(r.j.error.code)) {
       await log(false, "wa_send_template", r.j.error, name, wa);
       r = await send({ messaging_product: "whatsapp", to: wa, type: "document", document: { id: upj.id, filename: name, caption: `Tata Ibadah ${String(b.sunday || "Minggu ini")} · ${name}` } });
+      viaTemplate = false;
     }
     const sj = r.j;
     if (!r.ok) { await log(false, "wa_send", sj.error || sj, name, wa); return json({ error: "wa_send", detail: sj.error && sj.error.message }, 502); }
-    await fetch(`${BASE}/rest/v1/hk_sent`, { method: "POST", headers: { ...H, prefer: "resolution=ignore-duplicates" }, body: JSON.stringify({ key: sentKey }) });
-    await log(true, "sent", sj.messages && sj.messages[0] && sj.messages[0].id, name, wa);
-    return json({ ok: true, to: to!.name || wa });
+    // remember the send (upsert, so the time is the latest attempt's); the next "go" today re-sends only if no delivery receipt follows
+    await fetch(`${BASE}/rest/v1/hk_sent?on_conflict=key`, { method: "POST", headers: { ...H, prefer: "resolution=merge-duplicates" }, body: JSON.stringify({ key: sentKey, at: new Date().toISOString() }) });
+    await log(true, "sent", { id: sj.messages && sj.messages[0] && sj.messages[0].id, template: viaTemplate }, name, wa);
+    return json({ ok: true, to: to!.name || wa, template: viaTemplate });
   } catch (e) { console.error(e); return json({ error: String((e as Error).message || e) }, 500); }
 });
