@@ -8,7 +8,8 @@
 //   Meta Cloud API directly (the route in use since 2026-10-27, free Meta test number): WA_TOKEN (permanent system-user token), WA_PHONE_ID (or hk_settings wa_phone_id), WA_TEMPLATE (default "tata_ibadah": header DOCUMENT, body {{1}} Sunday, {{2}} file name), WA_LANG (default "id"), WA_PIN (optional two-step PIN used to register the number on first send).
 // Recipient: hk_settings tata_send_to = {name, phone}. Each file is sent once per day (hk_sent), so a repeated "go" does not spam.
 // POST {token, dry: true, id} stores the file and returns its public URL without sending (for checking the setup).
-// POST {token, check: true} checks the Meta token, phone number and template status without sending.
+// POST {token, check: true} checks the Meta token, phone number, account and template status without sending.
+// Callers: a Multimedia maker's Sada token, or the database (pg_net) with header x-cron-key = hk_settings cron_key (same as hkbp-notify) plus the public anon key as the JWT.
 // Every attempt (check, download, upload, send) is recorded in hk_wa_log (service role only; see backend/sql/hk_wa_log.sql).
 const E = Deno.env.toObject();
 const BASE = (E.SUPABASE_URL || "").replace(/\/$/, "");
@@ -60,7 +61,10 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
   try {
     const b = await req.json().catch(() => ({}));
-    if (!(await rpc("hk_wb_access", { p_token: String(b.token || "") }))) return json({ error: "not_allowed" }, 403);
+    // who may call: a Multimedia maker's Sada sign-in (hk_wb_access), or the database itself (pg_cron / pg_net) with the same x-cron-key as hkbp-notify
+    const cronKey = String((await setting("cron_key")) || "");
+    const internal = !!cronKey && req.headers.get("x-cron-key") === cronKey;
+    if (!internal && !(await rpc("hk_wb_access", { p_token: String(b.token || "") }))) return json({ error: "not_allowed" }, 403);
     const twilio = !!(E.TWILIO_SID && E.TWILIO_TOKEN && E.TWILIO_FROM && E.TWILIO_CONTENT_SID);
     // Meta: the token is a secret (WA_TOKEN); the phone number id is only an identifier, so it may live in hk_settings wa_phone_id instead of a secret
     const PHONE_ID = String(E.WA_PHONE_ID || (await setting("wa_phone_id")) || "");
@@ -78,13 +82,17 @@ Deno.serve(async (req) => {
       const p = await fetch(`${GRAPH}/${PHONE_ID}?fields=display_phone_number,verified_name,quality_rating,platform_type`, { headers: A });
       const pj = await p.json().catch(() => ({}));
       const waba = String(E.WA_WABA_ID || (await setting("wa_waba_id")) || "");
-      let template: unknown = null;
+      let template: unknown = null, account: unknown = null, numbers: unknown = null;
       if (waba) {
         const t = await fetch(`${GRAPH}/${waba}/message_templates?name=${encodeURIComponent(E.WA_TEMPLATE || "tata_ibadah")}&fields=name,status,language,rejected_reason,category`, { headers: A });
         template = await t.json().catch(() => ({}));
+        // the account itself and its numbers, as the token sees them (a "(#10) Viewer cannot access ... Account" on send means the token's system user is not assigned to this account)
+        account = await (await fetch(`${GRAPH}/${waba}?fields=id,name,account_review_status,ownership_type,is_enabled_for_insights`, { headers: A })).json().catch(() => ({}));
+        numbers = await (await fetch(`${GRAPH}/${waba}/phone_numbers?fields=id,display_phone_number,verified_name,status,platform_type,code_verification_status`, { headers: A })).json().catch(() => ({}));
       }
-      await log(p.ok, "check", { phone: pj, template });
-      return json({ ok: p.ok, phone: pj, template, phone_id: PHONE_ID, waba });
+      const me = await (await fetch(`${GRAPH}/me?fields=id,name`, { headers: A })).json().catch(() => ({}));
+      await log(p.ok, "check", { phone: pj, template, account, numbers, me });
+      return json({ ok: p.ok, phone: pj, template, account, numbers, me, phone_id: PHONE_ID, waba });
     }
     const to = (await setting("tata_send_to")) as { name?: string; phone?: string } | null;
     const phone = to && String(to.phone || "").replace(/\D/g, "");
