@@ -9,7 +9,8 @@
 // Recipient: hk_settings tata_send_to = {name, phone}. Each file is sent once per day (hk_sent), so a repeated "go" does not spam;
 // the Tata Ibadah watcher (hkbp-tata, an internal caller) passes force: true because it only calls when the file really changed.
 // POST {token, dry: true, id} stores the file and returns its public URL without sending (for checking the setup).
-// POST {token, check: true} checks the Meta token, phone number, account and template status without sending.
+// POST {token, check: true} checks the Meta token, phone number, account, template status and webhook subscription without sending.
+// POST {subscribe: true} (database callers only) subscribes the app to the messaging account's webhooks (Meta sends delivery receipts only after this).
 // POST {test: {to, what}} (database callers only) proves delivery to one phone: what = "hello" sends Meta's pre-approved hello_world template,
 //   "text" a plain text, "document" the last published Tata Ibadah file as a plain document (the last two need that phone to have written to the number within 24 h).
 // Callers: a Multimedia maker's Sada token, or the database (pg_net) with header x-cron-key = hk_settings cron_key (same as hkbp-notify) plus the public anon key as the JWT.
@@ -123,8 +124,10 @@ Deno.serve(async (req) => {
       const p = await fetch(`${GRAPH}/${PHONE_ID}?fields=display_phone_number,verified_name,quality_rating,platform_type`, { headers: A });
       const pj = await p.json().catch(() => ({}));
       const waba = String(E.WA_WABA_ID || (await setting("wa_waba_id")) || "");
-      let template: unknown = null, account: unknown = null, numbers: unknown = null;
+      let template: unknown = null, account: unknown = null, numbers: unknown = null, subscribed: unknown = null;
       if (waba) {
+        // which apps receive this account's webhooks (empty = Meta sends no delivery receipts, see {subscribe: true})
+        subscribed = await (await fetch(`${GRAPH}/${waba}/subscribed_apps`, { headers: A })).json().catch(() => ({}));
         const t = await fetch(`${GRAPH}/${waba}/message_templates?name=${encodeURIComponent(E.WA_TEMPLATE || "tata_ibadah")}&fields=name,status,language,rejected_reason,category`, { headers: A });
         template = await t.json().catch(() => ({}));
         // the account itself and its numbers, as the token sees them (a "(#10) Viewer cannot access ... Account" on send means the token's system user is not assigned to this account)
@@ -132,8 +135,18 @@ Deno.serve(async (req) => {
         numbers = await (await fetch(`${GRAPH}/${waba}/phone_numbers?fields=id,display_phone_number,verified_name,status,platform_type,code_verification_status`, { headers: A })).json().catch(() => ({}));
       }
       const me = await (await fetch(`${GRAPH}/me?fields=id,name`, { headers: A })).json().catch(() => ({}));
-      await log(p.ok, "check", { phone: pj, template, account, numbers, me });
-      return json({ ok: p.ok, phone: pj, template, account, numbers, me, phone_id: PHONE_ID, waba });
+      await log(p.ok, "check", { phone: pj, template, account, numbers, me, subscribed });
+      return json({ ok: p.ok, phone: pj, template, account, numbers, me, subscribed, phone_id: PHONE_ID, waba });
+    }
+    // POST {subscribe: true} from the database only: subscribe this app to the messaging account's webhooks, so that the
+    // status events (sent / delivered / read / failed) and inbound messages reach hkbp-wa-hook. Needed once per account.
+    if (b.subscribe && internal) {
+      const waba = String(E.WA_WABA_ID || (await setting("wa_waba_id")) || "");
+      if (!(E.WA_TOKEN && waba)) return json({ error: "not_configured" }, 503);
+      const r = await fetch(`${GRAPH}/${waba}/subscribed_apps`, { method: "POST", headers: { authorization: "Bearer " + E.WA_TOKEN } });
+      const j = await r.json().catch(() => ({}));
+      await log(r.ok, "subscribe_apps", j);
+      return json(r.ok ? { ok: true, result: j } : { error: "subscribe", detail: j.error && j.error.message }, r.ok ? 200 : 502);
     }
     const to = (await setting("tata_send_to")) as { name?: string; phone?: string } | null;
     const phone = to && String(to.phone || "").replace(/\D/g, "");
