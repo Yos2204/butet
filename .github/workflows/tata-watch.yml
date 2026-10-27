@@ -1,0 +1,27 @@
+# Tata Ibadah watcher (YB 2026-10-27). Every 15 minutes: is there a new or changed Tata Ibadah for the coming Sunday in the church's
+# Google Drive folder? If so, build the slides with the real workbench (this repo's workbench/ in a headless Chrome), publish them in
+# Sada HKBPS (#/tata), send the file to the chairman on WhatsApp and push-notify the Multimedia makers.
+# Nothing secret lives here: the job proves who it is with GitHub's own signed job token (id-token), which the hkbp-tata function checks.
+name: Tata Ibadah watch
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch: {}
+permissions:
+  id-token: write
+  contents: read
+concurrency:
+  group: tata-watch
+  cancel-in-progress: false
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    container: mcr.microsoft.com/playwright:v1.49.1-noble
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Playwright (browser already in the image)
+        run: npm install --no-audit --no-fund --no-package-lock playwright@1.49.1
+        working-directory: tools/tata-watch
+      - name: Watch, build, publish
+        run: node tools/tata-watch/watch.mjs

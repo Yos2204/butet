@@ -1,0 +1,1 @@
+{ "name": "tata-watch", "private": true, "type": "module", "description": "Tata Ibadah watcher: renders the coming Sunday's slides with the workbench in headless Chrome (run by .github/workflows/tata-watch.yml)" }
