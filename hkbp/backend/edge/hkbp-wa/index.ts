@@ -10,6 +10,7 @@
 // POST {token, dry: true, id} stores the file and returns its public URL without sending (for checking the setup).
 // POST {token, check: true} checks the Meta token, phone number, account and template status without sending.
 // Callers: a Multimedia maker's Sada token, or the database (pg_net) with header x-cron-key = hk_settings cron_key (same as hkbp-notify) plus the public anon key as the JWT.
+// Until the template is approved, a plain document message is tried instead (works only within 24 h of the chairman writing to the number).
 // Every attempt (check, download, upload, send) is recorded in hk_wa_log (service role only; see backend/sql/hk_wa_log.sql).
 const E = Deno.env.toObject();
 const BASE = (E.SUPABASE_URL || "").replace(/\/$/, "");
@@ -154,9 +155,16 @@ Deno.serve(async (req) => {
         { type: "body", parameters: [{ type: "text", text: String(b.sunday || "Minggu ini") }, { type: "text", text: name }] },
       ] },
     };
-    const s = await fetch(`${GRAPH}/${PHONE_ID}/messages`, { method: "POST", headers: { authorization: "Bearer " + E.WA_TOKEN, "content-type": "application/json" }, body: JSON.stringify(msg) });
-    const sj = await s.json().catch(() => ({}));
-    if (!s.ok) { await log(false, "wa_send", sj.error || sj, name, wa); return json({ error: "wa_send", detail: sj.error && sj.error.message }, 502); }
+    const send = async (body: unknown) => { const r = await fetch(`${GRAPH}/${PHONE_ID}/messages`, { method: "POST", headers: { authorization: "Bearer " + E.WA_TOKEN, "content-type": "application/json" }, body: JSON.stringify(body) }); return { ok: r.ok, j: await r.json().catch(() => ({})) }; };
+    let r = await send(msg);
+    // While the template is still in Meta's review (132001 "does not exist", 132015 paused, 132012 format), a plain document message still goes through
+    // if the chairman has written to the number in the last 24 hours (WhatsApp's customer-service window). Outside it Meta answers 131047; the log says so.
+    if (!r.ok && r.j.error && [132001, 132015, 132012, 132000].includes(r.j.error.code)) {
+      await log(false, "wa_send_template", r.j.error, name, wa);
+      r = await send({ messaging_product: "whatsapp", to: wa, type: "document", document: { id: upj.id, filename: name, caption: `Tata Ibadah ${String(b.sunday || "Minggu ini")} · ${name}` } });
+    }
+    const sj = r.j;
+    if (!r.ok) { await log(false, "wa_send", sj.error || sj, name, wa); return json({ error: "wa_send", detail: sj.error && sj.error.message }, 502); }
     await fetch(`${BASE}/rest/v1/hk_sent`, { method: "POST", headers: { ...H, prefer: "resolution=ignore-duplicates" }, body: JSON.stringify({ key: sentKey }) });
     await log(true, "sent", sj.messages && sj.messages[0] && sj.messages[0].id, name, wa);
     return json({ ok: true, to: to!.name || wa });
