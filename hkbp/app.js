@@ -74,6 +74,11 @@ const IC = {
   key: '<circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3M14 9l2 2"/>',
   gear: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/>',
   phone: '<rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/>',
+  gshare: '<path d="M12 15V4"/><path d="M8 8l4-4 4 4"/><path d="M6 12v8h12v-8"/>',
+  gplus: '<rect x="3" y="3" width="18" height="18" rx="4"/><path d="M12 8v8M8 12h8"/>',
+  gdots: '<circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/>',
+  gcheck: '<path d="M5 12.5l4.5 4.5L19 7"/>',
+  gopen: '<path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/>',
   check: '<path d="M5 12l5 5 9-10"/>',
   x: '<path d="M6 6l12 12M18 6L6 18"/>',
   cross: '<path d="M12 3v18M7 8h10"/>',
@@ -897,7 +902,7 @@ window.addEventListener("hashchange", () => { window.scrollTo(0, 0); render(); }
 // ---------- actions ----------
 const A = {};
 const F = {};
-A.lang = (d) => { lang = d.l; LS.set("lang", lang); render(); };
+A.lang = (d) => { lang = d.l; LS.set("lang", lang); gateRender(); render(); };
 A.pickView = (d) => { LS.set("view", d.v || null); closeSheet(); render(); };
 // Reset (YB 2026-10-25): opens both pop-ups again with empty answers; old answers stay until the new ones are saved.
 let pfBlank = false;
@@ -2724,6 +2729,53 @@ async function wartaPdf(W) {
     return new File([pdf.output("blob")], `Warta Jemaat Minggu ${fmtID(W.day)}.pdf`, { type: "application/pdf" });
   } finally { host.remove(); }
 }
+
+// ---------- Home-screen gate (YB 2026-10-27) ----------
+// On a phone the app is used only from its home-screen icon. In a browser tab everything is covered by a one-tap
+// "Add to Home Screen" screen: Android asks the browser to install; iPhone shows the Share → Add to Home Screen steps;
+// a page opened inside WhatsApp/Facebook etc. first gets an "Open in Chrome / Safari" button. Laptops are not gated.
+// Support: open …/hkbp/?web=1 to use the browser version for that visit.
+const gateUA = navigator.userAgent;
+const gIOS = () => /iPhone|iPad|iPod/.test(gateUA) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+const gAndroid = () => /Android/.test(gateUA);
+const gInApp = () => /FBAN|FBAV|FB_IAB|Instagram|Line\/|WhatsApp|Twitter|TikTok|Snapchat|MicroMessenger|GSA\/|; wv\)/.test(gateUA) || (gIOS() && !/Safari\//.test(gateUA));
+const gateOff = () => { try { if (/[?&]web=1\b/.test(location.search + location.hash)) sessionStorage.setItem("hk-web", "1"); return sessionStorage.getItem("hk-web") === "1"; } catch { return false; } };
+const gateNeeded = () => (gIOS() || gAndroid()) && !standalone() && !gateOff();
+let gateState = "";   // "", "adding" or "done"
+function gateRender() {
+  const g = $("#gate"); if (!g) return;
+  if (!gateNeeded()) { g.hidden = true; document.body.classList.remove("gated"); return; }
+  let had = false; try { had = localStorage.getItem("hk-installed") === "1"; } catch {}
+  const ios = gIOS(), inApp = gInApp(), bip = window.__bip, url = appUrl();
+  const step = (n, icon, text, small) => `<li><span class="n">${n}</span><span class="k">${ic(icon)}</span><span>${esc(text)}${small ? `<small>${esc(small)}</small>` : ""}</span></li>`;
+  let body;
+  if (gateState === "done") body = `<div class="gdone">${ic("gcheck")}</div><h1>${esc(t("gateDoneTitle"))}</h1><p>${esc(t("gateDoneLead"))}</p>`;
+  else if (inApp) {
+    const br = ios ? "Safari" : "Chrome";
+    const href = ios ? "x-safari-" + url : `intent://${url.replace(/^https?:\/\//, "")}#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=${encodeURIComponent(url)};end`;
+    body = `<h1>${esc(t("gateTitle"))}</h1><p>${esc(t("gateInApp", br))}</p><a class="btn primary gbtn" href="${esc(href)}">${ic("gopen")}${esc(t(ios ? "gateOpenSafari" : "gateOpenChrome"))}</a>` +
+      (ios ? `<ol class="gsteps">${step(1, "gdots", t("gateIosInApp1"))}${step(2, "gopen", t("gateOpenSafari"))}</ol>` : "");
+  } else if (ios) {
+    body = `<h1>${esc(t("gateTitle"))}</h1><p>${esc(t(had ? "gateHave" : "gateLead"))}</p><ol class="gsteps">${step(1, "gshare", t("gateStep1Ios"), t("gateShareWhere"))}${step(2, "gplus", t("gateStep2Ios"))}${step(3, "gcheck", t("gateStep3"))}</ol><div class="ghand" aria-hidden="true">👇</div>`;
+  } else if (bip) {
+    body = `<h1>${esc(t("gateTitle"))}</h1><p>${esc(t("gateLead"))}</p><button class="btn primary gbtn" data-act="gateAdd"${gateState === "adding" ? " disabled" : ""}>${ic("gplus")}${esc(t(gateState === "adding" ? "gateAdding" : "gateBtn"))}</button>`;
+  } else {
+    body = `<h1>${esc(t("gateTitle"))}</h1><p>${esc(t(had ? "gateHave" : "gateLead"))}</p><ol class="gsteps">${step(1, "gdots", t("gateStep1And"))}${step(2, "gplus", t("gateStep2And"))}${step(3, "gcheck", t("gateStep3"))}</ol>`;
+  }
+  g.innerHTML = `<div class="gl">${langSwitch()}<img class="gicon" src="icon-192.png" alt="Sada HKBPS">${body}<p class="gsmall">${esc(t("gateWhy"))}</p></div>`;
+  g.hidden = false; document.body.classList.add("gated");
+}
+A.gateAdd = async () => {
+  const e = window.__bip; if (!e) { gateRender(); return; }
+  gateState = "adding"; gateRender();
+  try { e.prompt(); const c = await e.userChoice; window.__bip = null; if (c && c.outcome === "accepted") { gateState = "done"; try { localStorage.setItem("hk-installed", "1"); } catch {} } else gateState = ""; }
+  catch { gateState = ""; }
+  gateRender();
+};
+document.addEventListener("bip", () => { if (gateState !== "done") gateRender(); });
+document.addEventListener("hk-installed", () => { gateState = "done"; gateRender(); });
+try { matchMedia("(display-mode: standalone)").addEventListener("change", () => gateRender()); } catch {}
+gateRender();
 
 // ---------- start ----------
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
