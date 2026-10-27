@@ -10,6 +10,8 @@
 // the Tata Ibadah watcher (hkbp-tata, an internal caller) passes force: true because it only calls when the file really changed.
 // POST {token, dry: true, id} stores the file and returns its public URL without sending (for checking the setup).
 // POST {token, check: true} checks the Meta token, phone number, account and template status without sending.
+// POST {test: {to, what}} (database callers only) proves delivery to one phone: what = "hello" sends Meta's pre-approved hello_world template,
+//   "text" a plain text, "document" the last published Tata Ibadah file as a plain document (the last two need that phone to have written to the number within 24 h).
 // Callers: a Multimedia maker's Sada token, or the database (pg_net) with header x-cron-key = hk_settings cron_key (same as hkbp-notify) plus the public anon key as the JWT.
 // Until the template is approved, a plain document message is tried instead (works only within 24 h of the chairman writing to the number).
 // Every attempt (check, download, upload, send) is recorded in hk_wa_log (service role only; see backend/sql/hk_wa_log.sql).
@@ -76,6 +78,43 @@ Deno.serve(async (req) => {
       await log(false, "not_configured", have);
       return json({ error: "not_configured", ...have }, 503);
     }
+    // Meta Cloud API helpers: upload a file to WhatsApp, send one message
+    const upload = async (blob: Blob, name: string) => {
+      const fd = new FormData(); fd.append("messaging_product", "whatsapp"); fd.append("type", blob.type); fd.append("file", blob, name);
+      const up = await fetch(`${GRAPH}/${PHONE_ID}/media`, { method: "POST", headers: { authorization: "Bearer " + E.WA_TOKEN }, body: fd });
+      return { ok: up.ok, j: await up.json().catch(() => ({})) };
+    };
+    const send = async (body: unknown) => { const r = await fetch(`${GRAPH}/${PHONE_ID}/messages`, { method: "POST", headers: { authorization: "Bearer " + E.WA_TOKEN, "content-type": "application/json" }, body: JSON.stringify(body) }); return { ok: r.ok, j: await r.json().catch(() => ({})) }; };
+    const drive = async (f: { id: string; name: string; kind: string }) => {
+      const name = f.kind === "gdoc" ? f.name + ".docx" : f.name;
+      const url = f.kind === "gdoc" ? `https://docs.google.com/document/d/${f.id}/export?format=docx` : `https://drive.usercontent.google.com/download?id=${f.id}&export=download&confirm=t`;
+      const d = await fetch(url, { redirect: "follow", headers: { "user-agent": "Mozilla/5.0" } });
+      return { ok: d.ok, status: d.status, name, blob: d.ok ? new Blob([await d.arrayBuffer()], { type: mime(name) }) : null };
+    };
+    // POST {test: {to, what, text}} from the database only: one message to one phone, so delivery can be proven on that phone.
+    // A Meta test number can only reach its verified test recipients ((#131030) otherwise); text/document also need the 24-hour window.
+    if (b.test && internal) {
+      if (!(E.WA_TOKEN && PHONE_ID)) return json({ error: "not_configured" }, 503);
+      const t = typeof b.test === "object" ? b.test : {};
+      const dest = String(t.to || "").replace(/\D/g, ""); const num = dest.length === 8 ? "65" + dest : dest;
+      if (num.length < 10) return json({ error: "no_to" }, 400);
+      const what = String(t.what || "hello"); let body: unknown; let fname: string | undefined;
+      if (what === "document") {
+        const w = (await setting("tata_watch")) as { id?: string } | null; const folder = await setting("tata_drive_folder");
+        const f = w && w.id && typeof folder === "string" ? (await list(folder)).find((x) => x.id === w.id) : null;
+        if (!f) return json({ error: "no_published_file" }, 404);
+        const d = await drive(f); fname = d.name;
+        if (!d.ok || !d.blob) { await log(false, "download", d.status, d.name, num); return json({ error: "download_" + d.status }, 502); }
+        const u = await upload(d.blob, d.name);
+        if (!u.ok || !u.j.id) { await log(false, "wa_upload", u.j.error || u.j, d.name, num); return json({ error: "wa_upload", detail: u.j.error && u.j.error.message }, 502); }
+        body = { messaging_product: "whatsapp", to: num, type: "document", document: { id: u.j.id, filename: d.name, caption: `Tes · ${d.name}` } };
+      } else if (what === "text") body = { messaging_product: "whatsapp", to: num, type: "text", text: { body: String(t.text || "Tes dari Sada HKBPS") } };
+      else body = { messaging_product: "whatsapp", to: num, type: "template", template: { name: "hello_world", language: { code: "en_US" } } };
+      const r = await send(body);
+      const id = r.ok && r.j.messages && r.j.messages[0] && r.j.messages[0].id;
+      await log(r.ok, "test_" + what, r.ok ? id : (r.j.error || r.j), fname, num);
+      return json(r.ok ? { ok: true, to: num, id } : { error: "wa_send", detail: r.j.error && r.j.error.message, code: r.j.error && r.j.error.code }, r.ok ? 200 : 502);
+    }
     // POST {token, check: true} proves the Meta setup without sending: the token against the phone number id, and the template's review status
     // (WABA id from WA_WABA_ID or hk_settings wa_waba_id). Nothing secret is returned.
     if (b.check) {
@@ -110,10 +149,9 @@ Deno.serve(async (req) => {
     const dup = await fetch(`${BASE}/rest/v1/hk_sent?key=eq.${encodeURIComponent(sentKey)}&select=key`, { headers: H });
     if (dup.ok && (await dup.json()).length && !(internal && b.force)) return json({ ok: true, to: to!.name || wa, already: true });
     // 1. the file from Drive
-    const url = f.kind === "gdoc" ? `https://docs.google.com/document/d/${f.id}/export?format=docx` : `https://drive.usercontent.google.com/download?id=${f.id}&export=download&confirm=t`;
-    const d = await fetch(url, { redirect: "follow", headers: { "user-agent": "Mozilla/5.0" } });
-    if (!d.ok) { await log(false, "download", d.status, name, wa); return json({ error: "download_" + d.status }, 502); }
-    const blob = new Blob([await d.arrayBuffer()], { type: mime(name) });
+    const d = await drive(f);
+    if (!d.ok || !d.blob) { await log(false, "download", d.status, name, wa); return json({ error: "download_" + d.status }, 502); }
+    const blob = d.blob;
     if (twilio || b.dry) {
       // 2a. park the file where WhatsApp can fetch it (public bucket, unguessable name), then send the content template through Twilio
       const ext = (name.match(/\.(pdf|docx?)$/i) || [".docx"])[0].toLowerCase();
@@ -132,19 +170,14 @@ Deno.serve(async (req) => {
       return json({ ok: true, to: to!.name || wa, sid: tj.sid });
     }
     // 2b. Meta Cloud API: upload it to WhatsApp
-    const upload = async () => {
-      const fd = new FormData(); fd.append("messaging_product", "whatsapp"); fd.append("type", blob.type); fd.append("file", blob, name);
-      const up = await fetch(`${GRAPH}/${PHONE_ID}/media`, { method: "POST", headers: { authorization: "Bearer " + E.WA_TOKEN }, body: fd });
-      return { ok: up.ok, j: await up.json().catch(() => ({})) };
-    };
-    let u = await upload();
+    let u = await upload(blob, name);
     // (#133010) Account not registered: a number must be registered on the Cloud API once before it can send (two-step PIN: WA_PIN secret, else derived from the phone number id). Register, then try again.
     if (!u.ok && u.j.error && u.j.error.code === 133010) {
       const pin = String(E.WA_PIN || PHONE_ID.slice(-6)).padStart(6, "0");
       const reg = await fetch(`${GRAPH}/${PHONE_ID}/register`, { method: "POST", headers: { authorization: "Bearer " + E.WA_TOKEN, "content-type": "application/json" }, body: JSON.stringify({ messaging_product: "whatsapp", pin }) });
       const rj = await reg.json().catch(() => ({}));
       await log(reg.ok, "register", rj.error || rj, name, wa);
-      if (reg.ok) u = await upload();
+      if (reg.ok) u = await upload(blob, name);
     }
     const upj = u.j;
     if (!u.ok || !upj.id) { await log(false, "wa_upload", upj.error || upj, name, wa); return json({ error: "wa_upload", detail: upj.error && upj.error.message }, 502); }
@@ -156,7 +189,6 @@ Deno.serve(async (req) => {
         { type: "body", parameters: [{ type: "text", text: String(b.sunday || "Minggu ini") }, { type: "text", text: name }] },
       ] },
     };
-    const send = async (body: unknown) => { const r = await fetch(`${GRAPH}/${PHONE_ID}/messages`, { method: "POST", headers: { authorization: "Bearer " + E.WA_TOKEN, "content-type": "application/json" }, body: JSON.stringify(body) }); return { ok: r.ok, j: await r.json().catch(() => ({})) }; };
     let r = await send(msg);
     // While the template is still in Meta's review (132001 "does not exist", 132015 paused, 132012 format), a plain document message still goes through
     // if the chairman has written to the number in the last 24 hours (WhatsApp's customer-service window). Outside it Meta answers 131047; the log says so.
