@@ -831,7 +831,7 @@ R.more = () => {
       ${profileOn() ? `<button class="li" data-act="profile">${ic("people")}<span class="grow"><b>${esc(t("pfTitle"))}</b><small>${esc(me().profile ? profileCats(me().profile).map((id) => gname(G(id))).filter(Boolean).join(", ") : t("pfNotYet"))}</small></span>${ic("chev", "chev")}</button>` : ""}
       <button class="li" data-act="password">${ic("key")}<span class="grow"><b>${esc(t("changePw"))}</b></span>${ic("chev", "chev")}</button>
       <button class="li" data-act="install">${ic("phone")}<span class="grow"><b>${esc(t("installTitle"))}</b><small>${esc(standalone() ? t("installed") : t("installHint"))}</small></span>${ic("chev", "chev")}</button>
-      ${isElder() ? `<button class="li" data-act="settings">${ic("gear")}<span class="grow"><b>${esc(t("settings"))}</b><small>${esc(api.mode === "remote" ? t("modeRemote") : t("modeLocal"))}</small></span>${ic("chev", "chev")}</button>` : ""}
+      ${isYB() ? `<button class="li" data-act="settings">${ic("gear")}<span class="grow"><b>${esc(t("settings"))}</b><small>${esc(api.mode === "remote" ? t("modeRemote") : t("modeLocal"))}</small></span>${ic("chev", "chev")}</button>` : ""}
       <button class="li" data-act="logout">${ic("logout")}<span class="grow"><b>${esc(t("signOut"))}</b></span></button>
     </div>
     <p class="small muted center pad">HKBP Singapore · ${esc(t("logoNote"))}</p>`);
@@ -1348,6 +1348,7 @@ A.password = () => sheet(t("changePw"), `<form class="form" data-form="password"
   <button class="btn primary block">${esc(t("save"))}</button></form>`);
 A.install = () => sheet(t("installTitle"), `<div class="steps"><h4>iPhone</h4><p>${esc(t("installIos"))}</p><h4>Android</h4><p>${esc(t("installAndroid"))}</p><p class="small muted">${esc(t("installWhy"))}</p></div>`);
 A.settings = () => {
+  if (!isYB()) { toast(t("needClaudeKey"), true); return; } // Settings is for YB only (YB 2026-10-28)
   const o = LS.get("cfg.override", {}) || {};
   sheet(t("settings"), `<form class="form" data-form="settings">
     <h4>${ic("ai")} Claude</h4><p class="small muted">${esc(t("claudeKeyLead"))}</p>
