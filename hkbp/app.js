@@ -616,7 +616,7 @@ function peopleList(people, gid) {
 
 // Service sections (non-sermonic) with monthly rosters.
 R.serve = () => {
-  const list = D.groups.filter((g) => g.kind === "service" && serveShown(g));
+  const list = D.groups.filter((g) => g.kind === "service" && g.id !== "parhalado" && serveShown(g));
   const ym = monthKey(today()); const sv = serveOn() && (me().profile || {}).serve;
   return shell("#/serve", `
     <h2 class="page-h">${esc(t("serveTitle"))}</h2>
@@ -624,6 +624,14 @@ R.serve = () => {
     ${sv && manage() ? `<div class="card row between pf-note"><span class="small muted">${esc(t(LS.get("allServe") ? "svAllShown" : "svFiltered"))}</span><span class="row"><button class="btn sm ghost" data-act="servePick">${esc(t("pfChange"))}</button><button class="btn sm" data-act="allServe">${esc(t(LS.get("allServe") ? "pfMine" : "pfAll"))}</button></span></div>` : ""}
     <div class="glist">${list.map((g) => { const has = D.rosters.some((r) => r.group_id === g.id && r.month === ym); const nx = D.rosters.some((r) => r.group_id === g.id && r.month === shiftMonth(ym, 1));
       return groupTile(g, `${has ? "✓ " : ""}${esc(t(has ? "rosterReady" : "rosterMissing", monthName(ym)))}${nx ? " · " + esc(t("nextReady")) : ""}`); }).join("")}</div>
+    ${(() => { // Parhalado's roster and polls: its own section, shown only to Parhalado members and the admin (YB 2026-10-28).
+      const g = G("parhalado"); if (!g || !(D.me.is_admin || "parhalado" in (D.me.groups || {}))) return "";
+      const has = D.rosters.some((r) => r.group_id === g.id && r.month === ym); const open = (D.polls || []).filter((p) => p.group_id === g.id && p.status === "open").length;
+      return `<h3 class="sec-h">${esc(L3("Roster Parhalado", "Roster Parhalado", "Elders' roster"))}</h3><div class="glist"><a class="gtile" href="#/s/${g.id}?m=${ym}" style="--gc:${g.color}"><span class="gicon">${ic(g.icon)}</span><span class="gname"><b>${esc(gname(g))}</b><small>${has ? "✓ " : ""}${esc(t(has ? "rosterReady" : "rosterMissing", monthName(ym)))}${open ? " · " + esc(L3(`${open} polling terbuka`, `${open} polling bukka`, `${open} open poll${open > 1 ? "s" : ""}`)) : ""}</small></span>${roleBadge(g.id)}${ic("chev", "chev")}</a></div>`; })()}
+    ${(() => { // Teachers' rosters (Sunday School, Remaja) also listed here for their teachers; they open the class's Roster tab.
+      const cls = ROSTER_CATS.map(G).filter((g) => g && isTeacherIn(g.id)); if (!cls.length) return "";
+      return `<h3 class="sec-h">${esc(L3("Roster Guru", "Roster Guru", "Teachers' rosters"))}</h3><div class="glist">${cls.map((g) => { const has = D.rosters.some((r) => r.group_id === g.id && r.month === ym);
+        return `<a class="gtile" href="${rosterHome(g.id, ym)}" style="--gc:${g.color}"><span class="gicon">${ic(g.icon)}</span><span class="gname"><b>${esc(gname(g))}</b><small>${has ? "✓ " : ""}${esc(t(has ? "rosterReady" : "rosterMissing", monthName(ym)))}</small></span>${roleBadge(g.id)}${ic("chev", "chev")}</a>`; }).join("")}</div>`; })()}
     ${isAdmin() ? `<button class="btn block ghost" data-act="newSection">${ic("plus")} ${esc(t("addSection"))}</button>` : ""}`);
 };
 
@@ -1843,7 +1851,7 @@ async function seedDemo() {
 // Starting Makers, given by the admin (YB). Phones come from the member list or from YB; the admin fills in any that are missing in a pop-up.
 const TEACH_SEED = {
   "sekolah-minggu": [["@me", "tmaker"], ["Dien Pasaribu", "tmaker", "88783871"]],
-  remaja: [["@me", "tmaker"], ["Richard Siburian", "tmaker"], ["Royen Gultom", "tmaker"]],
+  remaja: [["@me", "tmaker"], ["Royen Gultom", "tmaker"]],
   ama: [["@me", "tmaker"], ["Toga Sihombing", "tmaker", "97894504"]],
   ina: [["@me", "tmaker"], ["Dearni Purba", "tmaker", "97827584"]],
   pelaut: [["@me", "tmaker"], ["Reynold Limbong", "tmaker", "91244555"]],
