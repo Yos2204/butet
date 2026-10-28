@@ -95,6 +95,7 @@ const hasRights = () => !!(D && (D.me.is_admin || "parhalado" in (D.me.groups ||
 const isMMMaker = () => !!(D && (D.me.is_admin || ["maker", "chair"].includes((D.me.groups || {}).multimedia)));
 // Events (church-wide and per category) are set up only by Multimedia makers (YB 2026-10-28); the server checks this too.
 const canEvents = () => manage() && isMMMaker();
+const canRoster = (gid) => manage() && (D.me.is_admin || roleIn(gid) === "chair" || (gid === "multimedia" && isMMMaker()));
 // Maker or User comes from the maker list (no pop-up): makers can edit, everyone else reads.
 const mmRole = () => (D ? (isMMMaker() ? "maker" : "checker") : "");
 const setMMRole = (v) => { try { v ? sessionStorage.setItem("hkbp.mm", v) : sessionStorage.removeItem("hkbp.mm"); } catch {} };
@@ -619,7 +620,7 @@ R.section = (gid) => {
   const g = G(gid); if (!g) return R.notFound();
   const q = new URLSearchParams(location.hash.split("?")[1] || "");
   const ym = q.get("m") || LS.get("ym." + gid, monthKey(today()));
-  const edit = canEdit(gid);
+  const edit = canRoster(gid);
   const rs = D.rosters.filter((r) => r.group_id === gid && r.month === ym);
   const mine = duties().filter((d) => d.roster.group_id === gid && d.roster.month === ym);
   const people = D.people.filter((p) => gid in (p.groups || {}));
@@ -646,7 +647,7 @@ function rosterCard(r, edit) {
   const names = myNames();
   const tables = (r.table_json || []).filter((tb) => tb.rows.length);
   const made = !r.file_name && !r.link; const rowEdit = edit && made;
-  const editCell = (row, i) => !rowEdit ? "" : i === 0 ? "<th></th>" : (() => { const iso = rowDate(row, r.month); return `<td>${iso ? `<button class="icon-btn" data-act="uploadRoster" data-g="${esc(r.group_id)}" data-m="${esc(r.month)}" data-day="${iso}" data-edit="1" aria-label="${esc(t("edit"))}">${ic("edit")}</button>` : ""}</td>`; })();
+  const editCell = (row, i) => !rowEdit ? "" : i === 0 ? "<th></th>" : (() => { const iso = rowDate(row, r.month); return `<td>${iso ? `<span style="display:flex;gap:6px"><button class="icon-btn" data-act="uploadRoster" data-g="${esc(r.group_id)}" data-m="${esc(r.month)}" data-day="${iso}" data-edit="1" aria-label="${esc(t("edit"))}">${ic("edit")}</button><button class="icon-btn danger" data-act="rrDelRow" data-g="${esc(r.group_id)}" data-day="${iso}" aria-label="${esc(t("delete"))}">${ic("trash")}</button></span>` : ""}</td>`; })();
   return `<article class="card roster" style="--gc:${(G(r.group_id) || {}).color}">
     <div class="roster-h">${made ? `<span class="ftype link">${ic("calendar")}</span>` : `<span class="ftype ${fileKind(r)}">${esc(fileKind(r).toUpperCase())}</span>`}<div class="grow"><b>${esc(r.title || r.file_name || "Roster")}</b><small>${esc([r.file_name || r.link, r.author_name].filter(Boolean).join(" · "))}</small></div></div>
     ${tables.length ? tables.map((tb) => `<div class="tbl-wrap"><table class="tbl">${tb.rows.map((row, i) => `<tr class="${row.some((c) => hit(c, names)) ? "me" : ""}">${row.map((c) => `<${i === 0 ? "th" : "td"} class="${hit(c, names) ? "me" : ""}">${esc(c)}</${i === 0 ? "th" : "td"}>`).join("")}${editCell(row, i)}</tr>`).join("")}</table></div>${tables.length > 1 ? `<p class="small muted">${esc(tb.name)}</p>` : ""}`).join("") : r.mime && /^image/.test(r.mime) ? `<div class="img-slot" data-img="${r.id}"></div>` : `<p class="small muted">${esc(t("noPreview"))}</p>`}
@@ -1308,7 +1309,8 @@ A.genWeek = async (d, btn) => {
 // Roster by date (YB 2026-10-28): like creating an event, pick the Sunday with a date picker and type who serves in each job.
 // Each month stays one table (dates down the side, jobs across), so "My duties", the highlights and the Warta still find the names.
 const L3 = (id, bt, en) => (lang === "en" ? en : lang === "bt" ? bt : id);
-const ROSTER_JOBS = { multimedia: ["Operator Slide", "Live Stream", "Sound"], "song-leader": ["Song Leader"], musik: ["Keyboard/Piano", "Gitar", "Bass", "Drum"], band: ["Vokal", "Keyboard", "Gitar", "Bass", "Drum"], koor: ["Pemandu Koor"] };
+const ROSTER_JOBS = { multimedia: ["Operator Slide", "Live Stream", "Sound"], "song-leader": ["Song Leader"], musik: ["Keyboard/Piano", "Gitar", "Bass", "Drum"], band: ["Vokal", "Keyboard", "Gitar", "Bass", "Drum"], koor: ["Pemandu Koor"],
+  parhalado: ["Pengkhotbah", "Liturgis", "St. Sekolah Minggu"], jemaat: ["Pembaca Warta", "Penerima Tamu", "Tally Counter"] };
 const manualRoster = (gid, ym) => D.rosters.find((r) => r.group_id === gid && r.month === ym && !r.file_name && !r.link && ((r.table_json || [])[0] || {}).rows);
 function rosterJobs(gid) {
   const own = D.rosters.filter((r) => r.group_id === gid && (r.table_json || []).length).sort((a, b) => b.month.localeCompare(a.month));
@@ -1391,14 +1393,22 @@ function rosterNotifyList(gid, tables, ym, onlyIso) {
   return out;
 }
 // Remove one Sunday from a made roster (tap twice). The last Sunday of a month removes that month's roster.
-A.rrDel = async (d, btn) => {
-  if (btn.dataset.sure !== "1") { btn.dataset.sure = "1"; btn.classList.add("sure"); btn.innerHTML = `${ic("trash")} ${esc(t("tapAgain"))}`; return; }
-  const f = btn.closest("form"); const gid = f.dataset.g; const day = f.day.value; const ym = day.slice(0, 7); const old = manualRoster(gid, ym); if (!old) return;
+async function rosterRemoveDay(gid, day, btn) {
+  const ym = day.slice(0, 7); const old = manualRoster(gid, ym); if (!old) return;
   const head = old.table_json[0].rows[0]; const rows = old.table_json[0].rows.slice(1).filter((x) => rowDate(x, ym) !== day);
   await busy(btn, async () => {
     try { if (rows.length) await rosterWrite(gid, ym, old, head, rows, false); else await api.del("roster", old.id); closeSheet(); await refresh(); toast(t("deleted")); render(); }
     catch (e) { toast(errMsg(e), true); }
   });
+}
+A.rrDel = async (d, btn) => {
+  if (btn.dataset.sure !== "1") { btn.dataset.sure = "1"; btn.classList.add("sure"); btn.innerHTML = `${ic("trash")} ${esc(t("tapAgain"))}`; return; }
+  const f = btn.closest("form"); await rosterRemoveDay(f.dataset.g, f.day.value, btn);
+};
+// Trash button on a roster row: the first tap turns it red, the second removes that Sunday.
+A.rrDelRow = async (d, btn) => {
+  if (btn.dataset.sure !== "1") { btn.dataset.sure = "1"; btn.classList.add("sure"); toast(t("tapAgain")); setTimeout(() => { if (btn.isConnected) { btn.dataset.sure = ""; btn.classList.remove("sure"); } }, 3000); return; }
+  await rosterRemoveDay(d.g, d.day, btn);
 };
 A.uploadRosterFile = (d) => {
   const g = G(d.g);
