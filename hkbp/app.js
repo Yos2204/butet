@@ -636,7 +636,7 @@ R.section = (gid) => {
       <a class="icon-btn" href="#/s/${gid}?m=${shiftMonth(ym, 1)}" aria-label="${esc(t("nextMonth"))}">${ic("chev")}</a>
     </div>
     ${mine.length ? `<div class="card mine" style="--gc:${g.color}"><h3>${ic("check")} ${esc(t("youServe"))}</h3>${mine.map(dutyRow).join("")}</div>` : ""}
-    ${edit ? `<button class="btn primary block" data-act="uploadRoster" data-g="${gid}" data-m="${ym}" style="--gc:${g.color}">${ic("upload")} ${esc(t("uploadRoster"))}</button>` : ""}
+    ${edit ? `<button class="btn primary block" data-act="uploadRoster" data-g="${gid}" data-m="${ym}" style="--gc:${g.color}">${ic("plus")} ${esc(L3("Buat Roster", "Bahen Roster", "Make Roster"))}</button>` : ""}
     ${rs.length ? rs.map((r) => rosterCard(r, edit)).join("") : empty(t("noRoster", monthName(ym)), "roster")}
     <h3 class="sec-h">${esc(t("t_members"))}</h3>
     ${peopleList(people, gid)}`, { back: "#/serve", title: gname(g), sub: t("kindService") });
@@ -645,9 +645,11 @@ const fileKind = (r) => r.link && !r.file_name ? "link" : /\.(xlsx|xls|csv|ods)$
 function rosterCard(r, edit) {
   const names = myNames();
   const tables = (r.table_json || []).filter((tb) => tb.rows.length);
+  const made = !r.file_name && !r.link; const rowEdit = edit && made;
+  const editCell = (row, i) => !rowEdit ? "" : i === 0 ? "<th></th>" : (() => { const iso = rowDate(row, r.month); return `<td>${iso ? `<button class="icon-btn" data-act="uploadRoster" data-g="${esc(r.group_id)}" data-m="${esc(r.month)}" data-day="${iso}" data-edit="1" aria-label="${esc(t("edit"))}">${ic("edit")}</button>` : ""}</td>`; })();
   return `<article class="card roster" style="--gc:${(G(r.group_id) || {}).color}">
-    <div class="roster-h"><span class="ftype ${fileKind(r)}">${esc(fileKind(r).toUpperCase())}</span><div class="grow"><b>${esc(r.title || r.file_name || "Roster")}</b><small>${esc(r.file_name || r.link || "")} · ${esc(r.author_name || "")}</small></div></div>
-    ${tables.length ? tables.map((tb) => `<div class="tbl-wrap"><table class="tbl">${tb.rows.map((row, i) => `<tr class="${row.some((c) => hit(c, names)) ? "me" : ""}">${row.map((c) => `<${i === 0 ? "th" : "td"} class="${hit(c, names) ? "me" : ""}">${esc(c)}</${i === 0 ? "th" : "td"}>`).join("")}</tr>`).join("")}</table></div>${tables.length > 1 ? `<p class="small muted">${esc(tb.name)}</p>` : ""}`).join("") : r.mime && /^image/.test(r.mime) ? `<div class="img-slot" data-img="${r.id}"></div>` : `<p class="small muted">${esc(t("noPreview"))}</p>`}
+    <div class="roster-h">${made ? `<span class="ftype link">${ic("calendar")}</span>` : `<span class="ftype ${fileKind(r)}">${esc(fileKind(r).toUpperCase())}</span>`}<div class="grow"><b>${esc(r.title || r.file_name || "Roster")}</b><small>${esc([r.file_name || r.link, r.author_name].filter(Boolean).join(" · "))}</small></div></div>
+    ${tables.length ? tables.map((tb) => `<div class="tbl-wrap"><table class="tbl">${tb.rows.map((row, i) => `<tr class="${row.some((c) => hit(c, names)) ? "me" : ""}">${row.map((c) => `<${i === 0 ? "th" : "td"} class="${hit(c, names) ? "me" : ""}">${esc(c)}</${i === 0 ? "th" : "td"}>`).join("")}${editCell(row, i)}</tr>`).join("")}</table></div>${tables.length > 1 ? `<p class="small muted">${esc(tb.name)}</p>` : ""}`).join("") : r.mime && /^image/.test(r.mime) ? `<div class="img-slot" data-img="${r.id}"></div>` : `<p class="small muted">${esc(t("noPreview"))}</p>`}
     <div class="row end">
       ${r.has_file ? `<button class="btn sm" data-act="openFile" data-id="${r.id}">${ic("file")} ${esc(t("openOriginal"))}</button>` : ""}
       ${r.link ? `<a class="btn sm" href="${esc(r.link)}" target="_blank" rel="noopener">${ic("link")} ${esc(t("openLink"))}</a>` : ""}
@@ -1324,22 +1326,25 @@ function rrFill(f) {
   const gid = f.dataset.g; const have = rosterRowFor(gid, f.day.value) || []; const box = f.querySelector(".rr-rows");
   const jobs = rosterJobs(gid); have.forEach(([h]) => { if (h && !jobs.some((j) => norm(j) === norm(h))) jobs.push(h); });
   box.innerHTML = jobs.map((j) => rrRow(j, (have.find(([h]) => norm(h) === norm(j)) || [, ""])[1])).join("");
+  f.querySelector(".rr-del").hidden = !have.length;
   f.querySelector(".rr-note").textContent = have.some(([, w]) => w) ? L3("Sudah ada jadwal untuk tanggal ini; perubahan akan menggantinya.", "Nunga adong jadwal di tanggal on; na niubah gabe pangganti.", "This date already has a roster; your changes will replace it.") : "";
 }
 A.uploadRoster = (d) => {
   const g = G(d.g); const ns = nextSunday(); const m = d.m || ns.slice(0, 7);
-  const day = ns.slice(0, 7) === m ? ns : (() => { const s0 = m + "-01"; const wd = new Date(s0 + "T12:00:00+08:00").getDay(); return addDays(s0, (7 - wd) % 7); })();
-  sheet(t("uploadRoster"), `<form class="form" data-form="rosterday" data-g="${esc(d.g)}">
+  const day = /^\d{4}-\d{2}-\d{2}$/.test(d.day || "") ? d.day : ns.slice(0, 7) === m ? ns : (() => { const s0 = m + "-01"; const wd = new Date(s0 + "T12:00:00+08:00").getDay(); return addDays(s0, (7 - wd) % 7); })();
+  const title = d.edit ? t("edit") + " · Roster" : L3("Buat Roster", "Bahen Roster", "Make Roster");
+  sheet(title, `${d.cont ? `<p class="small muted">${esc(L3("Tersimpan. Lanjut ke Minggu berikutnya, atau tutup (✕) jika sudah selesai.", "Nunga tarsimpan. Lanjut tu Minggu na ro, manang tutup (✕) molo nunga sae.", "Saved. Carry on with the next Sunday, or close (✕) when you are done."))}</p>` : ""}<form class="form" data-form="rosterday" data-g="${esc(d.g)}" data-edit="${d.edit ? 1 : ""}">
     <div class="for-chip" style="--gc:${g.color}">${ic(g.icon)}<span class="grow"><small>${esc(t("f_for"))}</small><b>${esc(gname(g))}</b></span></div>
     <label>${esc(t("f_date"))}<input type="date" name="day" required value="${day}"></label>
     <h4>${ic("people")} ${esc(L3("Siapa yang melayani", "Ise na marhobas", "Who serves"))}</h4>
     <p class="small muted rr-note"></p>
     <div class="rr-rows"></div>
     <button type="button" class="btn sm" data-act="rrAdd">${ic("plus")} ${esc(L3("Tambah tugas", "Tambah ulaon", "Add a job"))}</button>
-    <label class="check"><input type="checkbox" name="notify" checked> ${esc(t("notifyGroup"))}</label>
-    <button class="btn primary block">${esc(t("save"))}</button></form>
-    <p class="or"><span>${esc(t("or"))}</span></p>
-    <button class="btn block ghost" data-act="uploadRosterFile" data-g="${esc(d.g)}" data-m="${esc(m)}">${ic("upload")} ${esc(L3("Unggah file atau link", "Upload file manang link", "Upload a file or link"))}</button>`, (el) => {
+    <label class="check"><input type="checkbox" name="notify" checked> ${esc(L3("Beri tahu yang bertugas di Minggu ini", "Paboa tu na marhobas di Minggu on", "Notify the people on duty this Sunday"))}</label>
+    <button class="btn primary block">${esc(t("save"))}</button>
+    <div class="rr-del" hidden><button type="button" class="btn block danger" data-act="rrDel">${ic("trash")} ${esc(L3("Hapus Minggu ini dari roster", "Hapus Minggu on sian roster", "Remove this Sunday from the roster"))}</button></div></form>
+    ${d.edit ? "" : `<p class="or"><span>${esc(t("or"))}</span></p>`}
+    ${d.edit ? "" : `<button class="btn block ghost" data-act="uploadRosterFile" data-g="${esc(d.g)}" data-m="${esc(m)}">${ic("upload")} ${esc(L3("Unggah file atau link", "Upload file manang link", "Upload a file or link"))}</button>`}`, (el) => {
     const f = el.querySelector("form"); rrFill(f); f.day.addEventListener("change", () => rrFill(f));
   });
 };
@@ -1356,10 +1361,44 @@ F.rosterday = async (f) => {
   const others = old ? old.table_json[0].rows.slice(1).filter((x) => rowDate(x, ym) !== day).map(pad) : [];
   const mine = head.map((h, i) => (i === 0 ? rDateCell(day) : (pairs.find(([j]) => norm(j) === norm(h)) || [, ""])[1]));
   const rows = [...others, mine].sort((a, b) => (rowDate(a, ym) || "").localeCompare(rowDate(b, ym) || ""));
-  await api.save("roster", { id: old ? old.id : undefined, group_id: gid, month: ym, title: old ? old.title : `${t("roster")} ${gname(G(gid))} ${monthName(ym)}`,
-    table_json: [{ name: monthName(ym), rows: [head, ...rows] }], text_content: [head, ...rows].map((r) => r.join(" | ")).join("\n"), notify: f.notify.checked });
+  await rosterWrite(gid, ym, old, head, rows, f.notify.checked, day);
   closeSheet(); LS.set("ym." + gid, ym); await refresh(); toast(t("saved"));
   location.hash = `#/s/${gid}?m=${ym}`;
+  // Make Roster: the next Sunday opens straight away with the same jobs, until the maker closes it.
+  if (!f.dataset.edit) { const nx = addDays(day, 7); setTimeout(() => { if ($("#sheet").hidden) A.uploadRoster({ g: gid, m: nx.slice(0, 7), day: nx, cont: 1 }); }, 450); }
+};
+function rosterWrite(gid, ym, old, head, rows, notify, onlyIso) {
+  const table_json = [{ name: monthName(ym), rows: [head, ...rows] }];
+  return api.save("roster", { id: old ? old.id : undefined, group_id: gid, month: ym, title: old ? old.title : `${t("roster")} ${gname(G(gid))} ${monthName(ym)}`,
+    table_json, text_content: [head, ...rows].map((r) => r.join(" | ")).join("\n"), notify_list: notify ? rosterNotifyList(gid, table_json, ym, onlyIso) : [] });
+}
+// Roster notifications go only to the members named in it (YB 2026-10-28), each with their own Sundays and jobs.
+// With onlyIso, only that Sunday counts (Make Roster); otherwise every row of the roster (an uploaded file or link).
+function rosterNotifyList(gid, tables, ym, onlyIso) {
+  const g = G(gid) || {}; const out = [];
+  D.people.filter((p) => p.id).forEach((p) => {
+    const names = myNames(p); if (!names.length) return; const lines = [];
+    (tables || []).forEach((tb) => {
+      const rows = tb.rows || []; const hi = Math.max(0, rows.findIndex((r) => r.filter(Boolean).length >= 2)); const head = rows[hi] || [];
+      rows.forEach((row, i) => {
+        if (i <= hi) return; const iso = rowDate(row, ym); if (onlyIso && iso !== onlyIso) return;
+        const jobs = row.map((c, j) => (hit(c, names) && head[j] && head[j] !== c ? head[j] : null)).filter(Boolean);
+        if (jobs.length || row.some((c) => hit(c, names))) lines.push(`${iso ? rDateCell(iso) : row.filter(Boolean)[0] || ""}${jobs.length ? " · " + jobs.join(", ") : ""}`);
+      });
+    });
+    if (lines.length) out.push({ member: p.id, title: `📅 Jadwal ${g.name_id || gname(g)}`, body: "Anda bertugas:\n" + lines.slice(0, 8).join("\n") });
+  });
+  return out;
+}
+// Remove one Sunday from a made roster (tap twice). The last Sunday of a month removes that month's roster.
+A.rrDel = async (d, btn) => {
+  if (btn.dataset.sure !== "1") { btn.dataset.sure = "1"; btn.classList.add("sure"); btn.innerHTML = `${ic("trash")} ${esc(t("tapAgain"))}`; return; }
+  const f = btn.closest("form"); const gid = f.dataset.g; const day = f.day.value; const ym = day.slice(0, 7); const old = manualRoster(gid, ym); if (!old) return;
+  const head = old.table_json[0].rows[0]; const rows = old.table_json[0].rows.slice(1).filter((x) => rowDate(x, ym) !== day);
+  await busy(btn, async () => {
+    try { if (rows.length) await rosterWrite(gid, ym, old, head, rows, false); else await api.del("roster", old.id); closeSheet(); await refresh(); toast(t("deleted")); render(); }
+    catch (e) { toast(errMsg(e), true); }
+  });
 };
 A.uploadRosterFile = (d) => {
   const g = G(d.g);
@@ -1370,7 +1409,7 @@ A.uploadRosterFile = (d) => {
     <p class="or"><span>${esc(t("or"))}</span></p>
     <label>${esc(t("f_link"))}<input type="url" name="link" placeholder="https://docs.google.com/spreadsheets/… / https://1drv.ms/…"></label>
     <div id="rprev"></div>
-    <label class="check"><input type="checkbox" name="notify" checked> ${esc(t("notifyGroup"))}</label>
+    <label class="check"><input type="checkbox" name="notify" checked> ${esc(L3("Beri tahu yang namanya ada di roster", "Paboa tu na adong goarna di roster", "Notify the people named in the roster"))}</label>
     <button class="btn primary block" disabled id="rsave">${esc(t("save"))}</button></form>`, (el) => {
     const f = $("form", el); let parsed = null;
     const show = (res, label) => {
@@ -1617,7 +1656,8 @@ F.event = async (f) => {
 F.roster = async (f) => {
   const res = f._parsed && f._parsed(); if (!res) return;
   const file = res.fileObj;
-  const row = { group_id: f.dataset.g, month: f.month.value, title: f.title.value.trim(), link: f.link.value.trim() || null, table_json: res.tables || [], text_content: (res.text || "").slice(0, 60000), notify: f.notify.checked };
+  const row = { group_id: f.dataset.g, month: f.month.value, title: f.title.value.trim(), link: f.link.value.trim() || null, table_json: res.tables || [], text_content: (res.text || "").slice(0, 60000),
+    notify_list: f.notify.checked ? rosterNotifyList(f.dataset.g, res.tables || [], f.month.value) : [] };
   if (file) Object.assign(row, { file_name: file.name, mime: file.type || "application/octet-stream", file_b64: await P.toB64(file) });
   await api.save("roster", row); closeSheet(); LS.set("ym." + f.dataset.g, f.month.value); await refresh(); toast(t("saved"));
   location.hash = `#/s/${f.dataset.g}?m=${f.month.value}`;
