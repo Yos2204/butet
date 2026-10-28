@@ -128,7 +128,7 @@ window.addEventListener("hashchange", () => { const g = (location.hash.match(/^#
 const canEdit = (gid) => manage() && (isTeachG(gid) ? isTMaker(gid) && tmOk(gid) : D.me.is_admin || roleIn(gid) === "chair");
 // Parhalado polls are started and ended by its makers (chair); in the classes, by every teacher.
 const canRunPoll = (gid) => manage() && (gid === "parhalado" ? D.me.is_admin || roleIn(gid) === "chair" : isTeacherIn(gid));
-const canSee = (g) => (g.kind === "office" ? isOffice() : g.kind === "service" || isElder() || !!roleIn(g.id));
+const canSee = (g) => (g.kind === "office" ? isOffice() : (g.kind === "service" && g.id !== "parhalado") || isElder() || !!roleIn(g.id) || !!(D && D.me.is_admin));
 // First-login profile (YB 2026-10-24): four questions pick which categories the member sees.
 // Everyone gets it except YB (super admin, sees everything). Categories a member leads (chair, teacher...) always show.
 const PROFILE_SKIP = ["85334780"];
@@ -540,9 +540,11 @@ R.group = (gid) => {
   const news = posts.filter((p) => p.kind !== "sermon");
   const evs = D.events.filter((e) => e.group_id === gid);
   const people = D.people.filter((p) => gid in (p.groups || {}));
-  const teach = isTeachG(gid); const pollsOn = teach && isTeacherIn(gid); const polls = (D.polls || []).filter((p) => p.group_id === gid);
+  // Parhalado uses this same page (YB 2026-10-28): its members get Roster and Polls; its makers (chair) post and make rosters.
+  const elders = gid === "parhalado"; const inElders = elders && !!D && (D.me.is_admin || "parhalado" in (D.me.groups || {}));
+  const teach = isTeachG(gid); const pollsOn = (teach && isTeacherIn(gid)) || inElders; const polls = (D.polls || []).filter((p) => p.group_id === gid);
   const teachers = people.filter((p) => [...MAKERS, "teacher"].includes(p.groups[gid]));
-  const rosterOn = ROSTER_CATS.includes(gid) && isTeacherIn(gid);
+  const rosterOn = (ROSTER_CATS.includes(gid) && isTeacherIn(gid)) || inElders;
   const rym = new URLSearchParams(location.hash.split("?")[1] || "").get("m") || LS.get("ym." + gid, monthKey(today()));
   const tabs = [["sermon", "t_sermon", sermons.length], ...(rosterOn ? [["roster", "Roster", D.rosters.filter((r) => r.group_id === gid && r.month === rym).length]] : []), ...(pollsOn ? [["polls", "t_polls", polls.filter((p) => p.status === "open").length]] : []), ["news", "t_news", news.length], ["events", "t_events", evs.length], ...(teach ? [["teachers", "t_teachers", teachers.length]] : []), ["members", "t_members", people.length]];
   let body = "";
@@ -554,16 +556,18 @@ R.group = (gid) => {
   else if (tab === "news") body = (edit ? `<button class="btn primary block" data-act="newPost" data-g="${gid}" data-kind="news">${ic("plus")} ${esc(t("newNews"))}</button>` : "") + (news.length ? news.map((p) => postCard(p, edit)).join("") : empty(t("noNews"), "bell"));
   else if (tab === "events") body = (canEvents() ? `<button class="btn primary block" data-act="newEvent" data-g="${gid}">${ic("plus")} ${esc(t("newEvent"))}</button>` : "") + `<div class="card">${evs.length ? evs.map(eventRow).join("") : `<p class="muted small">${esc(t("noEvents"))}</p>`}</div>`;
   else body = peopleList(people, gid);
-  return shell("#/groups", `
+  const svc = g.kind === "service";
+  return shell(svc ? "#/serve" : "#/groups", `
     <section class="ghero" style="--gc:${g.color}">
       <span class="gicon xl">${ic(g.icon)}</span>
-      <div><h2>${esc(gname(g))}</h2><p>${esc(t("motto_" + g.id) !== "motto_" + g.id ? t("motto_" + g.id) : t("kindSermon"))}</p>${roleBadge(gid) ? `<div class="hero-role">${roleBadge(gid)} <small>${esc(edit ? t("canUpdate") : teach && canRunPoll(gid) ? t("teacherSub") : t("readOnly"))}</small></div>` : ""}</div>
+      <div><h2>${esc(gname(g))}</h2><p>${esc(t("motto_" + g.id) !== "motto_" + g.id ? t("motto_" + g.id) : t(svc ? "kindService" : "kindSermon"))}</p>${roleBadge(gid) ? `<div class="hero-role">${roleBadge(gid)} <small>${esc(edit ? t("canUpdate") : teach && canRunPoll(gid) ? t("teacherSub") : t("readOnly"))}</small></div>` : ""}</div>
     </section>
     ${ok ? wishCard(g, people) : ""}
+    ${elders && ok ? `<div class="row two"><a class="btn" href="#/elders">${ic("book")} ${esc(t("eldersUpdates"))}</a><a class="btn" href="#/bread">${ic("bread")} ${esc(t("breadTitle"))}</a></div>` : ""}
     ${gid === "naposo" ? natalBlock(gid) : ""}
     ${ok && teach && manage() && isTMaker(gid) && !tmOk(gid) ? `<button class="card notify-ask" data-act="tmVerify" data-g="${gid}">${ic("lock")}<span><b>${esc(tmTitle(gid))}</b><small>${esc(t("tmNeedVerify"))}</small></span>${ic("chev", "chev")}</button>` : ""}
     ${ok ? `<div class="seg" role="tablist" style="--gc:${g.color}">${tabs.map(([k, l, n]) => `<a role="tab" aria-selected="${tab === k}" href="#/g/${gid}?tab=${k}">${esc(t(l))}${n ? ` <i>${n}</i>` : ""}</a>`).join("")}</div>` : ""}
-    <div style="--gc:${g.color}">${body}</div>`, { back: "#/groups", title: gname(g), sub: t("kindSermon") });
+    <div style="--gc:${g.color}">${body}</div>`, { back: svc ? "#/serve" : "#/groups", title: gname(g), sub: t(svc ? "kindService" : "kindSermon") });
 };
 // Birthday and wedding anniversary wishes for a category. The leader saves the category's WhatsApp group link once;
 // after that one tap copies the ready-made wishes and opens that group, and the leader pastes and sends.
@@ -627,7 +631,7 @@ R.serve = () => {
     ${(() => { // Parhalado's roster and polls: its own section, shown only to Parhalado members and the admin (YB 2026-10-28).
       const g = G("parhalado"); if (!g || !(D.me.is_admin || "parhalado" in (D.me.groups || {}))) return "";
       const has = D.rosters.some((r) => r.group_id === g.id && r.month === ym); const open = (D.polls || []).filter((p) => p.group_id === g.id && p.status === "open").length;
-      return `<h3 class="sec-h">${esc(L3("Roster Parhalado", "Roster Parhalado", "Elders' roster"))}</h3><div class="glist"><a class="gtile" href="#/s/${g.id}?m=${ym}" style="--gc:${g.color}"><span class="gicon">${ic(g.icon)}</span><span class="gname"><b>${esc(gname(g))}</b><small>${has ? "✓ " : ""}${esc(t(has ? "rosterReady" : "rosterMissing", monthName(ym)))}${open ? " · " + esc(L3(`${open} polling terbuka`, `${open} polling bukka`, `${open} open poll${open > 1 ? "s" : ""}`)) : ""}</small></span>${roleBadge(g.id)}${ic("chev", "chev")}</a></div>`; })()}
+      return `<h3 class="sec-h">${esc(L3("Roster Parhalado", "Roster Parhalado", "Elders' roster"))}</h3><div class="glist"><a class="gtile" href="${rosterHome(g.id, ym)}" style="--gc:${g.color}"><span class="gicon">${ic(g.icon)}</span><span class="gname"><b>${esc(gname(g))}</b><small>${has ? "✓ " : ""}${esc(t(has ? "rosterReady" : "rosterMissing", monthName(ym)))}${open ? " · " + esc(L3(`${open} polling terbuka`, `${open} polling bukka`, `${open} open poll${open > 1 ? "s" : ""}`)) : ""}</small></span>${roleBadge(g.id)}${ic("chev", "chev")}</a></div>`; })()}
     ${(() => { // Teachers' rosters (Sunday School, Remaja) also listed here for their teachers; they open the class's Roster tab.
       const cls = ROSTER_CATS.map(G).filter((g) => g && isTeacherIn(g.id)); if (!cls.length) return "";
       return `<h3 class="sec-h">${esc(L3("Roster Guru", "Roster Guru", "Teachers' rosters"))}</h3><div class="glist">${cls.map((g) => { const has = D.rosters.some((r) => r.group_id === g.id && r.month === ym);
@@ -636,6 +640,7 @@ R.serve = () => {
 };
 
 R.section = (gid) => {
+  if (gid === "parhalado") return R.group(gid);
   const g = G(gid); if (!g) return R.notFound();
   const q = new URLSearchParams(location.hash.split("?")[1] || "");
   const ym = q.get("m") || LS.get("ym." + gid, monthKey(today()));
@@ -654,7 +659,7 @@ R.section = (gid) => {
     ${peopleList(people, gid)}`, { back: "#/serve", title: gname(g), sub: t("kindService") });
 };
 // The month's rosters: month bar, "you serve", Make Roster and the roster cards. Service sections and Sunday School / Remaja share it.
-const rosterHome = (gid, ym) => ((G(gid) || {}).kind === "sermon" ? `#/g/${gid}?tab=roster&m=${ym}` : `#/s/${gid}?m=${ym}`);
+const rosterHome = (gid, ym) => ((G(gid) || {}).kind === "sermon" || gid === "parhalado" ? `#/g/${gid}?tab=roster&m=${ym}` : `#/s/${gid}?m=${ym}`);
 function rosterBlock(gid, ym) {
   const g = G(gid); const edit = canRoster(gid);
   const rs = D.rosters.filter((r) => r.group_id === gid && r.month === ym);
