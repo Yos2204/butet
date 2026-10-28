@@ -1303,7 +1303,65 @@ A.genWeek = async (d, btn) => {
     await refresh(); toast(t("genWeekDone", n)); render();
   });
 };
+// Roster by date (YB 2026-10-28): like creating an event, pick the Sunday with a date picker and type who serves in each job.
+// Each month stays one table (dates down the side, jobs across), so "My duties", the highlights and the Warta still find the names.
+const L3 = (id, bt, en) => (lang === "en" ? en : lang === "bt" ? bt : id);
+const ROSTER_JOBS = { multimedia: ["Operator Slide", "Live Stream", "Sound"], "song-leader": ["Song Leader"], musik: ["Keyboard/Piano", "Gitar", "Bass", "Drum"], band: ["Vokal", "Keyboard", "Gitar", "Bass", "Drum"], koor: ["Pemandu Koor"] };
+const manualRoster = (gid, ym) => D.rosters.find((r) => r.group_id === gid && r.month === ym && !r.file_name && !r.link && ((r.table_json || [])[0] || {}).rows);
+function rosterJobs(gid) {
+  const own = D.rosters.filter((r) => r.group_id === gid && (r.table_json || []).length).sort((a, b) => b.month.localeCompare(a.month));
+  for (const r of own) { const h = ((r.table_json[0] || {}).rows || [])[0]; if (h && h.length > 1) return h.slice(1).filter(Boolean); }
+  return ROSTER_JOBS[gid] || [L3("Petugas", "Parhobas", "Server")];
+}
+function rosterRowFor(gid, iso) {
+  const r = manualRoster(gid, iso.slice(0, 7)); if (!r) return null;
+  const rows = r.table_json[0].rows; const row = rows.slice(1).find((x) => rowDate(x, r.month) === iso); if (!row) return null;
+  return rows[0].map((h, j) => [h, row[j] || ""]).slice(1);
+}
+const rDateCell = (iso) => new Intl.DateTimeFormat("id-ID", { timeZone: TZ, weekday: "long", day: "numeric", month: "short" }).format(new Date(iso + "T12:00:00+08:00")).replace(/\./g, "");
+const rrRow = (job = "", who = "") => `<div class="fin-row rr-row" style="grid-template-columns:minmax(0,8.5em) minmax(0,1fr) auto"><input name="job" value="${esc(job)}" placeholder="${esc(L3("Tugas", "Ulaon", "Job"))}" aria-label="${esc(L3("Tugas", "Ulaon", "Job"))}"><input name="who" value="${esc(who)}" placeholder="${esc(L3("Nama", "Goar", "Name"))}" aria-label="${esc(L3("Nama", "Goar", "Name"))}">${rmBtn("rrRm")}</div>`;
+function rrFill(f) {
+  const gid = f.dataset.g; const have = rosterRowFor(gid, f.day.value) || []; const box = f.querySelector(".rr-rows");
+  const jobs = rosterJobs(gid); have.forEach(([h]) => { if (h && !jobs.some((j) => norm(j) === norm(h))) jobs.push(h); });
+  box.innerHTML = jobs.map((j) => rrRow(j, (have.find(([h]) => norm(h) === norm(j)) || [, ""])[1])).join("");
+  f.querySelector(".rr-note").textContent = have.some(([, w]) => w) ? L3("Sudah ada jadwal untuk tanggal ini; perubahan akan menggantinya.", "Nunga adong jadwal di tanggal on; na niubah gabe pangganti.", "This date already has a roster; your changes will replace it.") : "";
+}
 A.uploadRoster = (d) => {
+  const g = G(d.g); const ns = nextSunday(); const m = d.m || ns.slice(0, 7);
+  const day = ns.slice(0, 7) === m ? ns : (() => { const s0 = m + "-01"; const wd = new Date(s0 + "T12:00:00+08:00").getDay(); return addDays(s0, (7 - wd) % 7); })();
+  sheet(t("uploadRoster"), `<form class="form" data-form="rosterday" data-g="${esc(d.g)}">
+    <div class="for-chip" style="--gc:${g.color}">${ic(g.icon)}<span class="grow"><small>${esc(t("f_for"))}</small><b>${esc(gname(g))}</b></span></div>
+    <label>${esc(t("f_date"))}<input type="date" name="day" required value="${day}"></label>
+    <h4>${ic("people")} ${esc(L3("Siapa yang melayani", "Ise na marhobas", "Who serves"))}</h4>
+    <p class="small muted rr-note"></p>
+    <div class="rr-rows"></div>
+    <button type="button" class="btn sm" data-act="rrAdd">${ic("plus")} ${esc(L3("Tambah tugas", "Tambah ulaon", "Add a job"))}</button>
+    <label class="check"><input type="checkbox" name="notify" checked> ${esc(t("notifyGroup"))}</label>
+    <button class="btn primary block">${esc(t("save"))}</button></form>
+    <p class="or"><span>${esc(t("or"))}</span></p>
+    <button class="btn block ghost" data-act="uploadRosterFile" data-g="${esc(d.g)}" data-m="${esc(m)}">${ic("upload")} ${esc(L3("Unggah file atau link", "Upload file manang link", "Upload a file or link"))}</button>`, (el) => {
+    const f = el.querySelector("form"); rrFill(f); f.day.addEventListener("change", () => rrFill(f));
+  });
+};
+A.rrAdd = (d, btn) => { const box = btn.closest("form").querySelector(".rr-rows"); box.insertAdjacentHTML("beforeend", rrRow()); box.lastElementChild.querySelector("input").focus(); };
+A.rrRm = (d, btn) => { const r = btn.closest(".rr-row"); if (r) r.remove(); };
+F.rosterday = async (f) => {
+  const gid = f.dataset.g; const day = f.day.value; if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) throw new S.AppError("bad_date");
+  const pairs = [...f.querySelectorAll(".rr-row")].map((r) => [r.querySelector("[name=job]").value.trim(), r.querySelector("[name=who]").value.trim()]).filter(([j]) => j);
+  if (!pairs.some(([, w]) => w)) { toast(L3("Isi minimal satu nama.", "Isi sahali goar.", "Fill in at least one name."), true); return; }
+  const ym = day.slice(0, 7); const old = manualRoster(gid, ym);
+  const head = old ? old.table_json[0].rows[0].slice() : [L3("Tanggal", "Tanggal", "Date")];
+  pairs.forEach(([j]) => { if (!head.slice(1).some((h) => norm(h) === norm(j))) head.push(j); });
+  const pad = (r) => head.map((_, i) => r[i] || "");
+  const others = old ? old.table_json[0].rows.slice(1).filter((x) => rowDate(x, ym) !== day).map(pad) : [];
+  const mine = head.map((h, i) => (i === 0 ? rDateCell(day) : (pairs.find(([j]) => norm(j) === norm(h)) || [, ""])[1]));
+  const rows = [...others, mine].sort((a, b) => (rowDate(a, ym) || "").localeCompare(rowDate(b, ym) || ""));
+  await api.save("roster", { id: old ? old.id : undefined, group_id: gid, month: ym, title: old ? old.title : `${t("roster")} ${gname(G(gid))} ${monthName(ym)}`,
+    table_json: [{ name: monthName(ym), rows: [head, ...rows] }], text_content: [head, ...rows].map((r) => r.join(" | ")).join("\n"), notify: f.notify.checked });
+  closeSheet(); LS.set("ym." + gid, ym); await refresh(); toast(t("saved"));
+  location.hash = `#/s/${gid}?m=${ym}`;
+};
+A.uploadRosterFile = (d) => {
   const g = G(d.g);
   sheet(t("uploadRoster"), `<form class="form" data-form="roster" data-g="${d.g}">
     <label>${esc(t("f_month"))}<input type="month" name="month" value="${d.m}" required></label>
