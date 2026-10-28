@@ -95,7 +95,9 @@ const hasRights = () => !!(D && (D.me.is_admin || "parhalado" in (D.me.groups ||
 const isMMMaker = () => !!(D && (D.me.is_admin || ["maker", "chair"].includes((D.me.groups || {}).multimedia)));
 // Events (church-wide and per category) are set up only by Multimedia makers (YB 2026-10-28); the server checks this too.
 const canEvents = () => manage() && isMMMaker();
-const canRoster = (gid) => manage() && (D.me.is_admin || roleIn(gid) === "chair" || (gid === "multimedia" && isMMMaker()));
+// Sunday School and Remaja rosters are made by their Teacher Makers (YB 2026-10-28); the server uses the same rule.
+const ROSTER_CATS = ["sekolah-minggu", "remaja"];
+const canRoster = (gid) => manage() && (D.me.is_admin || roleIn(gid) === "chair" || (gid === "multimedia" && isMMMaker()) || (ROSTER_CATS.includes(gid) && isTMaker(gid)));
 // Maker or User comes from the maker list (no pop-up): makers can edit, everyone else reads.
 const mmRole = () => (D ? (isMMMaker() ? "maker" : "checker") : "");
 const setMMRole = (v) => { try { v ? sessionStorage.setItem("hkbp.mm", v) : sessionStorage.removeItem("hkbp.mm"); } catch {} };
@@ -124,7 +126,8 @@ const setTmOk = (g) => { tmPass = g ? { g, phone: D.me.phone } : null; };
 window.addEventListener("hashchange", () => { try { wAutoFlush(false); draftFlush(); } catch (e) { console.warn(e); } });
 window.addEventListener("hashchange", () => { const g = (location.hash.match(/^#\/g\/([\w-]+)/) || [])[1]; if (tmPass && g !== tmPass.g) tmPass = null; if (g !== hydrate.tmAsked) hydrate.tmAsked = null; });
 const canEdit = (gid) => manage() && (isTeachG(gid) ? isTMaker(gid) && tmOk(gid) : D.me.is_admin || roleIn(gid) === "chair");
-const canRunPoll = (gid) => manage() && isTeacherIn(gid);
+// Parhalado polls are started and ended by its makers (chair); in the classes, by every teacher.
+const canRunPoll = (gid) => manage() && (gid === "parhalado" ? D.me.is_admin || roleIn(gid) === "chair" : isTeacherIn(gid));
 const canSee = (g) => (g.kind === "office" ? isOffice() : g.kind === "service" || isElder() || !!roleIn(g.id));
 // First-login profile (YB 2026-10-24): four questions pick which categories the member sees.
 // Everyone gets it except YB (super admin, sees everything). Categories a member leads (chair, teacher...) always show.
@@ -491,7 +494,7 @@ R.home = () => {
 };
 const initials = (n) => String(n || "?").replace(/^(Pdt|St|Bapak|Ibu|Kak|Bang|Ev|Dr)\.?\s+/i, "").split(/\s+/).slice(0, 2).map((x) => x[0] || "").join("").toUpperCase();
 function dutyRow(d) {
-  return `<a class="li" href="#/s/${d.roster.group_id}?m=${d.roster.month}" style="--gc:${d.group ? d.group.color : "#64748b"}">
+  return `<a class="li" href="${rosterHome(d.roster.group_id, d.roster.month)}" style="--gc:${d.group ? d.group.color : "#64748b"}">
     <span class="date-chip">${d.date ? `<b>${esc(fmt(d.date, { day: "numeric" }))}</b><small>${esc(fmt(d.date, { month: "short" }))}</small>` : `<small>${esc(fmt(d.roster.month + "-15", { month: "short" }))}</small>`}</span>
     <span class="grow"><b>${esc(gname(d.group))}${d.roles.length ? " · " + esc(d.roles.join(", ")) : ""}</b><small>${esc(d.row.slice(0, 120))}</small></span></a>`;
 }
@@ -539,9 +542,12 @@ R.group = (gid) => {
   const people = D.people.filter((p) => gid in (p.groups || {}));
   const teach = isTeachG(gid); const pollsOn = teach && isTeacherIn(gid); const polls = (D.polls || []).filter((p) => p.group_id === gid);
   const teachers = people.filter((p) => [...MAKERS, "teacher"].includes(p.groups[gid]));
-  const tabs = [["sermon", "t_sermon", sermons.length], ...(pollsOn ? [["polls", "t_polls", polls.filter((p) => p.status === "open").length]] : []), ["news", "t_news", news.length], ["events", "t_events", evs.length], ...(teach ? [["teachers", "t_teachers", teachers.length]] : []), ["members", "t_members", people.length]];
+  const rosterOn = ROSTER_CATS.includes(gid) && isTeacherIn(gid);
+  const rym = new URLSearchParams(location.hash.split("?")[1] || "").get("m") || LS.get("ym." + gid, monthKey(today()));
+  const tabs = [["sermon", "t_sermon", sermons.length], ...(rosterOn ? [["roster", "Roster", D.rosters.filter((r) => r.group_id === gid && r.month === rym).length]] : []), ...(pollsOn ? [["polls", "t_polls", polls.filter((p) => p.status === "open").length]] : []), ["news", "t_news", news.length], ["events", "t_events", evs.length], ...(teach ? [["teachers", "t_teachers", teachers.length]] : []), ["members", "t_members", people.length]];
   let body = "";
   if (!ok) body = isGuest() ? signInCard(t("signInCat")) : empty(t("membersOnlyLong"), "lock");
+  else if (tab === "roster" && rosterOn) body = rosterBlock(gid, rym);
   else if (tab === "polls" && pollsOn) body = pollsTab(gid, polls);
   else if (tab === "teachers" && teach) body = teachersTab(gid, teachers);
   else if (tab === "sermon") body = (edit ? `<button class="btn primary block" data-act="newPost" data-g="${gid}" data-kind="sermon">${ic("plus")} ${esc(t("newSermon"))}</button>` : "") + (sermons.length ? sermons.map((p) => postCard(p, edit)).join("") : empty(t("noSermon"), "book"));
@@ -626,8 +632,6 @@ R.section = (gid) => {
   const q = new URLSearchParams(location.hash.split("?")[1] || "");
   const ym = q.get("m") || LS.get("ym." + gid, monthKey(today()));
   const edit = canRoster(gid);
-  const rs = D.rosters.filter((r) => r.group_id === gid && r.month === ym);
-  const mine = duties().filter((d) => d.roster.group_id === gid && d.roster.month === ym);
   const people = D.people.filter((p) => gid in (p.groups || {}));
   return shell("#/serve", `
     <section class="ghero slim" style="--gc:${g.color}">
@@ -636,17 +640,26 @@ R.section = (gid) => {
     </section>
     ${gid === "multimedia" ? tataBlock() : ""}
     ${gid === "parhalado" ? `<div class="row two"><a class="btn" href="#/elders">${ic("book")} ${esc(t("eldersUpdates"))}</a><a class="btn" href="#/bread">${ic("bread")} ${esc(t("breadTitle"))}</a></div>` : ""}
-    <div class="monthbar" style="--gc:${g.color}">
-      <a class="icon-btn" href="#/s/${gid}?m=${shiftMonth(ym, -1)}" aria-label="${esc(t("prevMonth"))}">${ic("back")}</a>
-      <b>${esc(monthName(ym))}</b>
-      <a class="icon-btn" href="#/s/${gid}?m=${shiftMonth(ym, 1)}" aria-label="${esc(t("nextMonth"))}">${ic("chev")}</a>
-    </div>
-    ${mine.length ? `<div class="card mine" style="--gc:${g.color}"><h3>${ic("check")} ${esc(t("youServe"))}</h3>${mine.map(dutyRow).join("")}</div>` : ""}
-    ${edit ? `<button class="btn primary block" data-act="uploadRoster" data-g="${gid}" data-m="${ym}" style="--gc:${g.color}">${ic("plus")} ${esc(L3("Buat Roster", "Bahen Roster", "Make Roster"))}</button>` : ""}
-    ${rs.length ? rs.map((r) => rosterCard(r, edit)).join("") : empty(t("noRoster", monthName(ym)), "roster")}
+    ${gid === "parhalado" ? `<h3 class="sec-h">${esc(t("t_polls"))}</h3><div style="--gc:${g.color}">${pollsTab(gid, (D.polls || []).filter((p) => p.group_id === gid))}</div>` : ""}
+    ${rosterBlock(gid, ym)}
     <h3 class="sec-h">${esc(t("t_members"))}</h3>
     ${peopleList(people, gid)}`, { back: "#/serve", title: gname(g), sub: t("kindService") });
 };
+// The month's rosters: month bar, "you serve", Make Roster and the roster cards. Service sections and Sunday School / Remaja share it.
+const rosterHome = (gid, ym) => ((G(gid) || {}).kind === "sermon" ? `#/g/${gid}?tab=roster&m=${ym}` : `#/s/${gid}?m=${ym}`);
+function rosterBlock(gid, ym) {
+  const g = G(gid); const edit = canRoster(gid);
+  const rs = D.rosters.filter((r) => r.group_id === gid && r.month === ym);
+  const mine = duties().filter((d) => d.roster.group_id === gid && d.roster.month === ym);
+  return `<div class="monthbar" style="--gc:${g.color}">
+      <a class="icon-btn" href="${rosterHome(gid, shiftMonth(ym, -1))}" aria-label="${esc(t("prevMonth"))}">${ic("back")}</a>
+      <b>${esc(monthName(ym))}</b>
+      <a class="icon-btn" href="${rosterHome(gid, shiftMonth(ym, 1))}" aria-label="${esc(t("nextMonth"))}">${ic("chev")}</a>
+    </div>
+    ${mine.length ? `<div class="card mine" style="--gc:${g.color}"><h3>${ic("check")} ${esc(t("youServe"))}</h3>${mine.map(dutyRow).join("")}</div>` : ""}
+    ${edit ? `<button class="btn primary block" data-act="uploadRoster" data-g="${gid}" data-m="${ym}" style="--gc:${g.color}">${ic("plus")} ${esc(L3("Buat Roster", "Bahen Roster", "Make Roster"))}</button>` : ""}
+    ${rs.length ? rs.map((r) => rosterCard(r, edit)).join("") : empty(t("noRoster", monthName(ym)), "roster")}`;
+}
 const fileKind = (r) => r.link && !r.file_name ? "link" : /\.(xlsx|xls|csv|ods)$/i.test(r.file_name || "") ? "xls" : /\.pdf$/i.test(r.file_name || "") ? "pdf" : /\.docx?$/i.test(r.file_name || "") ? "doc" : /^image/.test(r.mime || "") ? "img" : "file";
 function rosterCard(r, edit) {
   const names = myNames();
@@ -1327,7 +1340,7 @@ A.genWeek = async (d, btn) => {
 // Each month stays one table (dates down the side, jobs across), so "My duties", the highlights and the Warta still find the names.
 const L3 = (id, bt, en) => (lang === "en" ? en : lang === "bt" ? bt : id);
 const ROSTER_JOBS = { multimedia: ["Operator Slide", "Live Stream", "Sound"], "song-leader": ["Song Leader"], musik: ["Keyboard/Piano", "Gitar", "Bass", "Drum"], band: ["Vokal", "Keyboard", "Gitar", "Bass", "Drum"], koor: ["Pemandu Koor"],
-  parhalado: ["Pengkhotbah", "Liturgis", "St. Sekolah Minggu"], jemaat: ["Pembaca Warta", "Penerima Tamu", "Tally Counter"] };
+  parhalado: ["Pengkhotbah", "Liturgis", "St. Sekolah Minggu"], "sekolah-minggu": ["Liturgis", "Pengajar", "Pemusik"], remaja: ["Liturgis", "Pengajar", "Pemusik"], jemaat: ["Pembaca Warta", "Penerima Tamu", "Tally Counter"] };
 const manualRoster = (gid, ym) => D.rosters.find((r) => r.group_id === gid && r.month === ym && !r.file_name && !r.link && ((r.table_json || [])[0] || {}).rows);
 function rosterJobs(gid) {
   const own = D.rosters.filter((r) => r.group_id === gid && (r.table_json || []).length).sort((a, b) => b.month.localeCompare(a.month));
@@ -1382,7 +1395,7 @@ F.rosterday = async (f) => {
   const rows = [...others, mine].sort((a, b) => (rowDate(a, ym) || "").localeCompare(rowDate(b, ym) || ""));
   await rosterWrite(gid, ym, old, head, rows, f.notify.checked, day);
   closeSheet(); LS.set("ym." + gid, ym); await refresh(); toast(t("saved"));
-  location.hash = `#/s/${gid}?m=${ym}`;
+  location.hash = rosterHome(gid, ym);
   // Make Roster: the next Sunday opens straight away with the same jobs, until the maker closes it.
   if (!f.dataset.edit) { const nx = addDays(day, 7); setTimeout(() => { if ($("#sheet").hidden) A.uploadRoster({ g: gid, m: nx.slice(0, 7), day: nx, cont: 1 }); }, 450); }
 };
@@ -1687,7 +1700,7 @@ F.roster = async (f) => {
     notify_list: f.notify.checked ? rosterNotifyList(f.dataset.g, res.tables || [], f.month.value) : [] };
   if (file) Object.assign(row, { file_name: file.name, mime: file.type || "application/octet-stream", file_b64: await P.toB64(file) });
   await api.save("roster", row); closeSheet(); LS.set("ym." + f.dataset.g, f.month.value); await refresh(); toast(t("saved"));
-  location.hash = `#/s/${f.dataset.g}?m=${f.month.value}`;
+  location.hash = rosterHome(f.dataset.g, f.month.value);
 };
 F.group = async (f) => {
   const id = norm(f.name_en.value || f.name_id.value).replace(/ /g, "-").slice(0, 30) || "group-" + Date.now();
