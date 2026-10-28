@@ -361,7 +361,10 @@ const signInCard = (msg) => `<div class="card center pad sign-in-card">${ic("loc
 // ---------- layout ----------
 const TABS = [["home", "#/home", "tab_home"], ["groups", "#/groups", "tab_groups"], ["roster", "#/serve", "tab_serve"], ["calendar", "#/calendar", "tab_calendar"], ["more", "#/more", "tab_more"]];
 function shell(active, inner, opts = {}) {
-  const nav = TABS.map(([i, h, k]) => `<a href="${h}" class="${active === h ? "on" : ""}" ${active === h ? 'aria-current="page"' : ""}>${ic(i)}<span>${esc(t(k))}</span></a>`).join("");
+  // People who are not signed in see only Home, plus a Sign in tab (YB 2026-10-28).
+  const tabs = isGuest() ? TABS.filter(([, h]) => h === "#/home") : TABS;
+  const nav = tabs.map(([i, h, k]) => `<a href="${h}" class="${active === h ? "on" : ""}" ${active === h ? 'aria-current="page"' : ""}>${ic(i)}<span>${esc(t(k))}</span></a>`).join("")
+    + (isGuest() ? `<a href="#/login" data-act="signIn">${ic("lock")}<span>${esc(t("signIn"))}</span></a>` : "");
   return `
   <header class="top">
     ${opts.back ? `<a class="icon-btn" href="${opts.back}" aria-label="${esc(t("back"))}">${ic("back")}</a>` : `<img class="logo-sm" src="logo.png" alt="">`}
@@ -371,11 +374,11 @@ function shell(active, inner, opts = {}) {
   ${D && D.offline ? `<div class="banner">${esc(t("offline"))}</div>` : ""}
   ${api.mode === "local" ? `<div class="banner soft">${ic("phone")} ${esc(t("demoBanner"))}</div>` : ""}
   <main${opts.cols ? ' class="cols"' : ""}>${inner}</main>
-  <nav class="tabs"><div class="in">${nav}</div></nav>`;
+  <nav class="tabs"><div class="in"${isGuest() ? ' style="grid-template-columns:repeat(2,1fr)"' : ""}>${nav}</div></nav>`;
 }
 const langSwitch = () => `<div class="langs" role="group" aria-label="${esc(t("language"))}">${["id", "bt", "en"].map((l) => `<button data-act="lang" data-l="${l}" aria-pressed="${lang === l}">${l.toUpperCase()}</button>`).join("")}</div>`;
 const empty = (msg, icon = "star") => `<div class="empty">${ic(icon)}<p>${esc(msg)}</p></div>`;
-const roleBadge = (gid) => { const r = isAdmin() && !roleIn(gid) ? "admin" : roleIn(gid); return r ? `<span class="badge ${MAKERS.includes(r) ? "chair" : r === "teacher" ? "member" : r}">${esc(roleLabel(gid, r))}</span>` : ""; };
+const roleBadge = (gid) => { if (!manage()) return ""; const r = isAdmin() && !roleIn(gid) ? "admin" : roleIn(gid); return r ? `<span class="badge ${MAKERS.includes(r) ? "chair" : r === "teacher" ? "member" : r}">${esc(roleLabel(gid, r))}</span>` : ""; };
 const groupTile = (g, extra = "") => `<a class="gtile" href="#/${({ sermon: "g", office: "o" })[g.kind] || "s"}/${g.id}" style="--gc:${g.color}">
     <span class="gicon">${ic(g.icon)}</span><span class="gname"><b>${esc(gname(g))}</b><small>${extra}</small></span>${roleBadge(g.id)}${ic("chev", "chev")}</a>`;
 
@@ -437,13 +440,13 @@ R.home = () => {
       <p class="muted small">${esc(fmtDay(day))}</p>
       <h1>${esc(t(hour < 11 ? "morning" : hour < 15 ? "afternoon" : hour < 18 ? "evening1" : "evening2"))}${m.name ? ", " + esc(firstName(m.name)) : ""}</h1>
     </section>
-    ${isGuest() ? `<button class="card notify-ask" data-act="signIn">${ic("lock")}<span><b>${esc(t("guestTitle"))}</b><small>${esc(t("guestBody"))}</small></span>${ic("chev", "chev")}</button>` : ""}
+    ${isGuest() ? `<button class="card notify-ask" data-act="signIn">${ic("lock")}<span><b>${esc(t("guestTitle"))}</b><small>${esc(L3("Masuk untuk melihat Tata Ibadah, kalender, roster, kategorial dan tugas Anda.", "Masuk asa diida Tata Ibadah, kalender, roster, kategorial dohot ulaonmu.", "Sign in to see the Tata Ibadah, calendar, rosters, your categories and your duties."))}</small></span>${ic("chev", "chev")}</button>` : ""}
     ${mine ? `<div class="card hbd">${ic("cake")}<div><h2>${esc(t("hbdTitle", firstName(m.name)))}</h2><p>${esc(t("hbdBody"))}</p></div></div>` : ""}
     ${m.wed && m.wed.slice(5) === day.slice(5) ? `<div class="card hbd">💍<div><h2>${esc(t("annivTitle", firstName(m.name)))}</h2><p>${esc(t("annivBody"))}</p></div></div>` : ""}
     ${annivToday.length ? `<article class="card"><div class="card-h"><h3>💍 ${esc(t("annivs"))}</h3></div>${annivToday.map((p) => `<div class="li"><span class="avatar">${esc(initials(p.name))}</span><span class="grow"><b>${esc(p.name)}</b><small>${esc(t("today"))}</small></span>${p.phone && p.id !== m.id ? `<a class="icon-btn wa" href="${wa(t("annivWish", firstName(p.name)), p.phone)}" target="_blank" rel="noopener" aria-label="WhatsApp">${ic("wa")}</a>` : `<span class="party">🎉</span>`}</div>`).join("")}</article>` : ""}
     ${notifyAsk ? `<button class="card notify-ask" data-act="notify">${ic("bell")}<span><b>${esc(t("notifyAskTitle"))}</b><small>${esc(standalone() || !/iP(hone|ad)/.test(navigator.userAgent) ? t("notifyAskBody") : t("iosInstallFirst"))}</small></span>${ic("chev", "chev")}</button>` : ""}
 
-    ${(D.services || []).length ? `<a class="card li tata-home" href="#/tata/${D.services[0].id}">${ic("book")}<span class="grow"><b>${esc(t("tataTitle"))}</b><small>${esc(D.services[0].title || "")}${D.services[0].service_date ? " · " + esc(fmtDay(D.services[0].service_date)) : ""}</small></span>${ic("chev", "chev")}</a>` : ""}
+    ${!isGuest() && (D.services || []).length ? `<a class="card li tata-home" href="#/tata/${D.services[0].id}">${ic("book")}<span class="grow"><b>${esc(t("tataTitle"))}</b><small>${esc(D.services[0].title || "")}${D.services[0].service_date ? " · " + esc(fmtDay(D.services[0].service_date)) : ""}</small></span>${ic("chev", "chev")}</a>` : ""}
     <article class="card bread-card">
       <div class="kicker">${ic("bread")} ${esc(t("breadTitle"))}</div>
       ${b ? `
@@ -515,7 +518,7 @@ R.groups = () => {
   return shell("#/groups", `
     <h2 class="page-h">${esc(t("groupsTitle"))}</h2>
     <p class="lead">${esc(t("groupsLead"))}</p>
-    ${pf ? `<div class="card row between pf-note"><span class="small muted">${esc(t(isAdmin() && LS.get("allCats") ? "pfAllShown" : "pfFiltered"))}</span><span class="row"><button class="btn sm ghost" data-act="profile">${esc(t("pfChange"))}</button>${LS.get("pfTest") ? `<button class="btn sm" data-act="pfTest">${esc(t("pfTestEnd"))}</button>` : ""}${isAdmin() && !LS.get("pfTest") ? `<button class="btn sm" data-act="allCats">${esc(t(LS.get("allCats") ? "pfMine" : "pfAll"))}</button>` : ""}</span></div>` : ""}
+    ${pf && manage() ? `<div class="card row between pf-note"><span class="small muted">${esc(t(isAdmin() && LS.get("allCats") ? "pfAllShown" : "pfFiltered"))}</span><span class="row"><button class="btn sm ghost" data-act="profile">${esc(t("pfChange"))}</button>${LS.get("pfTest") ? `<button class="btn sm" data-act="pfTest">${esc(t("pfTestEnd"))}</button>` : ""}${isAdmin() && !LS.get("pfTest") ? `<button class="btn sm" data-act="allCats">${esc(t(LS.get("allCats") ? "pfMine" : "pfAll"))}</button>` : ""}</span></div>` : ""}
     <div class="gcards">${list.map((g) => {
       const n = D.people.filter((p) => g.id in (p.groups || {})).length; const posts = D.posts.filter((p) => p.group_id === g.id).length; const ok = canSee(g);
       return `<a class="gcard ${ok ? "" : "locked"}" href="#/g/${g.id}" style="--gc:${g.color}">
@@ -612,7 +615,7 @@ R.serve = () => {
   return shell("#/serve", `
     <h2 class="page-h">${esc(t("serveTitle"))}</h2>
     <p class="lead">${esc(t("serveLead"))}</p>
-    ${sv ? `<div class="card row between pf-note"><span class="small muted">${esc(t(LS.get("allServe") ? "svAllShown" : "svFiltered"))}</span><span class="row"><button class="btn sm ghost" data-act="servePick">${esc(t("pfChange"))}</button><button class="btn sm" data-act="allServe">${esc(t(LS.get("allServe") ? "pfMine" : "pfAll"))}</button></span></div>` : ""}
+    ${sv && manage() ? `<div class="card row between pf-note"><span class="small muted">${esc(t(LS.get("allServe") ? "svAllShown" : "svFiltered"))}</span><span class="row"><button class="btn sm ghost" data-act="servePick">${esc(t("pfChange"))}</button><button class="btn sm" data-act="allServe">${esc(t(LS.get("allServe") ? "pfMine" : "pfAll"))}</button></span></div>` : ""}
     <div class="glist">${list.map((g) => { const has = D.rosters.some((r) => r.group_id === g.id && r.month === ym); const nx = D.rosters.some((r) => r.group_id === g.id && r.month === shiftMonth(ym, 1));
       return groupTile(g, `${has ? "✓ " : ""}${esc(t(has ? "rosterReady" : "rosterMissing", monthName(ym)))}${nx ? " · " + esc(t("nextReady")) : ""}`); }).join("")}</div>
     ${isAdmin() ? `<button class="btn block ghost" data-act="newSection">${ic("plus")} ${esc(t("addSection"))}</button>` : ""}`);
@@ -687,7 +690,7 @@ R.calendar = () => {
     <div class="row two">${isElder() ? `<button class="btn" data-act="addBday">${ic("cake")} ${esc(t("addBday"))}</button><button class="btn" data-act="importBdays">${ic("upload")} ${esc(t("importBdays"))}</button>` : ""}<button class="btn ghost" data-act="icsBdays" ${all.length ? "" : "disabled"}>${ic("cake")} ${esc(t("bdaysToCal"))}</button></div>
     ${months.length ? months.map((k) => `<h3 class="sec-h">${esc(monthName(k))}</h3>
       ${part(ic("calendar"), L3("Acara", "Ulaon", "Events"), byMonth[k].ev)}
-      ${part(ic("cake"), t("birthdays"), byMonth[k].bd)}
+      ${part(ic("cake"), L3("Ulang Tahun", "Ari Tubu", "Birthdays"), byMonth[k].bd)}
       ${part("💍", L3("Ulang Tahun Pernikahan", "Ulang Taon Pardongan Saripeon", "Wedding anniversaries"), byMonth[k].an)}`).join("") : empty(t("noEvents"), "calendar")}
     <p class="center"><button class="btn sm ghost" data-act="calPast">${esc(t(show ? "hidePast" : "showPast"))}</button></p>`);
 };
@@ -830,24 +833,24 @@ R.more = () => {
     <section class="profile card">
       <span class="avatar lg">${esc(initials(m.name))}</span>
       <div class="grow"><h3>${esc(m.name)}</h3><p class="small muted">${esc(fmtPhone(m.phone))}${m.dob ? " · " + esc(fmt(m.dob, { day: "numeric", month: "long" })) : ""}</p>
-        <div class="chips">${m.is_admin ? `<span class="badge admin">${esc(t("role_admin"))}</span>` : ""}${roles.map(([g, r]) => `<span class="chip" style="--gc:${(G(g) || {}).color}">${esc(gname(G(g)))}${r === "chair" ? " · " + esc(t("role_chair")) : ""}</span>`).join("")}</div>
+        <div class="chips">${m.is_admin && manage() ? `<span class="badge admin">${esc(t("role_admin"))}</span>` : ""}${roles.map(([g, r]) => `<span class="chip" style="--gc:${(G(g) || {}).color}">${esc(gname(G(g)))}${r === "chair" && manage() ? " · " + esc(t("role_chair")) : ""}</span>`).join("")}</div>
         <button class="btn sm pf-reset" data-act="pfReset">${ic("redo")} ${esc(t("pfReset"))}</button></div>
     </section>
     <div class="menu card">
       <a class="li" href="#/elders">${ic("book")}<span class="grow"><b>${esc(t("eldersUpdates"))}</b></span>${ic("chev", "chev")}</a>
       <a class="li" href="#/bread">${ic("bread")}<span class="grow"><b>${esc(t("breadTitle"))}</b></span>${ic("chev", "chev")}</a>
-      ${isOffice() ? `<a class="li" href="#/o/secretary">${ic("lock")}<span class="grow"><b>${esc(t("officeTitle"))}</b><small>${esc(officeGroups().map(gname).join(" · "))}</small></span>${ic("chev", "chev")}</a>` : ""}
+      ${isOffice() && manage() ? `<a class="li" href="#/o/secretary">${ic("lock")}<span class="grow"><b>${esc(t("officeTitle"))}</b><small>${esc(officeGroups().map(gname).join(" · "))}</small></span>${ic("chev", "chev")}</a>` : ""}
       <a class="li" href="#/people">${ic("cake")}<span class="grow"><b>${esc(t("people"))}</b><small>${esc(isAdmin() ? t("peopleAdmin") : t("peopleSub"))}</small></span>${ic("chev", "chev")}</a>
       <button class="li" data-act="notify">${ic("bell")}<span class="grow"><b>${esc(t("notifications"))}</b><small>${esc(perm === "granted" ? t("notifyOnTxt") : perm === "denied" ? t("notifyDenied") : t("notifyAskBody"))}</small></span>${ic("chev", "chev")}</button>
       ${hasRights() ? `<button class="li" data-act="toggleView">${ic("people")}<span class="grow"><b>${esc(t("layout"))}: ${esc(t(manage() ? "viewAdmin" : "viewMember"))}</b><small>${esc(t(manage() ? "toMember" : "toAdmin"))}</small></span>${ic("chev", "chev")}</button>` : ""}
       ${isAdmin() && isYB() ? `<a class="li" href="#/appstatus">${ic("phone")}<span class="grow"><b>${esc(t("asTitle"))}</b><small>${esc(t("asSub"))}</small></span>${ic("chev", "chev")}</a>` : ""}
       ${isAdmin() ? `<button class="li" data-act="breadSetup">${ic("bread")}<span class="grow"><b>${esc(t("bs_title"))}</b><small>${esc(t("src_" + ((D.settings || {}).bread_source || "elders")))}</small></span>${ic("chev", "chev")}</button>` : ""}
-      ${serveOn() ? `<button class="li" data-act="servePick">${ic("calendar")}<span class="grow"><b>${esc(t("svTitle"))}</b><small>${esc((me().profile || {}).serve ? me().profile.serve.map((id) => gname(G(id))).filter(Boolean).join(", ") || t("svNone") : t("pfNotYet"))}</small></span>${ic("chev", "chev")}</button>` : ""}
-      ${pfSkipped() ? `<button class="li" data-act="pfTest">${ic("spark")}<span class="grow"><b>${esc(t(LS.get("pfTest") ? "pfTestEnd" : "pfTestStart"))}</b><small>${esc(t(LS.get("pfTest") ? "pfTestOnSub" : "pfTestSub"))}</small></span>${ic("chev", "chev")}</button>` : ""}
+      ${serveOn() && manage() ? `<button class="li" data-act="servePick">${ic("calendar")}<span class="grow"><b>${esc(t("svTitle"))}</b><small>${esc((me().profile || {}).serve ? me().profile.serve.map((id) => gname(G(id))).filter(Boolean).join(", ") || t("svNone") : t("pfNotYet"))}</small></span>${ic("chev", "chev")}</button>` : ""}
+      ${pfSkipped() && manage() ? `<button class="li" data-act="pfTest">${ic("spark")}<span class="grow"><b>${esc(t(LS.get("pfTest") ? "pfTestEnd" : "pfTestStart"))}</b><small>${esc(t(LS.get("pfTest") ? "pfTestOnSub" : "pfTestSub"))}</small></span>${ic("chev", "chev")}</button>` : ""}
       ${profileOn() ? `<button class="li" data-act="profile">${ic("people")}<span class="grow"><b>${esc(t("pfTitle"))}</b><small>${esc(me().profile ? profileCats(me().profile).map((id) => gname(G(id))).filter(Boolean).join(", ") : t("pfNotYet"))}</small></span>${ic("chev", "chev")}</button>` : ""}
-      <button class="li" data-act="password">${ic("key")}<span class="grow"><b>${esc(t("changePw"))}</b></span>${ic("chev", "chev")}</button>
+      ${manage() ? `<button class="li" data-act="password">${ic("key")}<span class="grow"><b>${esc(t("changePw"))}</b></span>${ic("chev", "chev")}</button>` : ""}
       <button class="li" data-act="install">${ic("phone")}<span class="grow"><b>${esc(t("installTitle"))}</b><small>${esc(standalone() ? t("installed") : t("installHint"))}</small></span>${ic("chev", "chev")}</button>
-      ${isYB() ? `<button class="li" data-act="settings">${ic("gear")}<span class="grow"><b>${esc(t("settings"))}</b><small>${esc(api.mode === "remote" ? t("modeRemote") : t("modeLocal"))}</small></span>${ic("chev", "chev")}</button>` : ""}
+      ${isYB() && manage() ? `<button class="li" data-act="settings">${ic("gear")}<span class="grow"><b>${esc(t("settings"))}</b><small>${esc(api.mode === "remote" ? t("modeRemote") : t("modeLocal"))}</small></span>${ic("chev", "chev")}</button>` : ""}
       <button class="li" data-act="logout">${ic("logout")}<span class="grow"><b>${esc(t("signOut"))}</b></span></button>
     </div>
     <p class="small muted center pad">HKBP Singapore · ${esc(t("logoNote"))}</p>`);
@@ -886,6 +889,7 @@ async function render() {
     if (!api.hasSession() && await api.needsSetup()) { await R.login(); return; }
     if (!D) await refresh();
     if (!r) { history.replaceState(null, "", "#/home"); r = "home"; }
+    if (isGuest() && !["home", "bread"].includes(r)) { history.replaceState(null, "", "#/home"); r = "home"; arg = undefined; }
     const map = { tata: R.tata, home: R.home, groups: R.groups, g: R.group, serve: R.serve, s: R.section, calendar: R.calendar, bread: R.bread, elders: R.elders, berita: R.berita, people: R.people, more: R.more, appstatus: R.appstatus, o: R.office, warta: R.warta };
     const html = (map[r] || R.notFound)(arg);
     if (typeof html === "string") view().innerHTML = html;
@@ -1965,7 +1969,7 @@ const dmy = (iso) => `${iso.slice(8)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
 const lastPost = (gid, kind) => D.posts.filter((p) => p.group_id === gid && p.kind === kind).sort((a, b) => (b.day || b.created_at).localeCompare(a.day || a.created_at))[0];
 
 function officeHome() {
-  if (!isOffice()) return "";
+  if (!isOffice() || !manage()) return "";
   return `${finPrompt()}<h3 class="sec-h">${ic("lock")} ${esc(t("officeTitle"))}</h3><div class="glist">${officeGroups().map((g) => groupTile(g, esc(t("officeSub")))).join("")}</div>`;
 }
 
