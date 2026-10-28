@@ -218,6 +218,8 @@ function myNames(person = D.me) {
   if (toks.length >= 2) out.add(toks.slice(0, 2).join(" "));
   // First name alone only when nobody else in the church shares it.
   if (toks[0] && toks[0].length >= 3 && D.people.filter((p) => norm(p.name).split(" ").includes(toks[0])).length <= 1) out.add(toks[0]);
+  // Surname alone ("Gultom") too, when only one member has it (YB 2026-10-28); the server uses the same rule.
+  const last = toks[toks.length - 1]; if (toks.length >= 2 && last.length >= 3 && D.people.filter((p) => norm(p.name).split(" ").includes(last)).length <= 1) out.add(last);
   String(person.alias || "").split(/[,;\/]/).map(norm).filter((x) => x.length >= 3).forEach((a) => out.add(a));
   return [...out];
 }
@@ -664,28 +666,38 @@ R.calendar = () => {
   const show = LS.get("calPast", false);
   const evs = D.events.filter((e) => show || new Date(e.starts_at) > now - 3 * 3600e3);
   const canAdd = canEvents();
-  const byMonth = {}; const add = (k, item) => (byMonth[k] = byMonth[k] || []).push(item);
-  evs.forEach((e) => { const p = sgParts(e.starts_at); add(monthKey(p.date), { k: p.date + " " + p.time, html: eventRow(e) }); });
-  // Birthdays fill this month and the next two.
-  const all = allBdays(); let [y, mo] = day.split("-").map(Number);
+  // Each month is split into Events, Birthdays and Wedding anniversaries (YB 2026-10-28).
+  const byMonth = {}; const add = (k, part, item) => { byMonth[k] = byMonth[k] || { ev: [], bd: [], an: [] }; byMonth[k][part].push(item); };
+  evs.forEach((e) => { const p = sgParts(e.starts_at); add(monthKey(p.date), "ev", { k: p.date + " " + p.time, html: eventRow(e) }); });
+  // Birthdays and anniversaries fill this month and the next two.
+  const all = allBdays(); const wed = (D.people || []).filter((p) => p.anniv); let [y, mo] = day.split("-").map(Number);
   for (let i = 0; i < 3; i++) {
     const ym = `${y}-${String(mo).padStart(2, "0")}`;
-    all.filter((b) => b.bday.slice(0, 2) === ym.slice(5)).forEach((b) => { const d = `${ym}-${b.bday.slice(3)}`; if (show || d >= day) add(ym, { k: d + " 00:00", html: bdayRow(b, d) }); });
+    all.filter((b) => b.bday.slice(0, 2) === ym.slice(5)).forEach((b) => { const d = `${ym}-${b.bday.slice(3)}`; if (show || d >= day) add(ym, "bd", { k: d, html: bdayRow(b, d) }); });
+    wed.filter((p) => p.anniv.slice(0, 2) === ym.slice(5)).forEach((p) => { const d = `${ym}-${p.anniv.slice(3)}`; if (show || d >= day) add(ym, "an", { k: d, html: annivRow(p, d) }); });
     if (++mo > 12) { mo = 1; y++; }
   }
   const months = Object.keys(byMonth).sort();
+  const part = (icon, title, list) => list.length ? `<div class="card cal-part"><div class="card-h"><h3>${icon} ${esc(title)}</h3><span class="badge">${list.length}</span></div>${list.sort((a, c) => a.k.localeCompare(c.k)).map((x) => x.html).join("")}</div>` : "";
   return shell("#/calendar", `
     <h2 class="page-h">${esc(t("calendarTitle"))}</h2>
     <p class="lead">${esc(t("calendarLead"))}</p>
     <div class="row two">${canAdd ? `<button class="btn primary" data-act="newEvent">${ic("plus")} ${esc(t("newEvent"))}</button>` : ""}<button class="btn" data-act="icsAll" ${evs.length ? "" : "disabled"}>${ic("download")} ${esc(t("addAllCal"))}</button></div>
     <button class="card li" data-act="calSub">${ic("calendar")}<span class="grow"><b>${esc(t("calSub"))}</b><small>${esc(t("calSubSub"))}</small></span>${ic("chev", "chev")}</button>
     <div class="row two">${isElder() ? `<button class="btn" data-act="addBday">${ic("cake")} ${esc(t("addBday"))}</button><button class="btn" data-act="importBdays">${ic("upload")} ${esc(t("importBdays"))}</button>` : ""}<button class="btn ghost" data-act="icsBdays" ${all.length ? "" : "disabled"}>${ic("cake")} ${esc(t("bdaysToCal"))}</button></div>
-    ${months.length ? months.map((k) => `<h3 class="sec-h">${esc(monthName(k))}</h3><div class="card">${byMonth[k].sort((a, c) => a.k.localeCompare(c.k)).map((x) => x.html).join("")}</div>`).join("") : empty(t("noEvents"), "calendar")}
+    ${months.length ? months.map((k) => `<h3 class="sec-h">${esc(monthName(k))}</h3>
+      ${part(ic("calendar"), L3("Acara", "Ulaon", "Events"), byMonth[k].ev)}
+      ${part(ic("cake"), t("birthdays"), byMonth[k].bd)}
+      ${part("💍", L3("Ulang Tahun Pernikahan", "Ulang Taon Pardongan Saripeon", "Wedding anniversaries"), byMonth[k].an)}`).join("") : empty(t("noEvents"), "calendar")}
     <p class="center"><button class="btn sm ghost" data-act="calPast">${esc(t(show ? "hidePast" : "showPast"))}</button></p>`);
 };
+function annivRow(p, d) {
+  return `<div class="li"><span class="date-chip" style="--gc:#b7791f"><b>${esc(fmt(d, { day: "numeric" }))}</b><small>${esc(fmt(d, { month: "short" }))}</small></span>
+    <span class="grow"><b>💍 ${esc(p.name)}</b><small>${esc(L3("Ulang tahun pernikahan", "Ulang taon pardongan saripeon", "Wedding anniversary"))}</small></span></div>`;
+}
 function bdayRow(b, d) {
-  const age = b.year ? +d.slice(0, 4) - b.year : null; const inner = `<span class="date-chip bday"><b>${esc(fmt(d, { day: "numeric" }))}</b><small>${esc(fmt(d, { month: "short" }))}</small></span>
-    <span class="grow"><b>🎂 ${esc(b.name)}</b><small>${esc(t("bdayOf"))}${age && age > 0 && age < 120 ? " · " + esc(t("turns", age)) : ""}</small></span>`;
+  const inner = `<span class="date-chip bday"><b>${esc(fmt(d, { day: "numeric" }))}</b><small>${esc(fmt(d, { month: "short" }))}</small></span>
+    <span class="grow"><b>🎂 ${esc(b.name)}</b><small>${esc(t("bdayOf"))}</small></span>`;
   return isElder() ? `<button class="li" data-act="bdayMenu" data-kind="${b.kind}" data-id="${b.id}" data-name="${esc(b.name)}" data-bday="${b.bday}">${inner}${ic("chev", "chev")}</button>` : `<div class="li">${inner}</div>`;
 }
 
