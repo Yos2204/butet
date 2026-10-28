@@ -93,6 +93,8 @@ const viewMode = () => LS.get("view", null);
 const hasRights = () => !!(D && (D.me.is_admin || "parhalado" in (D.me.groups || {}) || Object.values(D.me.groups || {}).some((r) => ["chair", "maker", ...MAKERS, "teacher"].includes(r))));
 // Multimedia: only people on the maker list (or its chair) may open the Tata Ibadah workbench; checkers and everyone else read.
 const isMMMaker = () => !!(D && (D.me.is_admin || ["maker", "chair"].includes((D.me.groups || {}).multimedia)));
+// Events (church-wide and per category) are set up only by Multimedia makers (YB 2026-10-28); the server checks this too.
+const canEvents = () => manage() && isMMMaker();
 // Maker or User comes from the maker list (no pop-up): makers can edit, everyone else reads.
 const mmRole = () => (D ? (isMMMaker() ? "maker" : "checker") : "");
 const setMMRole = (v) => { try { v ? sessionStorage.setItem("hkbp.mm", v) : sessionStorage.removeItem("hkbp.mm"); } catch {} };
@@ -126,15 +128,21 @@ const canSee = (g) => (g.kind === "office" ? isOffice() : g.kind === "service" |
 // First-login profile (YB 2026-10-24): four questions pick which categories the member sees.
 // Everyone gets it except YB (super admin, sees everything). Categories a member leads (chair, teacher...) always show.
 const PROFILE_SKIP = ["85334780"];
+// "Status aplikasi & notifikasi" is for YB only (YB 2026-10-28); the server checks this too.
+const isYB = () => !!D && !isGuest() && !!me() && S.phone8(me().phone) === "85334780";
 const pfSkipped = () => !!D && !isGuest() && !!me() && PROFILE_SKIP.includes(S.phone8(me().phone));
 // YB can try the questions on his own account (test mode, this phone only), then end the test to see everything again.
 const profileOn = () => !!D && !isGuest() && !!me() && (!pfSkipped() || !!LS.get("pfTest"));
+// Rules (YB 2026-10-28), the same as the server's hk__auto_groups:
+// married + male: Ama + Sekolah Minggu; married + female: Ina + Sekolah Minggu; not married + sidi or pelaut: Naposobulung;
+// not married + not sidi: Remaja; pelaut adds Pelaut & Pekerja. The server's saved result (profile.auto) wins when present.
 function profileCats(p) {
   if (!p) return null;
-  if (p.confirmed === false) return ["remaja"];
-  const c = [p.married ? (p.male ? "ama" : "ina") : "naposo"];
+  if (Array.isArray(p.auto)) return p.auto.filter((id) => (G(id) || {}).kind === "sermon");
+  const c = [];
+  if (p.married) c.push(p.male ? "ama" : "ina", "sekolah-minggu");
+  else c.push(p.confirmed || p.pelaut ? "naposo" : "remaja");
   if (p.pelaut) c.push("pelaut");
-  if (p.married) c.push("sekolah-minggu"); // parents see Sunday School too (YB)
   return c;
 }
 // Second pop-up (YB 2026-10-24): pick the service sections you serve in; Jadwal then shows only those. Pilot: YB only.
@@ -532,7 +540,7 @@ R.group = (gid) => {
   else if (tab === "teachers" && teach) body = teachersTab(gid, teachers);
   else if (tab === "sermon") body = (edit ? `<button class="btn primary block" data-act="newPost" data-g="${gid}" data-kind="sermon">${ic("plus")} ${esc(t("newSermon"))}</button>` : "") + (sermons.length ? sermons.map((p) => postCard(p, edit)).join("") : empty(t("noSermon"), "book"));
   else if (tab === "news") body = (edit ? `<button class="btn primary block" data-act="newPost" data-g="${gid}" data-kind="news">${ic("plus")} ${esc(t("newNews"))}</button>` : "") + (news.length ? news.map((p) => postCard(p, edit)).join("") : empty(t("noNews"), "bell"));
-  else if (tab === "events") body = (edit ? `<button class="btn primary block" data-act="newEvent" data-g="${gid}">${ic("plus")} ${esc(t("newEvent"))}</button>` : "") + `<div class="card">${evs.length ? evs.map(eventRow).join("") : `<p class="muted small">${esc(t("noEvents"))}</p>`}</div>`;
+  else if (tab === "events") body = (canEvents() ? `<button class="btn primary block" data-act="newEvent" data-g="${gid}">${ic("plus")} ${esc(t("newEvent"))}</button>` : "") + `<div class="card">${evs.length ? evs.map(eventRow).join("") : `<p class="muted small">${esc(t("noEvents"))}</p>`}</div>`;
   else body = peopleList(people, gid);
   return shell("#/groups", `
     <section class="ghero" style="--gc:${g.color}">
@@ -651,7 +659,7 @@ R.calendar = () => {
   const now = Date.now(); const day = today();
   const show = LS.get("calPast", false);
   const evs = D.events.filter((e) => show || new Date(e.starts_at) > now - 3 * 3600e3);
-  const canAdd = isElder() || D.groups.some((g) => canEdit(g.id));
+  const canAdd = canEvents();
   const byMonth = {}; const add = (k, item) => (byMonth[k] = byMonth[k] || []).push(item);
   evs.forEach((e) => { const p = sgParts(e.starts_at); add(monthKey(p.date), { k: p.date + " " + p.time, html: eventRow(e) }); });
   // Birthdays fill this month and the next two.
@@ -816,7 +824,7 @@ R.more = () => {
       <a class="li" href="#/people">${ic("cake")}<span class="grow"><b>${esc(t("people"))}</b><small>${esc(isAdmin() ? t("peopleAdmin") : t("peopleSub"))}</small></span>${ic("chev", "chev")}</a>
       <button class="li" data-act="notify">${ic("bell")}<span class="grow"><b>${esc(t("notifications"))}</b><small>${esc(perm === "granted" ? t("notifyOnTxt") : perm === "denied" ? t("notifyDenied") : t("notifyAskBody"))}</small></span>${ic("chev", "chev")}</button>
       ${hasRights() ? `<button class="li" data-act="toggleView">${ic("people")}<span class="grow"><b>${esc(t("layout"))}: ${esc(t(manage() ? "viewAdmin" : "viewMember"))}</b><small>${esc(t(manage() ? "toMember" : "toAdmin"))}</small></span>${ic("chev", "chev")}</button>` : ""}
-      ${isAdmin() ? `<a class="li" href="#/appstatus">${ic("phone")}<span class="grow"><b>${esc(t("asTitle"))}</b><small>${esc(t("asSub"))}</small></span>${ic("chev", "chev")}</a>` : ""}
+      ${isAdmin() && isYB() ? `<a class="li" href="#/appstatus">${ic("phone")}<span class="grow"><b>${esc(t("asTitle"))}</b><small>${esc(t("asSub"))}</small></span>${ic("chev", "chev")}</a>` : ""}
       ${isAdmin() ? `<button class="li" data-act="breadSetup">${ic("bread")}<span class="grow"><b>${esc(t("bs_title"))}</b><small>${esc(t("src_" + ((D.settings || {}).bread_source || "elders")))}</small></span>${ic("chev", "chev")}</button>` : ""}
       ${serveOn() ? `<button class="li" data-act="servePick">${ic("calendar")}<span class="grow"><b>${esc(t("svTitle"))}</b><small>${esc((me().profile || {}).serve ? me().profile.serve.map((id) => gname(G(id))).filter(Boolean).join(", ") || t("svNone") : t("pfNotYet"))}</small></span>${ic("chev", "chev")}</button>` : ""}
       ${pfSkipped() ? `<button class="li" data-act="pfTest">${ic("spark")}<span class="grow"><b>${esc(t(LS.get("pfTest") ? "pfTestEnd" : "pfTestStart"))}</b><small>${esc(t(LS.get("pfTest") ? "pfTestOnSub" : "pfTestSub"))}</small></span>${ic("chev", "chev")}</button>` : ""}
@@ -844,7 +852,7 @@ function asFill() {
     <p class="small muted pad">${esc(t("asNote"))}</p>`;
 }
 R.appstatus = () => {
-  if (!isAdmin()) return shell("#/more", empty(t("notFound")), { back: "#/more" });
+  if (!isAdmin() || !isYB()) return shell("#/more", empty(t("notFound")), { back: "#/more" });
   AS.rows = null;
   Promise.all([api.appStatus(), api.phoneTries ? api.phoneTries().catch(() => []) : []]).then(([r, tr]) => { AS.rows = r || []; AS.tries = tr || []; asFill(); }).catch((e) => { const el = $("#asList"); if (el) el.innerHTML = empty(errMsg(e)); });
   return shell("#/more", `<div id="asList"><p class="center pad"><span class="spin"></span></p></div>`, { back: "#/more", title: t("asShort"), sub: t("asSub") });
@@ -1200,7 +1208,7 @@ A.calPast = () => { LS.set("calPast", !LS.get("calPast", false)); render(); };
 A.icsAll = () => download("hkbp-singapore.ics", ics(D.events.filter((e) => new Date(e.starts_at) > Date.now())), "text/calendar");
 A.evMenu = (d) => {
   const e = D.events.find((x) => x.id === d.id); if (!e) return; const p = sgParts(e.starts_at); const g = e.group_id ? G(e.group_id) : null;
-  const edit = e.group_id && isTeachG(e.group_id) ? canEdit(e.group_id) : isElder() || (e.group_id && canEdit(e.group_id));
+  const edit = canEvents();
   sheet(e.title, `<p class="muted">${esc(fmtDay(p.date))} · ${esc(fmtTime(e.starts_at))}${e.ends_at ? "–" + esc(fmtTime(e.ends_at)) : ""}</p>
     ${e.place ? `<p>${ic("pin")} ${esc(e.place)}</p>` : ""}<p class="small muted">${esc(gname(g))} · ${esc(t("remindTxt", remindLabel(e.remind_min)))}</p>${e.notes ? `<p class="pre">${esc(e.notes)}</p>` : ""}
     <div class="stack"><button class="btn primary block" data-act="icsOne" data-id="${e.id}">${ic("calendar")} ${esc(t("addPhoneCal"))}</button>
@@ -1214,15 +1222,14 @@ const remindLabel = (m) => t("rem_" + m) !== "rem_" + m ? t("rem_" + m) : `${m} 
 // New event: first ask who it is for (whole church or one category), then the details.
 A.newEvent = (d) => {
   if (d.id) return eventForm(D.events.find((x) => x.id === d.id));
+  if (!canEvents()) { toast(t("notMaker"), true); return; }
   if (d.g) return eventForm({ group_id: d.g });
-  const cats = D.groups.filter((g) => (isTeachG(g.id) ? canEdit(g.id) : isElder() || canEdit(g.id)));
-  if (!isElder() && cats.length === 1) return eventForm({ group_id: cats[0].id });
   sheet(t("newEvent"), `<p class="muted">${esc(t("evWho"))}</p><div class="stack">
-    ${isElder() ? `<button class="opt-card" data-act="evPick" data-g="">${ic("people")}<span><b>${esc(t("evGeneral"))}</b><small>${esc(t("evGeneralSub"))}</small></span>${ic("chev", "chev")}</button>` : ""}
+    <button class="opt-card" data-act="evPick" data-g="">${ic("people")}<span><b>${esc(t("evGeneral"))}</b><small>${esc(t("evGeneralSub"))}</small></span>${ic("chev", "chev")}</button>
     <button class="opt-card" data-act="evSpecific">${ic("groups")}<span><b>${esc(t("evSpecific"))}</b><small>${esc(t("evSpecificSub"))}</small></span>${ic("chev", "chev")}</button></div>`);
 };
 A.evSpecific = () => {
-  const cats = D.groups.filter((g) => (isTeachG(g.id) ? canEdit(g.id) : isElder() || canEdit(g.id)));
+  const cats = canEvents() ? D.groups.filter((g) => g.kind !== "office") : [];
   const list = (kind) => cats.filter((g) => g.kind === kind).map((g) => `<button class="gtile" data-act="evPick" data-g="${g.id}" style="--gc:${g.color}"><span class="gicon">${ic(g.icon)}</span><span class="gname"><b>${esc(gname(g))}</b></span>${ic("chev", "chev")}</button>`).join("");
   sheet(t("evPickCat"), `${list("sermon") ? `<h4>${esc(t("kindSermon"))}</h4><div class="glist">${list("sermon")}</div>` : ""}${list("service") ? `<h4>${esc(t("kindService"))}</h4><div class="glist">${list("service")}</div>` : ""}`);
 };
