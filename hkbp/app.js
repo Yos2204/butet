@@ -363,11 +363,13 @@ const backAfterLogin = () => { const h = LS.get("afterLogin", "#/home") || "#/ho
 const signInCard = (msg) => `<div class="card center pad sign-in-card">${ic("lock")}<p>${esc(msg)}</p><button class="btn primary" data-act="signIn">${ic("lock")} ${esc(t("signIn"))}</button></div>`;
 
 // ---------- layout ----------
-const TABS = [["home", "#/home", "tab_home"], ["groups", "#/groups", "tab_groups"], ["roster", "#/serve", "tab_serve"], ["calendar", "#/calendar", "tab_calendar"], ["chat", "#/chat", "Chat"], ["more", "#/more", "tab_more"]];
+const TABS = [["home", "#/home", "tab_home"], ["groups", "#/groups", "tab_groups"], ["calendar", "#/calendar", "sched"], ["chat", "#/chat", "Chat"], ["more", "#/more", "tab_more"]];
 function shell(active, inner, opts = {}) {
   // People who are not signed in see only Home, plus a Sign in tab (YB 2026-10-28).
   const tabs = isGuest() ? TABS.filter(([, h]) => h === "#/home") : TABS;
-  const nav = tabs.map(([i, h, k]) => `<a href="${h}" class="${active === h ? "on" : ""}" ${active === h ? 'aria-current="page"' : ""}>${ic(i)}<span>${esc(t(k))}</span></a>`).join("")
+  // Rosters pages light up the Schedule tab too (YB 2026-10-29: calendar and rosters combined).
+  const act = active === "#/serve" ? "#/calendar" : active; const label = (k) => (k === "sched" ? L3("Jadwal", "Jadwal", "Schedule") : k === "Chat" ? "Chat" : t(k));
+  const nav = tabs.map(([i, h, k]) => `<a href="${h}" class="${act === h ? "on" : ""}" ${act === h ? 'aria-current="page"' : ""}>${ic(i)}<span>${esc(label(k))}</span></a>`).join("")
     + (isGuest() ? `<a href="#/login" data-act="signIn">${ic("lock")}<span>${esc(t("signIn"))}</span></a>` : "");
   return `
   <header class="top">
@@ -647,8 +649,7 @@ R.serve = () => {
   const list = D.groups.filter((g) => g.kind === "service" && g.id !== "parhalado" && serveShown(g));
   const ym = monthKey(today()); const sv = serveOn() && (me().profile || {}).serve;
   return shell("#/serve", `
-    <h2 class="page-h">${esc(t("serveTitle"))}</h2>
-    <p class="lead">${esc(t("serveLead"))}</p>
+    ${schedHead("roster")}
     ${sv && manage() ? `<div class="card row between pf-note"><span class="small muted">${esc(t(LS.get("allServe") ? "svAllShown" : "svFiltered"))}</span><span class="row"><button class="btn sm ghost" data-act="servePick">${esc(t("pfChange"))}</button><button class="btn sm" data-act="allServe">${esc(t(LS.get("allServe") ? "pfMine" : "pfAll"))}</button></span></div>` : ""}
     <div class="glist">${list.map((g) => { const has = D.rosters.some((r) => r.group_id === g.id && r.month === ym); const nx = D.rosters.some((r) => r.group_id === g.id && r.month === shiftMonth(ym, 1));
       return groupTile(g, `${has ? "✓ " : ""}${esc(t(has ? "rosterReady" : "rosterMissing", monthName(ym)))}${nx ? " · " + esc(t("nextReady")) : ""}`); }).join("")}</div>
@@ -776,7 +777,8 @@ R.calendar = () => {
   const evs = D.events.filter((e) => show || new Date(e.starts_at) > now - 3 * 3600e3);
   const canAdd = canEvents();
   // Each month is split into Events, Birthdays and Wedding anniversaries (YB 2026-10-28).
-  const byMonth = {}; const add = (k, part, item) => { byMonth[k] = byMonth[k] || { ev: [], bd: [], an: [] }; byMonth[k][part].push(item); };
+  const byMonth = {}; const add = (k, part, item) => { byMonth[k] = byMonth[k] || { du: [], ev: [], bd: [], an: [] }; byMonth[k][part].push(item); };
+  if (!isGuest()) duties().forEach((d) => { if (d.date && (show || d.date >= day)) add(monthKey(d.date), "du", { k: d.date, html: dutyRow(d) }); });
   evs.forEach((e) => { const p = sgParts(e.starts_at); add(monthKey(p.date), "ev", { k: p.date + " " + p.time, html: eventRow(e) }); });
   // Birthdays and anniversaries fill this month and the next two.
   const all = allBdays(); const wed = (D.people || []).filter((p) => p.anniv); let [y, mo] = day.split("-").map(Number);
@@ -789,12 +791,10 @@ R.calendar = () => {
   const months = Object.keys(byMonth).sort();
   const part = (icon, title, list) => list.length ? `<div class="card cal-part"><div class="card-h"><h3>${icon} ${esc(title)}</h3><span class="badge">${list.length}</span></div>${list.sort((a, c) => a.k.localeCompare(c.k)).map((x) => x.html).join("")}</div>` : "";
   return shell("#/calendar", `
-    <h2 class="page-h">${esc(t("calendarTitle"))}</h2>
-    <p class="lead">${esc(t("calendarLead"))}</p>
-    <div class="row two">${canAdd ? `<button class="btn primary" data-act="newEvent">${ic("plus")} ${esc(t("newEvent"))}</button>` : ""}<button class="btn" data-act="icsAll" ${evs.length ? "" : "disabled"}>${ic("download")} ${esc(t("addAllCal"))}</button></div>
-    <button class="card li" data-act="calSub">${ic("calendar")}<span class="grow"><b>${esc(t("calSub"))}</b><small>${esc(t("calSubSub"))}</small></span>${ic("chev", "chev")}</button>
-    <div class="row two">${isElder() ? `<button class="btn" data-act="addBday">${ic("cake")} ${esc(t("addBday"))}</button><button class="btn" data-act="importBdays">${ic("upload")} ${esc(t("importBdays"))}</button>` : ""}<button class="btn ghost" data-act="icsBdays" ${all.length ? "" : "disabled"}>${ic("cake")} ${esc(t("bdaysToCal"))}</button></div>
+    ${schedHead("agenda")}
+    <div class="row two">${canAdd ? `<button class="btn primary" data-act="newEvent">${ic("plus")} ${esc(t("newEvent"))}</button>` : ""}${isElder() ? `<button class="btn" data-act="bdayTools">${ic("cake")} ${esc(L3("Ulang tahun", "Ari tubu", "Birthdays"))}</button>` : ""}<button class="btn" data-act="phoneCal">${ic("download")} ${esc(L3("Ke kalender HP", "Tu kalender HP", "To my phone"))}</button></div>
     ${months.length ? months.map((k) => `<h3 class="sec-h">${esc(monthName(k))}</h3>
+      ${part(ic("check"), L3("Tugas Anda", "Ulaonmu", "Your duties"), byMonth[k].du)}
       ${part(ic("calendar"), L3("Acara", "Ulaon", "Events"), byMonth[k].ev)}
       ${part(ic("cake"), L3("Ulang Tahun", "Ari Tubu", "Birthdays"), byMonth[k].bd)}
       ${part("💍", L3("Ulang Tahun Pernikahan", "Ulang Taon Pardongan Saripeon", "Wedding anniversaries"), byMonth[k].an)}`).join("") : empty(t("noEvents"), "calendar")}
@@ -804,6 +804,19 @@ function annivRow(p, d) {
   return `<div class="li"><span class="date-chip" style="--gc:#b7791f"><b>${esc(fmt(d, { day: "numeric" }))}</b><small>${esc(fmt(d, { month: "short" }))}</small></span>
     <span class="grow"><b>💍 ${esc(p.name)}</b><small>${esc(L3("Ulang tahun pernikahan", "Ulang taon pardongan saripeon", "Wedding anniversary"))}</small></span></div>`;
 }
+// Schedule (YB 2026-10-29): Calendar and Rosters are one tab with a switch at the top.
+// Agenda = each month's events, your duties, birthdays and anniversaries; Roster = every section's roster.
+function schedHead(which) {
+  const seg = (k, href, icon, label) => `<a role="tab" aria-selected="${which === k}" href="${href}">${ic(icon)} ${esc(label)}</a>`;
+  return `<h2 class="page-h">${esc(L3("Jadwal", "Jadwal", "Schedule"))}</h2>
+    <div class="seg sched-seg" role="tablist" style="--gc:var(--brand)">${seg("agenda", "#/calendar", "calendar", L3("Agenda", "Agenda", "Agenda"))}${seg("roster", "#/serve", "roster", "Roster")}</div>
+    <p class="lead">${esc(which === "agenda" ? L3("Acara, tugas Anda, ulang tahun dan ulang tahun pernikahan setiap bulan.", "Ulaon, ulaonmu, ari tubu dohot ari pardongan saripeon sadarion bulan.", "Each month's events, your duties, birthdays and anniversaries.") : t("serveLead"))}</p>`;
+}
+try { document.head.insertAdjacentHTML("beforeend", `<style>
+  .sched-seg { margin: 12px 0 6px; }
+  .sched-seg a { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 10px; font-size: 14.5px; }
+  .sched-seg a .ic { width: 18px; height: 18px; }
+</style>`); } catch (e) {}
 function bdayRow(b, d) {
   const inner = `<span class="date-chip bday"><b>${esc(fmt(d, { day: "numeric" }))}</b><small>${esc(fmt(d, { month: "short" }))}</small></span>
     <span class="grow"><b>🎂 ${esc(b.name)}</b><small>${esc(t("bdayOf"))}</small></span>`;
@@ -1037,6 +1050,14 @@ window.addEventListener("hashchange", () => { window.scrollTo(0, 0); render(); }
 // ---------- actions ----------
 const A = {};
 const F = {};
+// The phone-calendar options and the birthday tools open in a small menu, so the Agenda starts with the months themselves.
+A.phoneCal = () => sheet(L3("Ke kalender HP", "Tu kalender HP", "To my phone calendar"), `<div class="stack">
+  <button class="opt-card" data-act="calSub">${ic("calendar")}<span><b>${esc(t("calSub"))}</b><small>${esc(t("calSubSub"))}</small></span>${ic("chev", "chev")}</button>
+  <button class="opt-card" data-act="icsAll">${ic("download")}<span><b>${esc(t("addAllCal"))}</b><small>${esc(L3("Sekali saja, acara yang akan datang", "Sahali, ulaon na naeng ro", "Once, the upcoming events"))}</small></span>${ic("chev", "chev")}</button>
+  <button class="opt-card" data-act="icsBdays">${ic("cake")}<span><b>${esc(t("bdaysToCal"))}</b><small>${esc(L3("Setiap tahun, otomatis", "Ganup taon", "Every year, automatically"))}</small></span>${ic("chev", "chev")}</button></div>`);
+A.bdayTools = () => sheet(L3("Ulang tahun", "Ari tubu", "Birthdays"), `<div class="stack">
+  <button class="opt-card" data-act="addBday">${ic("plus")}<span><b>${esc(t("addBday"))}</b></span>${ic("chev", "chev")}</button>
+  <button class="opt-card" data-act="importBdays">${ic("upload")}<span><b>${esc(t("importBdays"))}</b></span>${ic("chev", "chev")}</button></div>`);
 
 // ---------- Live / not live (YB 2026-10-29) ----------
 // Green dot = has the app open right now (seen in the last 3 minutes); grey = not. Long-press or hover shows when last seen.
