@@ -446,9 +446,10 @@ R.home = () => {
     ${isGuest() ? `<button class="card notify-ask" data-act="signIn">${ic("lock")}<span><b>${esc(t("guestTitle"))}</b><small>${esc(L3("Masuk untuk melihat Tata Ibadah, kalender, roster, kategorial dan tugas Anda.", "Masuk asa diida Tata Ibadah, kalender, roster, kategorial dohot ulaonmu.", "Sign in to see the Tata Ibadah, calendar, rosters, your categories and your duties."))}</small></span>${ic("chev", "chev")}</button>` : ""}
     ${mine ? `<div class="card hbd">${ic("cake")}<div><h2>${esc(t("hbdTitle", firstName(m.name)))}</h2><p>${esc(t("hbdBody"))}</p></div></div>` : ""}
     ${m.wed && m.wed.slice(5) === day.slice(5) ? `<div class="card hbd">💍<div><h2>${esc(t("annivTitle", firstName(m.name)))}</h2><p>${esc(t("annivBody"))}</p></div></div>` : ""}
-    ${annivToday.length ? `<article class="card"><div class="card-h"><h3>💍 ${esc(t("annivs"))}</h3></div>${annivToday.map((p) => `<div class="li"><span class="avatar">${esc(initials(p.name))}</span><span class="grow"><b>${esc(p.name)}</b><small>${esc(t("today"))}</small></span>${p.phone && p.id !== m.id ? `<a class="icon-btn wa" href="${wa(t("annivWish", firstName(p.name)), p.phone)}" target="_blank" rel="noopener" aria-label="WhatsApp">${ic("wa")}</a>` : `<span class="party">🎉</span>`}</div>`).join("")}</article>` : ""}
+    ${annivToday.length ? `<article class="card"><div class="card-h"><h3>💍 ${esc(t("annivs"))}</h3></div>${annivToday.map((p) => `<div class="li">${avatarOf(p)}<span class="grow"><b>${esc(p.name)}</b><small>${esc(t("today"))}</small></span>${p.phone && p.id !== m.id ? `<a class="icon-btn wa" href="${wa(t("annivWish", firstName(p.name)), p.phone)}" target="_blank" rel="noopener" aria-label="WhatsApp">${ic("wa")}</a>` : `<span class="party">🎉</span>`}</div>`).join("")}</article>` : ""}
     ${notifyAsk ? `<button class="card notify-ask" data-act="notify">${ic("bell")}<span><b>${esc(t("notifyAskTitle"))}</b><small>${esc(standalone() || !/iP(hone|ad)/.test(navigator.userAgent) ? t("notifyAskBody") : t("iosInstallFirst"))}</small></span>${ic("chev", "chev")}</button>` : ""}
 
+    ${!isGuest() ? `<a class="card li" href="#/chat">💬<span class="grow"><b>Chat</b><small>${esc(chatRooms().map((r) => r.name).join(" · "))}</small></span>${ic("chev", "chev")}</a>` : ""}
     ${!isGuest() && (D.services || []).length ? `<a class="card li tata-home" href="#/tata/${D.services[0].id}">${ic("book")}<span class="grow"><b>${esc(t("tataTitle"))}</b><small>${esc(D.services[0].title || "")}${D.services[0].service_date ? " · " + esc(fmtDay(D.services[0].service_date)) : ""}</small></span>${ic("chev", "chev")}</a>` : ""}
     <article class="card bread-card">
       <div class="kicker">${ic("bread")} ${esc(t("breadTitle"))}</div>
@@ -463,7 +464,7 @@ R.home = () => {
 
     ${bdays.length ? `<article class="card">
       <div class="card-h"><h3>${ic("cake")} ${esc(t("birthdays"))}</h3><a class="small" href="#/people">${esc(t("seeAll"))}</a></div>
-      ${bdays.slice(0, 6).map(({ p, day: d, inDays }) => `<div class="li"><span class="avatar">${esc(initials(p.name))}</span><span class="grow"><b>${esc(p.name)}</b><small>${esc(inDays === 0 ? t("today") : inDays === 1 ? t("tomorrow") : fmt(d, { weekday: "long", day: "numeric", month: "short" }))}</small></span>
+      ${bdays.slice(0, 6).map(({ p, day: d, inDays }) => `<div class="li">${avatarOf(p)}<span class="grow"><b>${esc(p.name)}</b><small>${esc(inDays === 0 ? t("today") : inDays === 1 ? t("tomorrow") : fmt(d, { weekday: "long", day: "numeric", month: "short" }))}</small></span>
         ${inDays === 0 && p.phone && p.id !== m.id ? `<a class="icon-btn wa" href="${wa(t("hbdWish", firstName(p.name)), p.phone)}" target="_blank" rel="noopener" aria-label="WhatsApp">${ic("wa")}</a>` : inDays === 0 ? `<span class="party">🎉</span>` : ""}</div>`).join("")}
     </article>` : ""}
 
@@ -637,7 +638,7 @@ function postCard(p, edit) {
 }
 function peopleList(people, gid) {
   if (!people.length) return empty(t("noMembers"), "people");
-  return `<div class="card">${people.map((p) => `<div class="li"><span class="avatar">${esc(initials(p.name))}</span><span class="grow"><b>${esc(p.name)}</b><small>${gid && ["chair", ...MAKERS, "teacher"].includes(p.groups[gid]) ? esc(roleLabel(gid, p.groups[gid])) : ""}${p.phone ? (gid && ["chair", ...MAKERS, "teacher"].includes(p.groups[gid]) ? " · " : "") + esc(fmtPhone(p.phone)) : ""}</small></span>
+  return `<div class="card">${people.map((p) => `<div class="li">${avatarOf(p)}<span class="grow"><b>${esc(p.name)}</b><small>${gid && ["chair", ...MAKERS, "teacher"].includes(p.groups[gid]) ? esc(roleLabel(gid, p.groups[gid])) : ""}${p.phone ? (gid && ["chair", ...MAKERS, "teacher"].includes(p.groups[gid]) ? " · " : "") + esc(fmtPhone(p.phone)) : ""}</small></span>
     ${p.phone ? `<a class="icon-btn wa" href="https://wa.me/65${p.phone}" target="_blank" rel="noopener" aria-label="WhatsApp">${ic("wa")}</a>` : ""}</div>`).join("")}</div>`;
 }
 
@@ -918,7 +919,7 @@ R.people = () => {
     <div class="chips">${month.map((p) => `<span class="chip">${esc(p.bday.slice(3))} · ${esc(p.name)}</span>`).join("") || `<span class="muted small">${esc(t("noBdays"))}</span>`}</div>
     ${isAdmin() ? `<h3 class="sec-h">${esc(t("allMembers"))} (${D.people.length})</h3>
       <input class="search" type="search" placeholder="${esc(t("search"))}" data-filter=".mrow">
-      <div class="card">${D.people.map((p) => `<button class="li mrow" data-act="editMember" data-id="${p.id}" data-q="${esc(norm(p.name + " " + (p.phone || "")))}"><span class="avatar">${esc(initials(p.name))}</span><span class="grow"><b>${esc(p.name)}${p.is_admin ? ` <span class="badge admin">${esc(t("role_admin"))}</span>` : ""}</b><small>${esc(fmtPhone(p.phone))} · ${esc(Object.entries(p.groups || {}).map(([g, r]) => gname(G(g)) + (r === "chair" ? " ★" : "")).join(", ") || "—")}${p.has_password === false ? " · " + esc(t("noPassword")) : ""}</small></span>${ic("chev", "chev")}</button>`).join("")}</div>` : ""}`,
+      <div class="card">${D.people.map((p) => `<button class="li mrow" data-act="editMember" data-id="${p.id}" data-q="${esc(norm(p.name + " " + (p.phone || "")))}">${avatarOf(p)}<span class="grow"><b>${esc(p.name)}${p.is_admin ? ` <span class="badge admin">${esc(t("role_admin"))}</span>` : ""}</b><small>${esc(fmtPhone(p.phone))} · ${esc(Object.entries(p.groups || {}).map(([g, r]) => gname(G(g)) + (r === "chair" ? " ★" : "")).join(", ") || "—")}${p.has_password === false ? " · " + esc(t("noPassword")) : ""}</small></span>${ic("chev", "chev")}</button>`).join("")}</div>` : ""}`,
     { back: "#/more", title: t("people"), sub: t("peopleSub") });
 };
 
@@ -936,7 +937,7 @@ R.more = () => {
     <p class="small muted center pad">HKBP Singapore · ${esc(t("logoNote"))}</p>`);
   return shell("#/more", `
     <section class="profile card">
-      <span class="avatar lg">${esc(initials(m.name))}</span>
+      ${avatarOf(m, "lg")}
       <div class="grow"><h3>${esc(m.name)}</h3><p class="small muted">${esc(fmtPhone(m.phone))}${m.dob ? " · " + esc(fmt(m.dob, { day: "numeric", month: "long" })) : ""}</p>
         <div class="chips">${m.is_admin && manage() ? `<span class="badge admin">${esc(t("role_admin"))}</span>` : ""}${roles.map(([g, r]) => `<span class="chip" style="--gc:${(G(g) || {}).color}">${esc(gname(G(g)))}${r === "chair" && manage() ? " · " + esc(t("role_chair")) : ""}</span>`).join("")}</div>
         <button class="btn sm pf-reset" data-act="pfReset">${ic("redo")} ${esc(t("pfReset"))}</button></div>
@@ -944,6 +945,7 @@ R.more = () => {
     <div class="menu card">
       <a class="li" href="#/elders">${ic("book")}<span class="grow"><b>${esc(t("eldersUpdates"))}</b></span>${ic("chev", "chev")}</a>
       <a class="li" href="#/bread">${ic("bread")}<span class="grow"><b>${esc(t("breadTitle"))}</b></span>${ic("chev", "chev")}</a>
+      <a class="li" href="#/chat">${ic("people")}<span class="grow"><b>💬 Chat</b><small>${esc(chatRooms().map((r) => r.name).join(" · "))}</small></span>${ic("chev", "chev")}</a>
       ${isOffice() && manage() ? `<a class="li" href="#/o/secretary">${ic("lock")}<span class="grow"><b>${esc(t("officeTitle"))}</b><small>${esc(officeGroups().map(gname).join(" · "))}</small></span>${ic("chev", "chev")}</a>` : ""}
       <a class="li" href="#/people">${ic("cake")}<span class="grow"><b>${esc(t("people"))}</b><small>${esc(isAdmin() ? t("peopleAdmin") : t("peopleSub"))}</small></span>${ic("chev", "chev")}</a>
       <button class="li" data-act="notify">${ic("bell")}<span class="grow"><b>${esc(t("notifications"))}</b><small>${esc(perm === "granted" ? t("notifyOnTxt") : perm === "denied" ? t("notifyDenied") : t("notifyAskBody"))}</small></span>${ic("chev", "chev")}</button>
@@ -970,7 +972,7 @@ function asFill() {
   el.innerHTML = `
     <div class="as-totals"><div class="card"><b>${si}/${n}</b><small>${esc(t("asSigned"))}</small></div><div class="card"><b>${no}/${n}</b><small>${esc(t("asNotifOn"))}</small></div><div class="card"><b>${ins}/${n}</b><small>${esc(t("asInstalled"))}</small></div></div>
     <div class="chips">${[["all", "asAll"], ["noapp", "asNoApp"], ["nonotif", "asNoNotif"]].map(([f, k]) => `<button class="chip ${AS.f === f ? "on" : ""}" data-act="asFilter" data-f="${f}">${esc(t(k))}</button>`).join("")}</div>
-    <div class="card menu">${show.length ? show.map((r) => `<div class="li as-row"><span class="avatar">${esc(initials(r.name))}</span><span class="grow"><b>${esc(r.name)}</b>${r.self_reg ? ` <span class="badge chair">${esc(t("asSelfReg"))}</span>` : ""}<small>${esc(fmtPhone(r.phone))} · ${esc(r.last_seen ? t("asLast") + " " + fmt(r.last_seen, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : t("asNever"))}</small></span><span class="as-pills">${asDot(r.signed_in, t("asApp"))}${asDot(r.notif, t("asNotif"))}</span></div>`).join("") : empty(t("asNone"))}</div>
+    <div class="card menu">${show.length ? show.map((r) => `<div class="li as-row">${avatarOf(r)}<span class="grow"><b>${esc(r.name)}</b>${r.self_reg ? ` <span class="badge chair">${esc(t("asSelfReg"))}</span>` : ""}<small>${esc(fmtPhone(r.phone))} · ${esc(r.last_seen ? t("asLast") + " " + fmt(r.last_seen, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : t("asNever"))}</small></span><span class="as-pills">${asDot(r.signed_in, t("asApp"))}${asDot(r.notif, t("asNotif"))}</span></div>`).join("") : empty(t("asNone"))}</div>
     <h3 class="sec-h">${esc(t("asOthers"))}</h3>
     <div class="card menu">${AS.tries.length ? AS.tries.map((r) => `<div class="li as-row"><span class="avatar">?</span><span class="grow"><b>${esc(fmtPhone(r.phone))}</b><small>${esc(t("asTried", r.tries))} · ${esc(t("asLastTry") + " " + fmt(r.last_at, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }))}</small></span><span class="as-pills">${asDot(false, t("asNotListed"))}</span></div>`).join("") : `<p class="small muted pad">${esc(t("asNoOthers"))}</p>`}</div>
     <p class="small muted pad">${esc(t("asNote"))}</p>`;
@@ -995,7 +997,7 @@ async function render() {
     if (!D) await refresh();
     if (!r) { history.replaceState(null, "", "#/home"); r = "home"; }
     if (isGuest() && !["home", "bread"].includes(r)) { history.replaceState(null, "", "#/home"); r = "home"; arg = undefined; }
-    const map = { tata: R.tata, home: R.home, groups: R.groups, g: R.group, serve: R.serve, s: R.section, calendar: R.calendar, bread: R.bread, elders: R.elders, berita: R.berita, people: R.people, more: R.more, appstatus: R.appstatus, o: R.office, warta: R.warta };
+    const map = { chat: R.chat, tata: R.tata, home: R.home, groups: R.groups, g: R.group, serve: R.serve, s: R.section, calendar: R.calendar, bread: R.bread, elders: R.elders, berita: R.berita, people: R.people, more: R.more, appstatus: R.appstatus, o: R.office, warta: R.warta };
     const html = (map[r] || R.notFound)(arg);
     if (typeof html === "string") view().innerHTML = html;
     draftRestore(view()); wAutoBase();
@@ -1036,6 +1038,102 @@ window.addEventListener("hashchange", () => { window.scrollTo(0, 0); render(); }
 // ---------- actions ----------
 const A = {};
 const F = {};
+
+// ---------- Live / not live (YB 2026-10-29) ----------
+// Green dot = has the app open right now (seen in the last 3 minutes); grey = not. Long-press or hover shows when last seen.
+// The app pings the server every minute while it is open; chat rooms also report who is live.
+const CH_ONLINE = new Set();
+const seenAt = (id) => Math.max(CH_ONLINE.has(id) ? Date.now() : 0, D && D.seen && D.seen[id] ? Date.parse(D.seen[id]) : 0);
+const isLive = (id) => !!id && !!D && ((D.me && id === D.me.id && !isGuest()) || Date.now() - seenAt(id) < 3 * 60e3);
+const seenText = (id) => { if (isLive(id)) return L3("Sedang aktif", "Adong di aplikasi", "Live now"); const t0 = seenAt(id); if (!t0) return L3("Belum aktif", "Dang adong", "Not seen yet");
+  const m = Math.round((Date.now() - t0) / 60e3); const ago = m < 60 ? `${m} min` : m < 1440 ? `${Math.round(m / 60)} ${L3("jam", "jam", "h")}` : `${Math.round(m / 1440)} ${L3("hari", "ari", "d")}`; return L3(`Terakhir aktif ${ago} lalu`, `Parpudi ${ago} na salpu`, `Last seen ${ago} ago`); };
+const presDot = (id) => (id ? `<i class="pres ${isLive(id) ? "on" : "off"}" title="${esc(seenText(id))}" aria-label="${esc(seenText(id))}"></i>` : "");
+const avatarOf = (p, cls = "") => `<span class="avatar${cls ? " " + cls : ""}">${esc(initials(p && p.name))}${presDot(p && p.id)}</span>`;
+setInterval(() => { try { if (D && !isGuest() && !document.hidden && api.ping) api.ping(standalone()).catch(() => {}); } catch (e) {} }, 60e3);
+try { document.head.insertAdjacentHTML("beforeend", `<style>
+  .avatar { position: relative; }
+  .pres { position: absolute; right: -1px; bottom: -1px; width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--surface); background: #c3cad8; }
+  .pres.on { background: #22c55e; box-shadow: 0 0 0 0 rgba(34, 197, 94, .5); animation: presPulse 2s infinite; }
+  .avatar.lg .pres { width: 16px; height: 16px; border-width: 3px; }
+  .ch-name .pres { position: static; display: inline-block; width: 9px; height: 9px; border-width: 0; margin-right: 5px; vertical-align: 1px; animation: none; }
+  .ch-online { display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 12.5px; color: var(--muted); margin: 6px 0 0; }
+  .ch-online i { width: 9px; height: 9px; border-radius: 50%; background: #22c55e; display: inline-block; }
+  @keyframes presPulse { 0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, .45); } 70% { box-shadow: 0 0 0 6px rgba(34, 197, 94, 0); } 100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); } }
+  @media (prefers-reduced-motion: reduce) { .pres.on { animation: none; } }
+</style>`); } catch (e) {}
+
+// ---------- Chat (YB 2026-10-29) ----------
+// Two rooms, both two-way: "makers" for the makers of every category and section (and the admin), "all" for every member.
+// Messages are read and sent through hk_save ("chat_list", "chat"); the open room checks for new messages every 4 seconds.
+const CHAT_ROLES = ["chair", "maker", "tmaker", "ychair", "ytreasurer", "ysecretary"];
+const isChatMaker = () => !!D && !isGuest() && (D.me.is_admin || Object.values(D.me.groups || {}).some((r) => CHAT_ROLES.includes(r)));
+const chatRooms = () => [
+  ...(isChatMaker() ? [{ id: "makers", name: L3("Makers", "Makers", "Makers"), sub: L3("Makers semua kategorial dan seksi", "Makers sude kategorial dohot seksi", "Makers of every category and section") }] : []),
+  { id: "all", name: L3("Jemaat", "Ruas", "Everyone"), sub: L3("Makers dan seluruh jemaat", "Makers dohot sude ruas", "Makers and all members") },
+];
+let CH = { room: null, msgs: [], last: 0, timer: null, sending: false };
+function chatHtml() {
+  if (!CH.msgs.length) return empty(L3("Belum ada pesan. Mulai percakapan!", "Dang adong pesan. Mulai ma!", "No messages yet. Start the conversation!"), "people");
+  let lastDay = "";
+  return CH.msgs.map((m) => {
+    const mine = m.member_id === D.me.id; const day = sgParts(m.at).date;
+    const sep = day !== lastDay ? `<div class="ch-day">${esc(day === today() ? t("today") : fmt(day, { weekday: "long", day: "numeric", month: "long" }))}</div>` : ""; lastDay = day;
+    return `${sep}<div class="ch-msg${mine ? " mine" : ""}">${mine ? "" : `<b class="ch-name">${presDot(m.member_id)}${esc(m.name || "")}</b>`}<div class="ch-bubble">${esc(m.body).replace(/\n/g, "<br>")}</div>
+      <small class="ch-time">${esc(fmtTime(m.at))}${mine || D.me.is_admin ? ` · <button class="link ch-del" data-act="chatDel" data-id="${m.id}">${esc(t("delete"))}</button>` : ""}</small></div>`;
+  }).join("");
+}
+function chatPaint(scroll) { const box = document.getElementById("chatBox"); if (!box) return; const atEnd = window.innerHeight + window.scrollY >= document.body.scrollHeight - 120; box.innerHTML = chatHtml(); if (scroll || atEnd) window.scrollTo(0, document.body.scrollHeight); }
+async function chatLoad(first) {
+  const room = CH.room; if (!room) return;
+  const r = await api.save("chat_list", { room, after: CH.last || null }); if (CH.room !== room) return;
+  const add = (r && r.messages) || []; add.forEach((m) => { if (!CH.msgs.some((x) => x.id === m.id)) CH.msgs.push(m); });
+  if (r && Array.isArray(r.online)) { CH_ONLINE.clear(); r.online.forEach((id) => CH_ONLINE.add(id)); const el = document.getElementById("chOnline"); if (el) el.innerHTML = `<i></i> ${esc(L3(`${r.online.length} sedang aktif`, `${r.online.length} adong di aplikasi`, `${r.online.length} live now`))}`; if (!add.length && !first) chatPaint(false); }
+  if (add.length) CH.last = add[add.length - 1].id;
+  if (add.length || first) chatPaint(first);
+}
+R.chat = (room) => {
+  if (isGuest()) return R.home();
+  const rooms = chatRooms();
+  if (!room) return shell("#/more", `<h2 class="page-h">💬 Chat</h2><p class="lead">${esc(L3("Percakapan dua arah. Ketuk sebuah ruang untuk membuka.", "Marsiboto dua arah. Ketuk ruang asa bukka.", "Two-way conversations. Tap a room to open it."))}</p>
+    <div class="glist">${rooms.map((r) => `<a class="gtile" href="#/chat/${r.id}" style="--gc:${r.id === "makers" ? "var(--gold)" : "var(--brand)"}"><span class="gicon">${ic(r.id === "makers" ? "gear" : "people")}</span><span class="gname"><b>${esc(r.name)}</b><small>${esc(r.sub)}</small></span>${ic("chev", "chev")}</a>`).join("")}</div>`, { back: "#/more", title: "Chat" });
+  const rm = rooms.find((r) => r.id === room); if (!rm) return R.notFound();
+  if (CH.room !== room) { CH.room = room; CH.msgs = []; CH.last = 0; }
+  clearInterval(CH.timer);
+  CH.timer = setInterval(() => { if (!new RegExp("^#/chat/" + CH.room + "\\b").test(location.hash)) { clearInterval(CH.timer); return; } if (!document.hidden) chatLoad(false).catch(() => {}); }, 4000);
+  setTimeout(() => chatLoad(true).catch((e) => toast(errMsg(e), true)), 0);
+  return shell("#/more", `<p class="ch-online" id="chOnline"></p><div id="chatBox" class="chat">${CH.msgs.length ? chatHtml() : `<p class="center pad"><span class="spin"></span></p>`}</div>
+    <div class="ch-bar"><textarea id="chatIn" rows="1" maxlength="1000" placeholder="${esc(L3("Tulis pesan…", "Surat pesan…", "Write a message…"))}"></textarea><button class="btn primary" data-act="chatSend" aria-label="${esc(L3("Kirim", "Kirim", "Send"))}">➤</button></div>`,
+    { back: "#/chat", title: "💬 " + rm.name, sub: rm.sub });
+};
+A.chatSend = async (d, btn) => {
+  const inp = document.getElementById("chatIn"); const body = (inp && inp.value || "").trim(); if (!body || CH.sending) return;
+  CH.sending = true; btn.disabled = true;
+  try { const m = await api.save("chat", { room: CH.room, body }); inp.value = ""; inp.style.height = ""; if (m && m.id && !CH.msgs.some((x) => x.id === m.id)) { CH.msgs.push(m); CH.last = Math.max(CH.last, m.id); } chatPaint(true); inp.focus(); }
+  catch (e) { toast(e && /too_fast/.test(e.message || e.code || "") ? L3("Terlalu cepat, tunggu sebentar.", "Hatop hian, paima jolo.", "Too fast, wait a moment.") : errMsg(e), true); }
+  finally { CH.sending = false; btn.disabled = false; }
+};
+A.chatDel = async (d, btn) => {
+  if (btn.dataset.sure !== "1") { btn.dataset.sure = "1"; btn.textContent = t("tapAgain"); return; }
+  try { await api.del("chat", d.id); CH.msgs = CH.msgs.filter((m) => String(m.id) !== String(d.id)); chatPaint(false); } catch (e) { toast(errMsg(e), true); }
+};
+// Enter sends, Shift+Enter makes a new line; the box grows with the text.
+document.addEventListener("keydown", (e) => { if (e.target && e.target.id === "chatIn" && e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); const b = document.querySelector('[data-act="chatSend"]'); if (b) A.chatSend(b.dataset, b); } });
+document.addEventListener("input", (e) => { if (e.target && e.target.id === "chatIn") { e.target.style.height = "auto"; e.target.style.height = Math.min(140, e.target.scrollHeight) + "px"; } });
+try { document.head.insertAdjacentHTML("beforeend", `<style>
+  .chat { display: flex; flex-direction: column; gap: 10px; padding: 12px 0 90px; }
+  .ch-day { align-self: center; font-size: 12px; font-weight: 700; color: var(--muted); background: var(--surface-2); padding: 3px 10px; border-radius: 999px; margin: 6px 0; }
+  .ch-msg { max-width: 82%; align-self: flex-start; display: flex; flex-direction: column; gap: 3px; }
+  .ch-msg.mine { align-self: flex-end; align-items: flex-end; }
+  .ch-name { font-size: 12.5px; color: var(--brand); padding-left: 12px; }
+  .ch-bubble { background: var(--surface); border: 1px solid var(--line); padding: 9px 13px; border-radius: 18px 18px 18px 6px; line-height: 1.45; overflow-wrap: anywhere; box-shadow: var(--shadow); }
+  .ch-msg.mine .ch-bubble { background: var(--brand); border-color: var(--brand); color: var(--brand-ink); border-radius: 18px 18px 6px 18px; }
+  .ch-time { font-size: 11.5px; color: var(--muted); padding: 0 8px; }
+  .ch-del { font-size: 11.5px; font-weight: 700; }
+  .ch-bar { position: fixed; left: 0; right: 0; bottom: calc(66px + env(safe-area-inset-bottom)); z-index: 19; display: flex; gap: 8px; align-items: flex-end; padding: 8px max(12px, env(safe-area-inset-left)); background: color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-top: 1px solid var(--line); }
+  .ch-bar textarea { flex: 1; min-height: 44px; max-height: 140px; resize: none; padding: 11px 14px; border-radius: 22px; border: 1px solid var(--line); background: var(--surface); line-height: 1.35; }
+  .ch-bar .btn { width: 46px; min-width: 46px; height: 44px; border-radius: 50%; padding: 0; font-size: 18px; }
+  @media (orientation: landscape) and (max-height: 540px), (min-width: 900px) { .ch-bar { bottom: 0; left: calc(84px + env(safe-area-inset-left)); } }
+</style>`); } catch (e) {}
 // Youth / ReNa Band file and video uploads (the tab itself is youthFilesTab).
 A.yAttach = (d) => sheet(rDateCell(d.day), `<div class="stack">
   <button class="opt-card" data-act="yUpload" data-g="${esc(d.g)}" data-day="${esc(d.day)}">${ic("upload")}<span><b>${esc(L3("Unggah file", "Upload file", "Upload a file"))}</b><small>${esc(L3("Partitur, chord, lagu, slide…", "Partitur, chord, ende…", "Sheet music, chords, songs, slides…"))}</small></span>${ic("chev", "chev")}</button>
@@ -1154,7 +1252,7 @@ function tataBlock() {
     ${list.length > 6 ? `<a class="btn sm ghost" href="#/tata">${esc(t("seeAll"))}</a>` : ""}
   </div>
   ${D.me.is_admin && manage() ? `<div class="card"><div class="card-h"><h3>${ic("people")} ${esc(t("makerList"))}</h3><button class="btn sm" data-act="addMaker">${ic("plus")} ${esc(t("addMaker"))}</button></div>
-    ${mk.length ? mk.map((p) => `<div class="li"><span class="avatar">${esc(initials(p.name))}</span><span class="grow"><b>${esc(p.name)}</b><small>${esc(fmtPhone(p.phone))} · ${esc(t("role_" + p.groups.multimedia))}</small></span>${p.groups.multimedia === "maker" ? `<button class="icon-btn" data-act="rmMaker" data-phone="${esc(p.phone || "")}" aria-label="${esc(t("delete"))}">${ic("trash")}</button>` : ""}</div>`).join("") : `<p class="muted small">${esc(t("noMakers"))}</p>`}</div>` : ""}`;
+    ${mk.length ? mk.map((p) => `<div class="li">${avatarOf(p)}<span class="grow"><b>${esc(p.name)}</b><small>${esc(fmtPhone(p.phone))} · ${esc(t("role_" + p.groups.multimedia))}</small></span>${p.groups.multimedia === "maker" ? `<button class="icon-btn" data-act="rmMaker" data-phone="${esc(p.phone || "")}" aria-label="${esc(t("delete"))}">${ic("trash")}</button>` : ""}</div>`).join("") : `<p class="muted small">${esc(t("noMakers"))}</p>`}</div>` : ""}`;
 }
 function mmPrompt() {
   if (!$("#sheet").hidden) return;
@@ -2036,7 +2134,7 @@ F.tmcheck = async (f) => {
 
 function teachersTab(gid, list) {
   const mk = canEdit(gid); const order = { ychair: 0, ytreasurer: 1, ysecretary: 2, tmaker: 3, teacher: 4 };
-  const rows = list.slice().sort((a, b) => order[a.groups[gid]] - order[b.groups[gid]] || a.name.localeCompare(b.name)).map((p) => `<div class="li"><span class="avatar">${esc(initials(p.name))}</span>
+  const rows = list.slice().sort((a, b) => order[a.groups[gid]] - order[b.groups[gid]] || a.name.localeCompare(b.name)).map((p) => `<div class="li">${avatarOf(p)}
     <span class="grow"><b>${esc(p.name)}</b><small>${esc(roleLabel(gid, p.groups[gid]))}${p.phone ? " · " + esc(fmtPhone(p.phone)) : ""}</small></span>
     ${p.phone ? `<a class="icon-btn wa" href="https://wa.me/65${p.phone}" target="_blank" rel="noopener" aria-label="WhatsApp">${ic("wa")}</a>` : ""}
     ${mk && p.phone && p.id !== D.me.id ? `<button class="icon-btn" data-act="rmTeacher" data-g="${gid}" data-phone="${esc(p.phone)}" aria-label="${esc(t("delete"))}">${ic("trash")}</button>` : ""}</div>`).join("");
@@ -2146,7 +2244,7 @@ R.office = (gid) => {
     <div class="card"><div class="card-h"><h3>${ic("file")} ${esc(t("officeFiles"))}</h3>${canUpload(gid) && gid !== "treasurer" ? `<button class="btn sm primary" data-act="uploadFile" data-g="${gid}">${ic("upload")} ${esc(t("uploadFile"))}</button>` : ""}</div>
       ${files.length ? files.map(fileRow).join("") : `<p class="muted small">${esc(t("noFiles"))}</p>`}</div>
     <div class="card"><div class="card-h"><h3>${ic("people")} ${esc(t("officeHolders"))}</h3>${isAdmin() ? `<button class="btn sm" data-act="addHolder" data-g="${gid}">${ic("plus")} ${esc(t("addHolder"))}</button>` : ""}</div>
-      ${hs.length ? hs.map((p) => `<div class="li"><span class="avatar">${esc(initials(p.name))}</span><span class="grow"><b>${esc(p.name)}</b><small>${esc(fmtPhone(p.phone))}</small></span>
+      ${hs.length ? hs.map((p) => `<div class="li">${avatarOf(p)}<span class="grow"><b>${esc(p.name)}</b><small>${esc(fmtPhone(p.phone))}</small></span>
         ${p.phone ? `<a class="icon-btn wa" href="https://wa.me/65${p.phone}" target="_blank" rel="noopener" aria-label="WhatsApp">${ic("wa")}</a>` : ""}
         ${isAdmin() ? `<button class="icon-btn" data-act="rmHolder" data-g="${gid}" data-phone="${esc(p.phone || "")}" aria-label="${esc(t("delete"))}">${ic("trash")}</button>` : ""}</div>`).join("") : `<p class="muted small">${esc(t("noHolders"))}</p>`}</div>`,
     { back: "#/home", title: gname(g), sub: t("officeTitle") });
