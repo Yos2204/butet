@@ -574,15 +574,16 @@ R.group = (gid) => {
 // Youth files and videos (YB 2026-10-28): the Youth makers upload any kind of file or add a video link; every Youth member sees them.
 const ytId = (u) => (String(u || "").match(/(?:youtu\.be\/|[?&]v=|\/shorts\/|\/embed\/|\/live\/)([\w-]{11})/) || [])[1] || "";
 function youthFilesTab(gid, list) {
-  const mk = canEdit(gid); const vids = list.filter((f) => f.link); const docs = list.filter((f) => !f.link);
+  const mk = canEdit(gid); list = list.slice().sort((a, b) => (b.day || "").localeCompare(a.day || "") || b.created_at.localeCompare(a.created_at));
+  const vids = list.filter((f) => f.link); const docs = list.filter((f) => !f.link); const dayTag = (f) => (f.day ? "🗓 " + rDateCell(f.day) + " · " : "");
   const video = (f) => { const id = ytId(f.link); return `<article class="card" style="padding:0;overflow:hidden">
       <a href="${esc(f.link)}" target="_blank" rel="noopener" style="display:block;position:relative;color:inherit">${id ? `<img src="https://img.youtube.com/vi/${id}/hqdefault.jpg" alt="" style="display:block;width:100%;aspect-ratio:16/9;object-fit:cover">` : `<div style="aspect-ratio:16/9;display:grid;place-items:center;background:var(--surface-2)">${ic("screen")}</div>`}
         <span style="position:absolute;inset:0;display:grid;place-items:center"><span style="width:56px;height:56px;border-radius:50%;background:rgba(0,0,0,.6);display:grid;place-items:center;color:#fff;font-size:22px">▶</span></span></a>
-      <div class="row between" style="padding:10px 14px;margin:0"><span class="grow"><b>${esc(f.title || f.link)}</b><small class="muted" style="display:block">${esc(fmt(f.created_at, { day: "numeric", month: "short" }))} · ${esc(f.author_name || "")}${f.note ? " · " + esc(f.note) : ""}</small></span>
+      <div class="row between" style="padding:10px 14px;margin:0"><span class="grow"><b>${esc(f.title || f.link)}</b><small class="muted" style="display:block">${esc(dayTag(f))}${esc(fmt(f.created_at, { day: "numeric", month: "short" }))} · ${esc(f.author_name || "")}${f.note ? " · " + esc(f.note) : ""}</small></span>
         <a class="icon-btn wa" href="${wa(`🎬 *${f.title || ""}*\n${f.link}\n\n– ${gname(G(gid))}, HKBP Singapore`)}" target="_blank" rel="noopener" aria-label="WhatsApp">${ic("wa")}</a>
         ${mk ? `<button class="icon-btn danger" data-act="del" data-kind="file" data-id="${f.id}" aria-label="${esc(t("delete"))}">${ic("trash")}</button>` : ""}</div></article>`; };
   const doc = (f) => `<div class="li"><span class="ftype ${fileKind(f)}">${esc(fileKind(f).toUpperCase())}</span>
-      <span class="grow"><b>${esc(f.title || f.file_name)}</b><small>${esc(fmt(f.created_at, { day: "numeric", month: "short" }))} · ${esc(f.author_name || "")} · ${esc(fmtSize(f.size))}${f.note ? " · " + esc(f.note) : ""}</small></span>
+      <span class="grow"><b>${esc(f.title || f.file_name)}</b><small>${esc(dayTag(f))}${esc(fmt(f.created_at, { day: "numeric", month: "short" }))} · ${esc(f.author_name || "")} · ${esc(fmtSize(f.size))}${f.note ? " · " + esc(f.note) : ""}</small></span>
       <button class="icon-btn" data-act="openOffFile" data-id="${f.id}" aria-label="${esc(t("openOriginal"))}">${ic("file")}</button>
       <button class="icon-btn wa" data-act="shareFile" data-id="${f.id}" aria-label="WhatsApp">${ic("wa")}</button>
       ${mk ? `<button class="icon-btn danger" data-act="del" data-kind="file" data-id="${f.id}" aria-label="${esc(t("delete"))}">${ic("trash")}</button>` : ""}</div>`;
@@ -696,15 +697,28 @@ function rosterBlock(gid, ym) {
     ${edit ? `<button class="btn primary block" data-act="uploadRoster" data-g="${gid}" data-m="${ym}" style="--gc:${g.color}">${ic("plus")} ${esc(L3("Buat Roster", "Bahen Roster", "Make Roster"))}</button>` : ""}
     ${rs.length ? rs.map((r) => rosterCard(r, edit)).join("") : empty(t("noRoster", monthName(ym)), "roster")}`;
 }
+// Files and videos tagged to this roster's Sundays, one line per Sunday, shown with the roster.
+function rosterFiles(r) {
+  const fs = (D.files || []).filter((f) => f.group_id === r.group_id && f.day && f.day.slice(0, 7) === r.month);
+  if (!fs.length) return "";
+  const days = [...new Set(fs.map((f) => f.day))].sort();
+  return `<div class="roster-files" style="margin:10px 0 4px"><p class="small muted" style="margin:0 0 6px"><b>${esc(L3("File & video per Minggu", "File & video sadarion Minggu", "Files & videos by Sunday"))}</b></p>${days.map((d) => `<div class="li" style="align-items:flex-start">
+      <span class="date-chip"><b>${esc(fmt(d, { day: "numeric" }))}</b><small>${esc(fmt(d, { month: "short" }))}</small></span>
+      <span class="grow chips" style="margin-top:2px">${fs.filter((f) => f.day === d).map((f) => f.link
+        ? `<a class="chip" href="${esc(f.link)}" target="_blank" rel="noopener">🎬 ${esc(f.title || "Video")}</a>`
+        : `<button class="chip" data-act="openOffFile" data-id="${f.id}">📎 ${esc(f.title || f.file_name)}</button>`).join("")}</span></div>`).join("")}</div>`;
+}
 const fileKind = (r) => r.link && !r.file_name ? "link" : /\.(xlsx|xls|csv|ods)$/i.test(r.file_name || "") ? "xls" : /\.pdf$/i.test(r.file_name || "") ? "pdf" : /\.docx?$/i.test(r.file_name || "") ? "doc" : /^image/.test(r.mime || "") ? "img" : "file";
 function rosterCard(r, edit) {
   const names = myNames();
   const tables = (r.table_json || []).filter((tb) => tb.rows.length);
   const made = !r.file_name && !r.link; const rowEdit = edit && made;
   // Edit and delete sit under the date in the first column, so they stay on screen however many jobs the roster has.
-  const rowActs = (row, i, j) => { if (!rowEdit || i === 0 || j !== 0) return ""; const iso = rowDate(row, r.month); return iso ? `<span style="display:flex;gap:6px;margin-top:6px"><button class="icon-btn" style="width:36px;height:36px" data-act="uploadRoster" data-g="${esc(r.group_id)}" data-m="${esc(r.month)}" data-day="${iso}" data-edit="1" aria-label="${esc(t("edit"))}">${ic("edit")}</button><button class="icon-btn danger" style="width:36px;height:36px" data-act="rrDelRow" data-g="${esc(r.group_id)}" data-day="${iso}" aria-label="${esc(t("delete"))}">${ic("trash")}</button></span>` : ""; };
+  const filesHere = ["naposo", "band"].includes(r.group_id); const canFile = filesHere && canEdit(r.group_id);
+  const rowActs = (row, i, j) => { if (!rowEdit || i === 0 || j !== 0) return ""; const iso = rowDate(row, r.month); return iso ? `<span style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">${canFile ? `<button class="icon-btn" style="width:36px;height:36px" data-act="yAttach" data-g="${esc(r.group_id)}" data-day="${iso}" aria-label="${esc(L3("Tambah file atau video", "Tambah file manang video", "Add a file or video"))}">📎</button>` : ""}<button class="icon-btn" style="width:36px;height:36px" data-act="uploadRoster" data-g="${esc(r.group_id)}" data-m="${esc(r.month)}" data-day="${iso}" data-edit="1" aria-label="${esc(t("edit"))}">${ic("edit")}</button><button class="icon-btn danger" style="width:36px;height:36px" data-act="rrDelRow" data-g="${esc(r.group_id)}" data-day="${iso}" aria-label="${esc(t("delete"))}">${ic("trash")}</button></span>` : ""; };
   return `<article class="card roster" style="--gc:${(G(r.group_id) || {}).color}">
     <div class="roster-h">${made ? `<span class="ftype link">${ic("calendar")}</span>` : `<span class="ftype ${fileKind(r)}">${esc(fileKind(r).toUpperCase())}</span>`}<div class="grow"><b>${esc(r.title || r.file_name || "Roster")}</b><small>${esc([r.file_name || r.link, r.author_name].filter(Boolean).join(" · "))}</small></div></div>
+    ${rosterFiles(r)}
     ${tables.length ? tables.map((tb) => `<div class="tbl-wrap"><table class="tbl">${tb.rows.map((row, i) => `<tr class="${row.some((c) => hit(c, names)) ? "me" : ""}">${row.map((c, j) => `<${i === 0 ? "th" : "td"} class="${hit(c, names) ? "me" : ""}">${esc(c)}${rowActs(row, i, j)}</${i === 0 ? "th" : "td"}>`).join("")}</tr>`).join("")}</table></div>${tables.length > 1 ? `<p class="small muted">${esc(tb.name)}</p>` : ""}`).join("") : r.mime && /^image/.test(r.mime) ? `<div class="img-slot" data-img="${r.id}"></div>` : `<p class="small muted">${esc(t("noPreview"))}</p>`}
     <div class="row end">
       ${r.has_file ? `<button class="btn sm" data-act="openFile" data-id="${r.id}">${ic("file")} ${esc(t("openOriginal"))}</button>` : ""}
@@ -981,8 +995,15 @@ window.addEventListener("hashchange", () => { window.scrollTo(0, 0); render(); }
 const A = {};
 const F = {};
 // Youth / ReNa Band file and video uploads (the tab itself is youthFilesTab).
+A.yAttach = (d) => sheet(rDateCell(d.day), `<div class="stack">
+  <button class="opt-card" data-act="yUpload" data-g="${esc(d.g)}" data-day="${esc(d.day)}">${ic("upload")}<span><b>${esc(L3("Unggah file", "Upload file", "Upload a file"))}</b><small>${esc(L3("Partitur, chord, lagu, slide…", "Partitur, chord, ende…", "Sheet music, chords, songs, slides…"))}</small></span>${ic("chev", "chev")}</button>
+  <button class="opt-card" data-act="yVideo" data-g="${esc(d.g)}" data-day="${esc(d.day)}">${ic("screen")}<span><b>${esc(L3("Tambah video", "Tambah video", "Add a video"))}</b><small>YouTube, Instagram, Google Drive…</small></span>${ic("chev", "chev")}</button></div>`);
+// "For Sunday": tags the file or video to a Sunday so it shows with that Sunday in the roster (YB 2026-10-28). Optional.
+const yDayField = (d) => `<label>${esc(L3("Untuk hari Minggu (boleh dikosongkan)", "Tu ari Minggu (boi dikosongkan)", "For Sunday (optional)"))}<input type="date" name="day" value="${esc(d.day || nextSunday())}"></label>
+  <p class="small muted" style="margin-top:4px">${esc(L3("Akan tampil bersama roster Minggu itu.", "Tarida rap dohot roster Minggu i.", "It will show with that Sunday's roster."))}</p>`;
 A.yUpload = (d) => sheet(L3("Unggah file", "Upload file", "Upload a file"), `<form class="form" data-form="yfile" data-g="${esc(d.g)}">
   <label>${esc(t("f_file"))}<input type="file" name="file" required></label>
+  ${yDayField(d)}
   <label>${esc(t("f_title"))}<input name="title" placeholder="${esc(t("fileTitlePh"))}"></label>
   <label>${esc(t("f_note"))}<input name="note"></label>
   <label class="check"><input type="checkbox" name="notify" checked> ${esc(t("notifyGroup"))}</label>
@@ -990,18 +1011,19 @@ A.yUpload = (d) => sheet(L3("Unggah file", "Upload file", "Upload a file"), `<fo
   <button class="btn primary block">${ic("upload")} ${esc(L3("Unggah", "Upload", "Upload"))}</button></form>`);
 F.yfile = async (f) => {
   const file = f.file.files[0]; if (!file) return;
-  await saveOfficeFile(f.dataset.g, file, f.title.value.trim(), f.note.value.trim(), f.notify.checked);
+  await saveOfficeFile(f.dataset.g, file, f.title.value.trim(), f.note.value.trim(), f.notify.checked, { day: f.day.value || null });
   closeSheet(); toast(t("saved")); render();
 };
 A.yVideo = (d) => sheet(L3("Tambah video", "Tambah video", "Add a video"), `<form class="form" data-form="yvideo" data-g="${esc(d.g)}">
   <label>${esc(L3("Link video (YouTube, Instagram, Google Drive, dll.)", "Link video (YouTube, dll.)", "Video link (YouTube, Instagram, Google Drive and more)"))}<input name="link" type="url" inputmode="url" required placeholder="https://youtu.be/…"></label>
+  ${yDayField(d)}
   <label>${esc(t("f_title"))}<input name="title" required></label>
   <label>${esc(t("f_note"))}<input name="note"></label>
   <label class="check"><input type="checkbox" name="notify" checked> ${esc(t("notifyGroup"))}</label>
   <button class="btn primary block">${ic("plus")} ${esc(L3("Tambah video", "Tambah video", "Add a video"))}</button></form>`);
 F.yvideo = async (f) => {
   const link = f.link.value.trim(); if (!/^https:\/\//.test(link)) throw new S.AppError("bad_link");
-  await api.save("file", { group_id: f.dataset.g, title: f.title.value.trim(), note: f.note.value.trim() || null, link, file_name: f.title.value.trim(), mime: "video/link", size: 0, notify: f.notify.checked });
+  await api.save("file", { group_id: f.dataset.g, title: f.title.value.trim(), note: f.note.value.trim() || null, link, file_name: f.title.value.trim(), mime: "video/link", size: 0, notify: f.notify.checked, day: f.day.value || null });
   await refresh(); closeSheet(); toast(t("saved")); render();
 };
 A.lang = (d) => { lang = d.l; LS.set("lang", lang); gateRender(); render(); };
@@ -2136,9 +2158,9 @@ async function offFile(id) {
   }
   return offCache[id];
 }
-async function saveOfficeFile(gid, file, title, note, notify) {
+async function saveOfficeFile(gid, file, title, note, notify, extra = {}) {
   if (file.size > 10 * 1048576) throw new S.AppError("file_too_big");
-  const res = await api.save("file", { group_id: gid, title: title || file.name.replace(/\.[^.]+$/, ""), note: note || null, file_name: file.name, mime: file.type || "application/octet-stream", file_b64: await toB64(file), size: file.size, notify: !!notify });
+  const res = await api.save("file", { group_id: gid, title: title || file.name.replace(/\.[^.]+$/, ""), note: note || null, file_name: file.name, mime: file.type || "application/octet-stream", file_b64: await toB64(file), size: file.size, notify: !!notify, ...extra });
   offCache[res.id] = file; await refresh(); return res;
 }
 A.uploadFile = (d) => sheet(t("uploadFile"), `<form class="form" data-form="offfile" data-g="${d.g}">
