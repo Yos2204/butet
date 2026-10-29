@@ -715,19 +715,20 @@ function madeRosterList(r, rowEdit, canFile, names) {
   const rows = r.table_json[0].rows; const head = rows[0] || [];
   const byDay = {}; rows.slice(1).forEach((row) => { const iso = rowDate(row, r.month); if (iso) byDay[iso] = row; });
   const fs = (D.files || []).filter((f) => f.group_id === r.group_id && f.day && f.day.slice(0, 7) === r.month);
-  const days = [...new Set([...Object.keys(byDay), ...fs.map((f) => f.day)])].sort();
+  const tatas = r.group_id === "multimedia" ? (D.services || []).filter((v) => v.service_date && v.service_date.slice(0, 7) === r.month) : [];
+  const days = [...new Set([...Object.keys(byDay), ...fs.map((f) => f.day), ...tatas.map((v) => v.service_date)])].sort();
   if (!days.length) return `<p class="small muted">${esc(t("noRoster", monthName(r.month)))}</p>`;
   const act = (a, iso, icon, label, cls = "", extra = "") => `<button class="icon-btn ${cls}" data-act="${a}" data-g="${esc(r.group_id)}" data-m="${esc(r.month)}" data-day="${iso}" ${extra} aria-label="${esc(label)}">${icon}</button>`;
   return `<div class="rr-list">${days.map((iso) => {
     const row = byDay[iso]; const mine = !!row && row.some((c, j) => j > 0 && hit(c, names));
     const jobs = row ? head.map((h, j) => [h, row[j] || ""]).slice(1).filter(([h, w]) => h && w) : [];
-    const files = fs.filter((f) => f.day === iso);
+    const files = fs.filter((f) => f.day === iso); const tata = tatas.filter((v) => v.service_date === iso);
     return `<div class="rr-day${mine ? " me" : ""}">
       <div class="rr-head"><span class="date-chip"><b>${esc(fmt(iso, { day: "numeric" }))}</b><small>${esc(fmt(iso, { month: "short" }))}</small></span>
         <span class="grow"><b>${esc(fmt(iso, { weekday: "long" }))}</b>${mine ? `<small class="rr-you">${ic("check")} ${esc(L3("Anda bertugas", "Ho marhobas", "You're serving"))}</small>` : ""}</span>
         ${rowEdit || canFile ? `<span class="rr-acts">${canFile ? act("yAttach", iso, "📎", L3("Tambah file atau video", "Tambah file manang video", "Add a file or video")) : ""}${rowEdit && row ? act("uploadRoster", iso, ic("edit"), t("edit"), "", 'data-edit="1"') + act("rrDelRow", iso, ic("trash"), t("delete"), "danger") : ""}</span>` : ""}</div>
       ${jobs.length ? `<div class="rr-jobs">${jobs.map(([h, w]) => `<div class="rr-job${hit(w, names) ? " me" : ""}"><small>${esc(h)}</small><b>${esc(w)}</b></div>`).join("")}</div>` : row ? `<p class="small muted" style="margin:8px 0 0">—</p>` : ""}
-      ${files.length ? `<div class="chips rr-files">${files.map((f) => f.link
+      ${files.length || tata.length ? `<div class="chips rr-files">${tata.map((v) => `<a class="chip rr-tata" href="#/tata/${v.id}">📖 ${esc(t("tataTitle"))}</a>`).join("")}${files.map((f) => f.link
         ? `<a class="chip" href="${esc(f.link)}" target="_blank" rel="noopener">🎬 ${esc(f.title || "Video")}</a>`
         : `<button class="chip" data-act="openOffFile" data-id="${f.id}">📎 ${esc(f.title || f.file_name)}</button>`).join("")}</div>` : ""}
     </div>`; }).join("")}</div>`;
@@ -749,6 +750,7 @@ try { document.head.insertAdjacentHTML("beforeend", `<style>
   .rr-job b { display: block; font-weight: 600; font-size: 15px; line-height: 1.35; overflow-wrap: anywhere; }
   .rr-job.me b { color: var(--gc, var(--brand)); font-weight: 800; }
   .rr-files { margin-top: 10px; }
+  .rr-tata { background: var(--brand); border-color: var(--brand); color: var(--brand-ink); font-weight: 800; }
 </style>`); } catch (e) {}
 function rosterCard(r, edit) {
   const names = myNames();
@@ -1141,13 +1143,15 @@ function rolePrompt() {
 // ---------- Tata Ibadah (Multimedia workbench) ----------
 const makers = () => D.people.filter((p) => ["maker", "chair"].includes((p.groups || {}).multimedia));
 function tataBlock() {
-  const role = mmRole(); const list = (D.services || []).slice(0, 6); const mk = makers();
+  // A Tata Ibadah moves to its Sunday in the Multimedia roster (YB 2026-10-29) when that month has a roster made in the app.
+  const inRoster = (v) => !!(v.service_date && manualRoster("multimedia", v.service_date.slice(0, 7)));
+  const role = mmRole(); const moved = (D.services || []).filter(inRoster).length; const list = (D.services || []).filter((v) => !inRoster(v)).slice(0, 6); const mk = makers();
   return `<div class="card tata">
     <div class="card-h"><h3>${ic("book")} ${esc(t("tataTitle"))}</h3>${role ? `<span class="badge ${role === "maker" ? "chair" : "member"}">${esc(t("role_" + role))}</span>` : ""}</div>
     <p class="small muted">${esc(t(role === "maker" ? "tataMakerLead" : "tataReadLead"))}</p>
     ${role === "maker" ? `<button class="btn primary block" data-act="openWorkbench">${ic("edit")} ${esc(t("openWorkbench"))}</button>` : ""}
-    ${list.length ? list.map((v) => `<a class="li" href="#/tata/${v.id}"><span class="date-chip"><b>${esc(v.service_date ? fmt(v.service_date, { day: "numeric" }) : "•")}</b><small>${esc(v.service_date ? fmt(v.service_date, { month: "short" }) : "")}</small></span><span class="grow"><b>${esc(v.title || t("tataTitle"))}</b><small>${esc(v.author_name || "")}</small></span>${ic("chev", "chev")}</a>`).join("") : `<p class="muted small">${esc(t("noTata"))}</p>`}
-    ${(D.services || []).length > 6 ? `<a class="btn sm ghost" href="#/tata">${esc(t("seeAll"))}</a>` : ""}
+    ${list.length ? list.map((v) => `<a class="li" href="#/tata/${v.id}"><span class="date-chip"><b>${esc(v.service_date ? fmt(v.service_date, { day: "numeric" }) : "•")}</b><small>${esc(v.service_date ? fmt(v.service_date, { month: "short" }) : "")}</small></span><span class="grow"><b>${esc(v.title || t("tataTitle"))}</b><small>${esc(v.author_name || "")}</small></span>${ic("chev", "chev")}</a>`).join("") : moved ? `<p class="small muted">${esc(L3("Tata Ibadah ada di roster di bawah, pada hari Minggunya.", "Tata Ibadah adong di roster di toru, di ari Minggu na.", "Each Tata Ibadah is in the roster below, on its Sunday."))}</p>` : `<p class="muted small">${esc(t("noTata"))}</p>`}
+    ${list.length > 6 ? `<a class="btn sm ghost" href="#/tata">${esc(t("seeAll"))}</a>` : ""}
   </div>
   ${D.me.is_admin && manage() ? `<div class="card"><div class="card-h"><h3>${ic("people")} ${esc(t("makerList"))}</h3><button class="btn sm" data-act="addMaker">${ic("plus")} ${esc(t("addMaker"))}</button></div>
     ${mk.length ? mk.map((p) => `<div class="li"><span class="avatar">${esc(initials(p.name))}</span><span class="grow"><b>${esc(p.name)}</b><small>${esc(fmtPhone(p.phone))} · ${esc(t("role_" + p.groups.multimedia))}</small></span>${p.groups.multimedia === "maker" ? `<button class="icon-btn" data-act="rmMaker" data-phone="${esc(p.phone || "")}" aria-label="${esc(t("delete"))}">${ic("trash")}</button>` : ""}</div>`).join("") : `<p class="muted small">${esc(t("noMakers"))}</p>`}</div>` : ""}`;
