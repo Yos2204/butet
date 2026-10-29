@@ -709,6 +709,47 @@ function rosterFiles(r) {
         : `<button class="chip" data-act="openOffFile" data-id="${f.id}">📎 ${esc(f.title || f.file_name)}</button>`).join("")}</span></div>`).join("")}</div>`;
 }
 const fileKind = (r) => r.link && !r.file_name ? "link" : /\.(xlsx|xls|csv|ods)$/i.test(r.file_name || "") ? "xls" : /\.pdf$/i.test(r.file_name || "") ? "pdf" : /\.docx?$/i.test(r.file_name || "") ? "doc" : /^image/.test(r.mime || "") ? "img" : "file";
+// A roster made in the app, shown as one card per Sunday (YB 2026-10-28): date and buttons on top, jobs and names in a grid,
+// then that Sunday's files and videos. No wide table, so nothing scrolls sideways. Sundays that only have files are listed too.
+function madeRosterList(r, rowEdit, canFile, names) {
+  const rows = r.table_json[0].rows; const head = rows[0] || [];
+  const byDay = {}; rows.slice(1).forEach((row) => { const iso = rowDate(row, r.month); if (iso) byDay[iso] = row; });
+  const fs = (D.files || []).filter((f) => f.group_id === r.group_id && f.day && f.day.slice(0, 7) === r.month);
+  const days = [...new Set([...Object.keys(byDay), ...fs.map((f) => f.day)])].sort();
+  if (!days.length) return `<p class="small muted">${esc(t("noRoster", monthName(r.month)))}</p>`;
+  const act = (a, iso, icon, label, cls = "", extra = "") => `<button class="icon-btn ${cls}" data-act="${a}" data-g="${esc(r.group_id)}" data-m="${esc(r.month)}" data-day="${iso}" ${extra} aria-label="${esc(label)}">${icon}</button>`;
+  return `<div class="rr-list">${days.map((iso) => {
+    const row = byDay[iso]; const mine = !!row && row.some((c, j) => j > 0 && hit(c, names));
+    const jobs = row ? head.map((h, j) => [h, row[j] || ""]).slice(1).filter(([h, w]) => h && w) : [];
+    const files = fs.filter((f) => f.day === iso);
+    return `<div class="rr-day${mine ? " me" : ""}">
+      <div class="rr-head"><span class="date-chip"><b>${esc(fmt(iso, { day: "numeric" }))}</b><small>${esc(fmt(iso, { month: "short" }))}</small></span>
+        <span class="grow"><b>${esc(fmt(iso, { weekday: "long" }))}</b>${mine ? `<small class="rr-you">${ic("check")} ${esc(L3("Anda bertugas", "Ho marhobas", "You're serving"))}</small>` : ""}</span>
+        ${rowEdit || canFile ? `<span class="rr-acts">${canFile ? act("yAttach", iso, "📎", L3("Tambah file atau video", "Tambah file manang video", "Add a file or video")) : ""}${rowEdit && row ? act("uploadRoster", iso, ic("edit"), t("edit"), "", 'data-edit="1"') + act("rrDelRow", iso, ic("trash"), t("delete"), "danger") : ""}</span>` : ""}</div>
+      ${jobs.length ? `<div class="rr-jobs">${jobs.map(([h, w]) => `<div class="rr-job${hit(w, names) ? " me" : ""}"><small>${esc(h)}</small><b>${esc(w)}</b></div>`).join("")}</div>` : row ? `<p class="small muted" style="margin:8px 0 0">—</p>` : ""}
+      ${files.length ? `<div class="chips rr-files">${files.map((f) => f.link
+        ? `<a class="chip" href="${esc(f.link)}" target="_blank" rel="noopener">🎬 ${esc(f.title || "Video")}</a>`
+        : `<button class="chip" data-act="openOffFile" data-id="${f.id}">📎 ${esc(f.title || f.file_name)}</button>`).join("")}</div>` : ""}
+    </div>`; }).join("")}</div>`;
+}
+// Styles for the roster cards (kept here so only app.js needs updating).
+try { document.head.insertAdjacentHTML("beforeend", `<style>
+  .rr-list { display: grid; gap: 10px; margin-top: 10px; }
+  .rr-day { padding: 12px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); }
+  .rr-day.me { border-color: var(--gc, var(--brand)); box-shadow: 0 0 0 1px var(--gc, var(--brand)) inset; background: color-mix(in srgb, var(--gc, var(--brand)) 5%, var(--surface)); }
+  .rr-head { display: flex; align-items: center; gap: 12px; }
+  .rr-head .grow b { display: block; font-weight: 800; }
+  .rr-you { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 700; color: var(--good); }
+  .rr-you .ic { width: 14px; height: 14px; }
+  .rr-acts { display: flex; gap: 6px; flex: none; }
+  .rr-acts .icon-btn { width: 34px; height: 34px; border-radius: 10px; font-size: 15px; }
+  .rr-acts .icon-btn .ic { width: 17px; height: 17px; }
+  .rr-jobs { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 10px 14px; margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--line); }
+  .rr-job small { display: block; font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+  .rr-job b { display: block; font-weight: 600; font-size: 15px; line-height: 1.35; overflow-wrap: anywhere; }
+  .rr-job.me b { color: var(--gc, var(--brand)); font-weight: 800; }
+  .rr-files { margin-top: 10px; }
+</style>`); } catch (e) {}
 function rosterCard(r, edit) {
   const names = myNames();
   const tables = (r.table_json || []).filter((tb) => tb.rows.length);
@@ -718,12 +759,11 @@ function rosterCard(r, edit) {
   const rowActs = (row, i, j) => { if (!rowEdit || i === 0 || j !== 0) return ""; const iso = rowDate(row, r.month); return iso ? `<span style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">${canFile ? `<button class="icon-btn" style="width:36px;height:36px" data-act="yAttach" data-g="${esc(r.group_id)}" data-day="${iso}" aria-label="${esc(L3("Tambah file atau video", "Tambah file manang video", "Add a file or video"))}">📎</button>` : ""}<button class="icon-btn" style="width:36px;height:36px" data-act="uploadRoster" data-g="${esc(r.group_id)}" data-m="${esc(r.month)}" data-day="${iso}" data-edit="1" aria-label="${esc(t("edit"))}">${ic("edit")}</button><button class="icon-btn danger" style="width:36px;height:36px" data-act="rrDelRow" data-g="${esc(r.group_id)}" data-day="${iso}" aria-label="${esc(t("delete"))}">${ic("trash")}</button></span>` : ""; };
   return `<article class="card roster" style="--gc:${(G(r.group_id) || {}).color}">
     <div class="roster-h">${made ? `<span class="ftype link">${ic("calendar")}</span>` : `<span class="ftype ${fileKind(r)}">${esc(fileKind(r).toUpperCase())}</span>`}<div class="grow"><b>${esc(r.title || r.file_name || "Roster")}</b><small>${esc([r.file_name || r.link, r.author_name].filter(Boolean).join(" · "))}</small></div></div>
-    ${rosterFiles(r)}
-    ${tables.length ? tables.map((tb) => `<div class="tbl-wrap"><table class="tbl">${tb.rows.map((row, i) => `<tr class="${row.some((c) => hit(c, names)) ? "me" : ""}">${row.map((c, j) => `<${i === 0 ? "th" : "td"} class="${hit(c, names) ? "me" : ""}">${esc(c)}${rowActs(row, i, j)}</${i === 0 ? "th" : "td"}>`).join("")}</tr>`).join("")}</table></div>${tables.length > 1 ? `<p class="small muted">${esc(tb.name)}</p>` : ""}`).join("") : r.mime && /^image/.test(r.mime) ? `<div class="img-slot" data-img="${r.id}"></div>` : `<p class="small muted">${esc(t("noPreview"))}</p>`}
+    ${made && tables.length ? madeRosterList(r, rowEdit, canFile, names) : rosterFiles(r) + (tables.length ? tables.map((tb) => `<div class="tbl-wrap"><table class="tbl">${tb.rows.map((row, i) => `<tr class="${row.some((c) => hit(c, names)) ? "me" : ""}">${row.map((c, j) => `<${i === 0 ? "th" : "td"} class="${hit(c, names) ? "me" : ""}">${esc(c)}${rowActs(row, i, j)}</${i === 0 ? "th" : "td"}>`).join("")}</tr>`).join("")}</table></div>${tables.length > 1 ? `<p class="small muted">${esc(tb.name)}</p>` : ""}`).join("") : r.mime && /^image/.test(r.mime) ? `<div class="img-slot" data-img="${r.id}"></div>` : `<p class="small muted">${esc(t("noPreview"))}</p>`)}
     <div class="row end">
       ${r.has_file ? `<button class="btn sm" data-act="openFile" data-id="${r.id}">${ic("file")} ${esc(t("openOriginal"))}</button>` : ""}
       ${r.link ? `<a class="btn sm" href="${esc(r.link)}" target="_blank" rel="noopener">${ic("link")} ${esc(t("openLink"))}</a>` : ""}
-      ${edit ? `<button class="btn sm danger" data-act="del" data-kind="roster" data-id="${r.id}" aria-label="${esc(t("delete"))}">${ic("trash")}</button>` : ""}
+      ${edit ? `<button class="btn sm ghost danger" data-act="del" data-kind="roster" data-id="${r.id}" aria-label="${esc(t("delete"))}">${ic("trash")}${made ? " " + esc(L3("Hapus roster bulan ini", "Hapus roster bulan on", "Delete this month's roster")) : ""}</button>` : ""}
     </div></article>`;
 }
 
