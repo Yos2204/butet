@@ -3405,7 +3405,7 @@ A.waSendFile = async () => {
 const finFor = (day) => D.posts.find((p) => p.group_id === "treasurer" && p.kind === "finance" && p.day === day);
 function financeBlock() {
   const sun = nextSunday(); const cur = finFor(sun); const p = cur || lastPost("treasurer", "finance");
-  return `<div class="card"><div class="card-h"><h3>${ic("coins")} ${esc(t("financeTitle"))}</h3>${canUpload("treasurer") ? `<button class="btn sm primary" data-act="financeForm">${ic("edit")} ${esc(t(cur ? "financeEdit" : "financeNew"))}</button>` : ""}</div>
+  return `<div class="card"><div class="card-h"><h3>${ic("coins")} ${esc(t("financeTitle"))}</h3>${canUpload("treasurer") ? `<span class="row" style="margin:0;gap:6px"><button class="btn sm" data-act="finScan">📷 ${esc(L3("Scan struk", "Scan struk", "Scan receipt"))}</button><button class="btn sm primary" data-act="financeForm">${ic("edit")} ${esc(t(cur ? "financeEdit" : "financeNew"))}</button></span>` : ""}</div>
     ${cur ? "" : `<div class="notice warn">${ic("bell")} <span>${esc(t("finNeeded", fmtID(sun)))}</span></div>`}
     <p class="small muted">${esc(t("financeLead"))}</p>
     ${p ? `<p class="small"><b>Warta ${esc(fmtID(p.day))}</b> · ${esc(p.author_name || "")}</p><p class="pre small">${esc(p.body)}</p>` : `<p class="muted small">${esc(t("noFinance"))}</p>`}</div>`;
@@ -3471,6 +3471,7 @@ A.financeForm = (d) => {
   if (!x.secs[0].items.length) x.secs[0].items = FIN_A.map((name) => ({ name, amts: [{ cur: "SGD" }] }));
   ["B", "C"].forEach((_, j) => { if (!x.secs[j + 1].items.length) x.secs[j + 1].items = [{}]; });
   sheet(t("financeTitle"), `<form class="form fin-form" data-form="finance" data-id="${p ? p.id : ""}" data-dkey="${esc(sun)}">
+    <button type="button" class="btn block" data-act="finScan" data-day="${esc(sun)}">📷 ${esc(L3("Scan struk: isi jumlah SGD otomatis", "Scan struk", "Scan a receipt: fill in the SGD amounts"))}</button>
     <label>${esc(t("financeFor"))}<input type="date" name="day" value="${esc(sun)}" required></label>
     <div class="fin-secs">${x.secs.map((sx, i) => finSec(sx, i, x.date, prevSun)).join("")}</div>
     <button type="button" class="btn block" data-act="finAddSec" style="margin-top:12px">${ic("plus")} ${esc(t("finAddSec"))}</button>
@@ -3515,6 +3516,48 @@ F.finance = async (f) => {
   await api.save("post", { id: f.dataset.id || undefined, group_id: "treasurer", kind: "finance", title: "Warta Keuangan " + f.day.value, body: finBuild(f.fdate.value.trim(), secs), day: f.day.value });
   closeSheet(); await refresh(); toast(t("saved"));
   const wf = $("#warta-form .wfin"); if (wf) wf.outerHTML = wFinBox($("#warta-form").dataset.day);
+};
+
+// Receipt scan (YB 2026-10-29): the treasurer takes a photo (or picks a screenshot) of the receipt; Claude reads the SGD amounts,
+// they go into the SGD fields of the Warta Keuangan for the coming Sunday (the Warta date), it is saved, and only the
+// Secretary and the Chairman get a push that the money parts were updated. Other currencies and other parts stay as they were.
+A.finScan = (d) => {
+  const sun = (d && d.day) || nextSunday();
+  const inp = document.createElement("input"); inp.type = "file"; inp.accept = "image/*";
+  inp.onchange = async () => {
+    const file = inp.files && inp.files[0]; if (!file) return;
+    busySheet("📷 " + L3("Membaca struk", "Manjaha struk", "Reading the receipt"), L3("Claude sedang membaca jumlah SGD…", "Claude manjaha…", "Claude is reading the SGD amounts…"));
+    try {
+      let img = await resizeImage(file, 1600, 0.82); if (img.length > 900000) img = await resizeImage(file, 1200, 0.72);
+      const p = finFor(sun); const prevSun = addDays(sun, -7);
+      const x = p ? finParse(p.body) : { date: fmtID(prevSun), secs: [] };
+      FIN_DEFAULT.forEach((df, i) => { if (!x.secs[i]) x.secs[i] = { ...df, items: [] }; });
+      if (!x.secs[0].items.length) x.secs[0].items = FIN_A.map((name) => ({ name, amts: [] }));
+      const names = [...new Set([...x.secs[0].items.map((r) => r.name).filter(Boolean), ...FIN_A])];
+      const r = await aiRun("receipt", { image: img.split(",")[1], mime: "image/jpeg", names });
+      const got = (r.items || []).filter((it) => it && it.name && isFinite(+it.sgd) && +it.sgd > 0);
+      if (!got.length) throw new Error(L3("Tidak ada jumlah SGD yang terbaca. Coba foto lebih jelas, atau isi manual.", "Ndang terbaca.", "No SGD amount could be read. Try a clearer photo, or type it in."));
+      // into the SGD field of the matching offering (or a new line for an offering not on the list yet)
+      const key = (v) => norm(v).replace(/\s+/g, "");
+      got.forEach((it) => {
+        const k = key(it.name); let row = x.secs[0].items.find((q) => key(q.name) === k) || x.secs[0].items.find((q) => key(q.name) && (key(q.name).includes(k) || k.includes(key(q.name))));
+        if (!row) { row = { name: it.name, amts: [] }; x.secs[0].items.push(row); }
+        row.amts = row.amts || []; const sg = row.amts.find((a) => a.cur === "SGD");
+        if (sg) sg.amt = String(+it.sgd); else row.amts.unshift({ cur: "SGD", amt: String(+it.sgd) });
+      });
+      const body = finBuild(x.date || fmtID(prevSun), x.secs);
+      await api.save("post", { id: p ? p.id : undefined, group_id: "treasurer", kind: "finance", title: "Warta Keuangan " + sun, body, day: sun });
+      const summary = got.map((it) => `${it.name}: SGD ${finNum(it.sgd)}`).join(" · ");
+      const n = await api.save("fin_notify", { day: sun, label: fmtID(sun), summary }).catch(() => ({ told: 0 }));
+      await refresh(); render(); LS.set("draft:finance:" + sun, null);
+      sheet("✓ " + L3("Warta Keuangan diperbarui", "Warta Keuangan diperbarui", "Warta Keuangan updated"), `<p class="small muted">Warta ${esc(fmtID(sun))}${r.date ? " · " + esc(L3("tanggal struk", "tanggal", "receipt date")) + " " + esc(fmtID(r.date)) : ""}</p>
+        <div class="card">${got.map((it) => `<div class="li"><span class="grow"><b>${esc(it.name)}</b></span><b>SGD ${esc(finNum(it.sgd))}</b></div>`).join("")}</div>
+        ${r.note ? `<p class="small muted">${esc(r.note)}</p>` : ""}
+        <p class="small">🔔 ${esc(L3(`Sekretaris dan Ketua sudah diberi tahu (${n.told || 0}).`, `Sekretaris dohot Ketua dipaboa (${n.told || 0}).`, `The Secretary and the Chairman were notified (${n.told || 0}).`))}</p>
+        <button class="btn primary block" data-act="financeForm" data-day="${esc(sun)}">${ic("edit")} ${esc(L3("Periksa / ubah", "Ida / ubah", "Check / edit"))}</button>`);
+    } catch (e) { closeSheet(); toast(e.message || errMsg(e), true); }
+  };
+  inp.click();
 };
 
 // ---------- Secretary: Warta Jemaat (weekly bulletin, 2 pages A4 landscape, folded) ----------
