@@ -545,11 +545,13 @@ R.group = (gid) => {
   const teach = isTeachG(gid); const pollsOn = (teach && isTeacherIn(gid)) || inElders; const polls = (D.polls || []).filter((p) => p.group_id === gid);
   const teachers = people.filter((p) => [...MAKERS, "teacher"].includes(p.groups[gid]));
   const rosterOn = (ROSTER_CATS.includes(gid) && isTeacherIn(gid)) || inElders;
+  const filesOn = gid === "naposo"; const yfiles = (D.files || []).filter((f) => f.group_id === gid);
   const rym = new URLSearchParams(location.hash.split("?")[1] || "").get("m") || LS.get("ym." + gid, monthKey(today()));
-  const tabs = [["sermon", "t_sermon", sermons.length], ...(rosterOn ? [["roster", "Roster", D.rosters.filter((r) => r.group_id === gid && r.month === rym).length]] : []), ...(pollsOn ? [["polls", "t_polls", polls.filter((p) => p.status === "open").length]] : []), ["news", "t_news", news.length], ["events", "t_events", evs.length], ...(teach ? [["teachers", "t_teachers", teachers.length]] : []), ["members", "t_members", people.length]];
+  const tabs = [["sermon", "t_sermon", sermons.length], ...(filesOn ? [["files", "File & Video", yfiles.length]] : []), ...(rosterOn ? [["roster", "Roster", D.rosters.filter((r) => r.group_id === gid && r.month === rym).length]] : []), ...(pollsOn ? [["polls", "t_polls", polls.filter((p) => p.status === "open").length]] : []), ["news", "t_news", news.length], ["events", "t_events", evs.length], ...(teach ? [["teachers", "t_teachers", teachers.length]] : []), ["members", "t_members", people.length]];
   let body = "";
   if (!ok) body = isGuest() ? signInCard(t("signInCat")) : empty(t("membersOnlyLong"), "lock");
   else if (tab === "roster" && rosterOn) body = rosterBlock(gid, rym);
+  else if (tab === "files" && filesOn) body = youthFilesTab(gid, yfiles);
   else if (tab === "polls" && pollsOn) body = pollsTab(gid, polls);
   else if (tab === "teachers" && teach) body = teachersTab(gid, teachers);
   else if (tab === "sermon") body = (edit ? `<button class="btn primary block" data-act="newPost" data-g="${gid}" data-kind="sermon">${ic("plus")} ${esc(t("newSermon"))}</button>` : "") + (sermons.length ? sermons.map((p) => postCard(p, edit)).join("") : empty(t("noSermon"), "book"));
@@ -568,6 +570,49 @@ R.group = (gid) => {
     ${ok && teach && manage() && isTMaker(gid) && !tmOk(gid) ? `<button class="card notify-ask" data-act="tmVerify" data-g="${gid}">${ic("lock")}<span><b>${esc(tmTitle(gid))}</b><small>${esc(t("tmNeedVerify"))}</small></span>${ic("chev", "chev")}</button>` : ""}
     ${ok ? `<div class="seg" role="tablist" style="--gc:${g.color}">${tabs.map(([k, l, n]) => `<a role="tab" aria-selected="${tab === k}" href="#/g/${gid}?tab=${k}">${esc(t(l))}${n ? ` <i>${n}</i>` : ""}</a>`).join("")}</div>` : ""}
     <div style="--gc:${g.color}">${body}</div>`, { back: svc ? "#/serve" : "#/groups", title: gname(g), sub: t(svc ? "kindService" : "kindSermon") });
+};
+// Youth files and videos (YB 2026-10-28): the Youth makers upload any kind of file or add a video link; every Youth member sees them.
+const ytId = (u) => (String(u || "").match(/(?:youtu\.be\/|[?&]v=|\/shorts\/|\/embed\/|\/live\/)([\w-]{11})/) || [])[1] || "";
+function youthFilesTab(gid, list) {
+  const mk = canEdit(gid); const vids = list.filter((f) => f.link); const docs = list.filter((f) => !f.link);
+  const video = (f) => { const id = ytId(f.link); return `<article class="card" style="padding:0;overflow:hidden">
+      <a href="${esc(f.link)}" target="_blank" rel="noopener" style="display:block;position:relative;color:inherit">${id ? `<img src="https://img.youtube.com/vi/${id}/hqdefault.jpg" alt="" style="display:block;width:100%;aspect-ratio:16/9;object-fit:cover">` : `<div style="aspect-ratio:16/9;display:grid;place-items:center;background:var(--surface-2)">${ic("screen")}</div>`}
+        <span style="position:absolute;inset:0;display:grid;place-items:center"><span style="width:56px;height:56px;border-radius:50%;background:rgba(0,0,0,.6);display:grid;place-items:center;color:#fff;font-size:22px">▶</span></span></a>
+      <div class="row between" style="padding:10px 14px;margin:0"><span class="grow"><b>${esc(f.title || f.link)}</b><small class="muted" style="display:block">${esc(fmt(f.created_at, { day: "numeric", month: "short" }))} · ${esc(f.author_name || "")}${f.note ? " · " + esc(f.note) : ""}</small></span>
+        <a class="icon-btn wa" href="${wa(`🎬 *${f.title || ""}*\n${f.link}\n\n– ${gname(G(gid))}, HKBP Singapore`)}" target="_blank" rel="noopener" aria-label="WhatsApp">${ic("wa")}</a>
+        ${mk ? `<button class="icon-btn danger" data-act="del" data-kind="file" data-id="${f.id}" aria-label="${esc(t("delete"))}">${ic("trash")}</button>` : ""}</div></article>`; };
+  const doc = (f) => `<div class="li"><span class="ftype ${fileKind(f)}">${esc(fileKind(f).toUpperCase())}</span>
+      <span class="grow"><b>${esc(f.title || f.file_name)}</b><small>${esc(fmt(f.created_at, { day: "numeric", month: "short" }))} · ${esc(f.author_name || "")} · ${esc(fmtSize(f.size))}${f.note ? " · " + esc(f.note) : ""}</small></span>
+      <button class="icon-btn" data-act="openOffFile" data-id="${f.id}" aria-label="${esc(t("openOriginal"))}">${ic("file")}</button>
+      <button class="icon-btn wa" data-act="shareFile" data-id="${f.id}" aria-label="WhatsApp">${ic("wa")}</button>
+      ${mk ? `<button class="icon-btn danger" data-act="del" data-kind="file" data-id="${f.id}" aria-label="${esc(t("delete"))}">${ic("trash")}</button>` : ""}</div>`;
+  return (mk ? `<div class="row two"><button class="btn primary" data-act="yUpload" data-g="${gid}">${ic("upload")} ${esc(L3("Unggah file", "Upload file", "Upload a file"))}</button><button class="btn" data-act="yVideo" data-g="${gid}">${ic("screen")} ${esc(L3("Tambah video", "Tambah video", "Add a video"))}</button></div>` : "")
+    + (vids.length ? `<h3 class="sec-h">🎬 Video</h3>${vids.map(video).join("")}` : "")
+    + (docs.length ? `<h3 class="sec-h">📎 File</h3><div class="card">${docs.map(doc).join("")}</div>` : "")
+    + (!vids.length && !docs.length ? empty(L3("Belum ada file atau video.", "Dang adong file manang video.", "No files or videos yet."), "folder") : "");
+}
+A.yUpload = (d) => sheet(L3("Unggah file", "Upload file", "Upload a file"), `<form class="form" data-form="yfile" data-g="${esc(d.g)}">
+  <label>${esc(t("f_file"))}<input type="file" name="file" required></label>
+  <label>${esc(t("f_title"))}<input name="title" placeholder="${esc(t("fileTitlePh"))}"></label>
+  <label>${esc(t("f_note"))}<input name="note"></label>
+  <label class="check"><input type="checkbox" name="notify" checked> ${esc(t("notifyGroup"))}</label>
+  <p class="small muted">${esc(L3("Semua jenis file: dokumen, foto, lagu, presentasi, dll. Maksimal 10 MB.", "Sude jenis file. Maksimal 10 MB.", "Any kind of file: documents, photos, songs, slides and more. Up to 10 MB."))}</p>
+  <button class="btn primary block">${ic("upload")} ${esc(L3("Unggah", "Upload", "Upload"))}</button></form>`);
+F.yfile = async (f) => {
+  const file = f.file.files[0]; if (!file) return;
+  await saveOfficeFile(f.dataset.g, file, f.title.value.trim(), f.note.value.trim(), f.notify.checked);
+  closeSheet(); toast(t("saved")); render();
+};
+A.yVideo = (d) => sheet(L3("Tambah video", "Tambah video", "Add a video"), `<form class="form" data-form="yvideo" data-g="${esc(d.g)}">
+  <label>${esc(L3("Link video (YouTube, Instagram, Google Drive, dll.)", "Link video (YouTube, dll.)", "Video link (YouTube, Instagram, Google Drive and more)"))}<input name="link" type="url" inputmode="url" required placeholder="https://youtu.be/…"></label>
+  <label>${esc(t("f_title"))}<input name="title" required></label>
+  <label>${esc(t("f_note"))}<input name="note"></label>
+  <label class="check"><input type="checkbox" name="notify" checked> ${esc(t("notifyGroup"))}</label>
+  <button class="btn primary block">${ic("plus")} ${esc(L3("Tambah video", "Tambah video", "Add a video"))}</button></form>`);
+F.yvideo = async (f) => {
+  const link = f.link.value.trim(); if (!/^https:\/\//.test(link)) throw new S.AppError("bad_link");
+  await api.save("file", { group_id: f.dataset.g, title: f.title.value.trim(), note: f.note.value.trim() || null, link, file_name: f.title.value.trim(), mime: "video/link", size: 0, notify: f.notify.checked });
+  await refresh(); closeSheet(); toast(t("saved")); render();
 };
 // Birthday and wedding anniversary wishes for a category. The leader saves the category's WhatsApp group link once;
 // after that one tap copies the ready-made wishes and opens that group, and the leader pastes and sends.
@@ -654,6 +699,7 @@ R.section = (gid) => {
     ${gid === "multimedia" ? tataBlock() : ""}
     ${gid === "parhalado" ? `<div class="row two"><a class="btn" href="#/elders">${ic("book")} ${esc(t("eldersUpdates"))}</a><a class="btn" href="#/bread">${ic("bread")} ${esc(t("breadTitle"))}</a></div>` : ""}
     ${gid === "parhalado" ? `<h3 class="sec-h">${esc(t("t_polls"))}</h3><div style="--gc:${g.color}">${pollsTab(gid, (D.polls || []).filter((p) => p.group_id === gid))}</div>` : ""}
+    ${gid === "band" ? `<h3 class="sec-h">🎬 File & Video</h3><div style="--gc:${g.color}">${youthFilesTab(gid, (D.files || []).filter((f) => f.group_id === gid))}</div>` : ""}
     ${rosterBlock(gid, ym)}
     <h3 class="sec-h">${esc(t("t_members"))}</h3>
     ${peopleList(people, gid)}`, { back: "#/serve", title: gname(g), sub: t("kindService") });
@@ -934,6 +980,7 @@ function hydrate() {
   if (D && !isGuest() && api.hasSession() && $("#sheet").hidden) {
     if (viewMode() === null) { if (hasRights()) setTimeout(rolePrompt, 300); else LS.set("view", "member"); }
     else if (profileOn() && !me().profile) setTimeout(() => { if ($("#sheet").hidden && profileOn() && !me().profile) profilePrompt(); }, 900);
+    else if (needBday() && LS.get("bdayAsked") !== today()) setTimeout(() => { if ($("#sheet").hidden && needBday()) bdayPrompt(); }, 900);
     else if (serveDue()) setTimeout(() => { if ($("#sheet").hidden && serveDue()) servePrompt(); }, 900);
   }
   if (D && /^#\/s\/multimedia/.test(location.hash) && $("#sheet").hidden && viewMode() !== null) {
@@ -972,6 +1019,7 @@ function profilePrompt(blank) {
     ${q("male", "pfGender", "pfMale", "pfFemale")}
     ${q("pelaut", "pfPelaut", "yes", "no")}
     ${q("confirmed", "pfConfirmed", "yes", "no")}
+    ${needBday() ? bdayFields() : ""}
     <button class="btn primary block">${esc(t("save"))}</button></form>`);
 }
 A.profile = () => profilePrompt();
@@ -984,10 +1032,26 @@ A.allCats = () => { LS.set("allCats", LS.get("allCats") ? null : 1); render(); }
 F.profile = async (f) => {
   const v = (n) => f.querySelector(`input[name="${n}"]:checked`).value === "1";
   const p = { married: v("married"), male: v("male"), pelaut: v("pelaut"), confirmed: v("confirmed") };
-  const res = await api.profileSave(p); D.me.profile = res || p; LS.set("allCats", null);
+  const md = bdayValue(f); if (md) p.dob_md = md;
+  const res = await api.profileSave(p); bdayTake(res); D.me.profile = res ? (({ dob, ...x }) => x)(res) : p; LS.set("allCats", null);
   closeSheet(); toast(t("pfSaved") + " " + profileCats(D.me.profile).map((id) => gname(G(id))).filter(Boolean).join(", ")); render();
   if (serveOn()) setTimeout(() => servePrompt(pfBlank), 350); // second layer
 };
+// Birthday question (YB 2026-10-28): asked with the first questions, and on its own for members who answered before,
+// only while the app has no birthday for them (none on their profile and none on the birthday list). The year is not asked.
+const bdayKnown = () => !!me().dob || (D.birthdays || []).some((b) => hit(b.name, myNames(me())));
+const needBday = () => !!D && !isGuest() && !!me() && !!me().id && !bdayKnown();
+const bdayFields = () => `<fieldset class="yn"><legend>${esc(L3("Tanggal ulang tahun Anda", "Ari tubum", "Your birthday"))}</legend><div class="row2">
+  <label class="pick-sel">${esc(t("f_day"))}<select name="bdd" required><option value=""></option>${Array.from({ length: 31 }, (_, i) => `<option>${i + 1}</option>`).join("")}</select></label>
+  <label class="pick-sel">${esc(t("f_month"))}<select name="bmm" required><option value=""></option>${Array.from({ length: 12 }, (_, i) => `<option value="${i + 1}">${esc(fmt(`2024-${String(i + 1).padStart(2, "0")}-15`, { month: "long" }))}</option>`).join("")}</select></label></div></fieldset>`;
+const bdayValue = (f) => (f.bdd && f.bmm && f.bdd.value && f.bmm.value ? `${String(f.bmm.value).padStart(2, "0")}-${String(f.bdd.value).padStart(2, "0")}` : "");
+const bdayTake = (res) => { if (res && res.dob) D.me.dob = res.dob; };
+function bdayPrompt() {
+  LS.set("bdayAsked", today());
+  sheet(L3("Ulang tahun Anda", "Ari tubum", "Your birthday"), `<form class="form" data-form="bdayask"><p class="muted">${esc(L3("Supaya gereja bisa mengucapkan selamat ulang tahun kepada Anda. Tahun tidak perlu diisi.", "Asa boi gareja mandok selamat ari tubu tu ho. Taon ndang porlu.", "So the church can wish you a happy birthday. The year is not needed."))}</p>
+    ${bdayFields()}<button class="btn primary block">${esc(t("save"))}</button></form>`);
+}
+F.bdayask = async (f) => { const md = bdayValue(f); if (!md) throw new S.AppError("bad_date"); bdayTake(await api.profileSave({ dob_md: md })); closeSheet(); toast(t("saved")); };
 function servePrompt(blank) {
   const sv = blank ? [] : (me().profile || {}).serve || [];
   sheet(t("svTitle"), `<form class="form" data-form="serve">
@@ -2103,7 +2167,7 @@ function shareSheet(file, title, gid) {
   sheet(t("waShareTitle"), `<p class="muted">${esc(t("waShareLead", title))}</p><div class="stack">
     ${isPdf ? `<button class="opt-card" data-act="pdfPeek">${ic("screen")}<span><b>${esc(t("pdfPeek"))}</b><small>${esc(t("pdfPeekSub"))}</small></span>${ic("chev", "chev")}</button>` : ""}
     <button class="opt-card" data-act="waSendFile">${ic("wa")}<span><b>${esc(t("waSendFile"))}</b><small>${esc(t(canFiles ? "waSendFileSub" : "waSendFileDl"))}</small></span>${ic("chev", "chev")}</button>
-    <a class="opt-card" href="${wa(`📎 *${title}*\n${gname(G(gid))} · HKBP Singapore\n${appUrl()}#/o/${gid}`)}" target="_blank" rel="noopener">${ic("link")}<span><b>${esc(t("waSendLink"))}</b><small>${esc(t("waSendLinkSub"))}</small></span>${ic("chev", "chev")}</a>
+    <a class="opt-card" href="${wa(`📎 *${title}*\n${gname(G(gid))} · HKBP Singapore\n${appUrl()}${gid === "naposo" ? "#/g/naposo?tab=files" : gid === "band" ? "#/s/band" : "#/o/" + gid}`)}" target="_blank" rel="noopener">${ic("link")}<span><b>${esc(t("waSendLink"))}</b><small>${esc(t("waSendLinkSub"))}</small></span>${ic("chev", "chev")}</a>
     <button class="btn ghost block" data-act="closeSheet">${esc(t("notNow"))}</button></div>`);
 }
 A.pdfPeek = (d, btn) => busy(btn, async () => { try { await showPdf(shareSheet.file, shareSheet.title, true); } catch (e) { console.warn(e); toast(errMsg(e), true); } });
