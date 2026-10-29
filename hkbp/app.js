@@ -36,6 +36,8 @@ const IC = {
   roster: '<rect x="3" y="4" width="18" height="17" rx="3"/><path d="M3 9h18M8 2v4M16 2v4M7 13h4M7 17h7"/>',
   calendar: '<rect x="3" y="4" width="18" height="17" rx="3"/><path d="M3 9h18M8 2v4M16 2v4"/><circle cx="12" cy="15" r="1.6"/>',
   more: '<circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/>',
+  search: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>',
+  camera: '<path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/>',
   chat: '<path d="M4 5.5A2.5 2.5 0 0 1 6.5 3h11A2.5 2.5 0 0 1 20 5.5v8a2.5 2.5 0 0 1-2.5 2.5H10l-4.5 4v-4h0A1.5 1.5 0 0 1 4 14.5z"/><path d="M8.5 9.5h7M8.5 12.5h4"/>',
   child: '<circle cx="12" cy="6" r="3"/><path d="M8 21v-5l-2-3 6-3 6 3-2 3v5"/>',
   spark: '<path d="M12 2l2.2 6.3L21 10l-6.8 1.7L12 18l-2.2-6.3L3 10l6.8-1.7z"/><path d="M19 17l.8 2.2L22 20l-2.2.8L19 23l-.8-2.2L16 20l2.2-.8z"/>',
@@ -354,6 +356,7 @@ const GUEST = () => ({ id: null, name: "", alias: null, phone: null, dob: null, 
 async function refresh() {
   D = await api.data();
   if (D && !D.me) { D.me = GUEST(); D.guest = true; }
+  setTimeout(() => { try { tataPrefetch(); } catch (e) {} }, 3000);
   if (D && !D.guest && api.ping) { let k = "pinged"; try { if (!sessionStorage.getItem(k)) { sessionStorage.setItem(k, "1"); api.ping(standalone()).catch(() => {}); } } catch {} }
 }
 const isGuest = () => !D || !!D.guest;
@@ -369,7 +372,7 @@ function shell(active, inner, opts = {}) {
   const tabs = isGuest() ? TABS.filter(([, h]) => h === "#/home") : TABS;
   // Rosters pages light up the Schedule tab too (YB 2026-10-29: calendar and rosters combined).
   const act = active === "#/serve" ? "#/calendar" : active; const label = (k) => (k === "sched" ? L3("Jadwal", "Jadwal", "Schedule") : k === "Chat" ? "Chat" : t(k));
-  const nav = tabs.map(([i, h, k]) => `<a href="${h}" class="${act === h ? "on" : ""}" ${act === h ? 'aria-current="page"' : ""}>${ic(i)}<span>${esc(label(k))}</span></a>`).join("")
+  const nav = tabs.map(([i, h, k]) => `<a href="${h}" class="${act === h ? "on" : ""}" ${act === h ? 'aria-current="page"' : ""}>${ic(i)}${tabBadge(h)}<span>${esc(label(k))}</span></a>`).join("")
     + (isGuest() ? `<a href="#/login" data-act="signIn">${ic("lock")}<span>${esc(t("signIn"))}</span></a>` : "");
   return `
   <header class="top">
@@ -386,7 +389,7 @@ const langSwitch = () => `<div class="langs" role="group" aria-label="${esc(t("l
 const empty = (msg, icon = "star") => `<div class="empty">${ic(icon)}<p>${esc(msg)}</p></div>`;
 const roleBadge = (gid) => { if (!manage()) return ""; const r = isAdmin() && !roleIn(gid) ? "admin" : roleIn(gid); return r ? `<span class="badge ${MAKERS.includes(r) ? "chair" : r === "teacher" ? "member" : r}">${esc(roleLabel(gid, r))}</span>` : ""; };
 const groupTile = (g, extra = "") => `<a class="gtile" href="#/${({ sermon: "g", office: "o" })[g.kind] || "s"}/${g.id}" style="--gc:${g.color}">
-    <span class="gicon">${ic(g.icon)}</span><span class="gname"><b>${esc(gname(g))}</b><small>${extra}</small></span>${roleBadge(g.id)}${ic("chev", "chev")}</a>`;
+    <span class="gicon">${ic(g.icon)}</span><span class="gname"><b>${esc(gname(g))}</b><small>${extra}</small></span>${newBadge(g.kind !== "office" && groupNew(g.id))}${roleBadge(g.id)}${ic("chev", "chev")}</a>`;
 
 // ---------- screens ----------
 const R = {};
@@ -445,14 +448,16 @@ R.home = () => {
     <section class="hello">
       <p class="muted small">${esc(fmtDay(day))}</p>
       <h1>${esc(t(hour < 11 ? "morning" : hour < 15 ? "afternoon" : hour < 18 ? "evening1" : "evening2"))}${m.name ? ", " + esc(firstName(m.name)) : ""}</h1>
+      ${isGuest() ? "" : `<a class="search-entry" href="#/search">${ic("search")}<span>${esc(L3("Cari anggota, acara, file, roster…", "Bilang ruas, ulaon, file…", "Search members, events, files, rosters…"))}</span></a>`}
     </section>
     ${isGuest() ? `<button class="card notify-ask" data-act="signIn">${ic("lock")}<span><b>${esc(t("guestTitle"))}</b><small>${esc(L3("Masuk untuk melihat Tata Ibadah, kalender, roster, kategorial dan tugas Anda.", "Masuk asa diida Tata Ibadah, kalender, roster, kategorial dohot ulaonmu.", "Sign in to see the Tata Ibadah, calendar, rosters, your categories and your duties."))}</small></span>${ic("chev", "chev")}</button>` : ""}
     ${mine ? `<div class="card hbd">${ic("cake")}<div><h2>${esc(t("hbdTitle", firstName(m.name)))}</h2><p>${esc(t("hbdBody"))}</p></div></div>` : ""}
+    ${wishesCard()}
     ${m.wed && m.wed.slice(5) === day.slice(5) ? `<div class="card hbd">💍<div><h2>${esc(t("annivTitle", firstName(m.name)))}</h2><p>${esc(t("annivBody"))}</p></div></div>` : ""}
     ${annivToday.length ? `<article class="card"><div class="card-h"><h3>💍 ${esc(t("annivs"))}</h3></div>${annivToday.map((p) => `<div class="li">${avatarOf(p)}<span class="grow"><b>${esc(p.name)}</b><small>${esc(t("today"))}</small></span>${p.phone && p.id !== m.id ? `<a class="icon-btn wa" href="${wa(t("annivWish", firstName(p.name)), p.phone)}" target="_blank" rel="noopener" aria-label="WhatsApp">${ic("wa")}</a>` : `<span class="party">🎉</span>`}</div>`).join("")}</article>` : ""}
     ${notifyAsk ? `<button class="card notify-ask" data-act="notify">${ic("bell")}<span><b>${esc(t("notifyAskTitle"))}</b><small>${esc(standalone() || !/iP(hone|ad)/.test(navigator.userAgent) ? t("notifyAskBody") : t("iosInstallFirst"))}</small></span>${ic("chev", "chev")}</button>` : ""}
 
-    ${!isGuest() && (D.services || []).length ? `<a class="card li tata-home" href="#/tata/${D.services[0].id}">${ic("book")}<span class="grow"><b>${esc(t("tataTitle"))}</b><small>${esc(D.services[0].title || "")}${D.services[0].service_date ? " · " + esc(fmtDay(D.services[0].service_date)) : ""}</small></span>${ic("chev", "chev")}</a>` : ""}
+    ${thisSundayCard()}
     <article class="card bread-card">
       <div class="kicker">${ic("bread")} ${esc(t("breadTitle"))}</div>
       ${b ? `
@@ -467,7 +472,7 @@ R.home = () => {
     ${bdays.length ? `<article class="card">
       <div class="card-h"><h3>${ic("cake")} ${esc(t("birthdays"))}</h3><a class="small" href="#/people">${esc(t("seeAll"))}</a></div>
       ${bdays.slice(0, 6).map(({ p, day: d, inDays }) => `<div class="li">${avatarOf(p)}<span class="grow"><b>${esc(p.name)}</b><small>${esc(inDays === 0 ? t("today") : inDays === 1 ? t("tomorrow") : fmt(d, { weekday: "long", day: "numeric", month: "short" }))}</small></span>
-        ${inDays === 0 && p.phone && p.id !== m.id ? `<a class="icon-btn wa" href="${wa(t("hbdWish", firstName(p.name)), p.phone)}" target="_blank" rel="noopener" aria-label="WhatsApp">${ic("wa")}</a>` : inDays === 0 ? `<span class="party">🎉</span>` : ""}</div>`).join("")}
+        ${inDays === 0 ? wishBtn(p) : ""}${inDays === 0 && p.phone && p.id !== m.id ? `<a class="icon-btn wa" href="${wa(t("hbdWish", firstName(p.name)), p.phone)}" target="_blank" rel="noopener" aria-label="WhatsApp">${ic("wa")}</a>` : inDays === 0 ? `<span class="party">🎉</span>` : ""}</div>`).join("")}
     </article>` : ""}
 
     ${isGuest() ? [["bday", "🎂", "celebBdayTitle", "celebNoBday"], ["wed", "💍", "celebWedTitle", "celebNoWed"]].map(([k, emo, title, none]) => { const list = (D.celebrations || []).filter((c) => c.kind === k && c.day === day); return `<article class="card">
@@ -505,7 +510,7 @@ function eventRow(e) {
   const p = sgParts(e.starts_at); const g = e.group_id ? G(e.group_id) : null; const past = new Date(e.starts_at) < Date.now();
   return `<div class="li ev ${past ? "past" : ""}" style="--gc:${g ? g.color : "var(--brand)"}">
     <span class="date-chip"><b>${esc(fmt(p.date, { day: "numeric" }))}</b><small>${esc(fmt(p.date, { month: "short" }))}</small></span>
-    <span class="grow"><b>${esc(e.title)}</b><small>${esc(fmt(p.date, { weekday: "short" }))} ${esc(fmtTime(e.starts_at))}${e.place ? " · " + esc(e.place) : ""} · ${esc(gname(g))}</small></span>
+    <span class="grow"><b>${esc(e.title)}</b><small>${esc(fmt(p.date, { weekday: "short" }))} ${esc(fmtTime(e.starts_at))}${e.place ? " · " + esc(e.place) : ""} · ${esc(gname(g))}${esc(rsvpLine(e))}</small></span>
     <button class="icon-btn" data-act="evMenu" data-id="${e.id}" aria-label="${esc(t("addCal"))}">${ic("calendar")}</button></div>`;
 }
 function updateCard(u, compact) {
@@ -530,12 +535,13 @@ R.groups = () => {
       return `<a class="gcard ${ok ? "" : "locked"}" href="#/g/${g.id}" style="--gc:${g.color}">
         <span class="gcard-bg"></span><span class="gicon lg">${ic(g.icon)}</span>
         <span class="gcard-t"><b>${esc(gname(g))}</b><small>${esc(t("motto_" + g.id) !== "motto_" + g.id ? t("motto_" + g.id) : "")}</small></span>
-        <span class="gcard-f">${roleBadge(g.id) || (ok ? "" : `<span class="badge">${ic("lock")} ${esc(t("membersOnly"))}</span>`)}<span class="small">${n} ${esc(t("members"))}${ok ? ` · ${posts} ${esc(t("posts"))}` : ""}</span></span>
+        <span class="gcard-f">${newBadge(ok && groupNew(g.id))}${roleBadge(g.id) || (ok ? "" : `<span class="badge">${ic("lock")} ${esc(t("membersOnly"))}</span>`)}<span class="small">${n} ${esc(t("members"))}${ok ? ` · ${posts} ${esc(t("posts"))}` : ""}</span></span>
       </a>`; }).join("")}</div>`);
 };
 
 R.group = (gid) => {
   const g = G(gid); if (!g) return R.notFound();
+  markGroupSeen(gid);
   const tab = new URLSearchParams(location.hash.split("?")[1] || "").get("tab") || "sermon";
   const ok = canSee(g); const edit = canEdit(gid);
   const posts = D.posts.filter((p) => p.group_id === gid);
@@ -727,7 +733,7 @@ function madeRosterList(r, rowEdit, canFile, names) {
     const files = fs.filter((f) => f.day === iso); const tata = tatas.filter((v) => v.service_date === iso);
     return `<div class="rr-day${mine ? " me" : ""}">
       <div class="rr-head"><span class="date-chip"><b>${esc(fmt(iso, { day: "numeric" }))}</b><small>${esc(fmt(iso, { month: "short" }))}</small></span>
-        <span class="grow"><b>${esc(fmt(iso, { weekday: "long" }))}</b>${mine ? `<small class="rr-you">${ic("check")} ${esc(L3("Anda bertugas", "Ho marhobas", "You're serving"))}</small>` : ""}</span>
+        <span class="grow"><b>${esc(fmt(iso, { weekday: "long" }))}</b>${mine ? `<small class="rr-you">${ic("check")} ${esc(L3("Anda bertugas", "Ho marhobas", "You're serving"))}</small> <button class="link rr-cant" data-act="cantMake" data-g="${esc(r.group_id)}" data-day="${iso}" data-jobs="${esc(head.filter((h, j) => j && hit(row[j] || "", names)).join(", "))}">${esc(L3("Tidak bisa?", "Ndang boi?", "Can't make it?"))}</button>` : ""}</span>
         ${rowEdit || canFile ? `<span class="rr-acts">${canFile ? act("yAttach", iso, "📎", L3("Tambah file atau video", "Tambah file manang video", "Add a file or video")) : ""}${rowEdit && row ? act("uploadRoster", iso, ic("edit"), t("edit"), "", 'data-edit="1"') + act("rrDelRow", iso, ic("trash"), t("delete"), "danger") : ""}</span>` : ""}</div>
       ${jobs.length ? `<div class="rr-jobs">${jobs.map(([h, w]) => `<div class="rr-job${hit(w, names) ? " me" : ""}"><small>${esc(h)}</small><b>${esc(w)}</b></div>`).join("")}</div>` : row ? `<p class="small muted" style="margin:8px 0 0">—</p>` : ""}
       ${files.length || tata.length ? `<div class="chips rr-files">${tata.map((v) => `<a class="chip rr-tata" href="#/tata/${v.id}">📖 ${esc(t("tataTitle"))}</a>`).join("")}${files.map((f) => f.link
@@ -950,7 +956,7 @@ R.more = () => {
     <p class="small muted center pad">HKBP Singapore · ${esc(t("logoNote"))}</p>`);
   return shell("#/more", `
     <section class="profile card">
-      ${avatarOf(m, "lg")}
+      <button class="avatar-btn" data-act="photoPick" aria-label="${esc(L3("Foto profil", "Foto profil", "Profile photo"))}">${avatarOf(m, "lg")}<i class="avatar-edit">${ic("camera")}</i></button>
       <div class="grow"><h3>${esc(m.name)}</h3><p class="small muted">${esc(fmtPhone(m.phone))}${m.dob ? " · " + esc(fmt(m.dob, { day: "numeric", month: "long" })) : ""}</p>
         <div class="chips">${m.is_admin && manage() ? `<span class="badge admin">${esc(t("role_admin"))}</span>` : ""}${roles.map(([g, r]) => `<span class="chip" style="--gc:${(G(g) || {}).color}">${esc(gname(G(g)))}${r === "chair" && manage() ? " · " + esc(t("role_chair")) : ""}</span>`).join("")}</div>
         <button class="btn sm pf-reset" data-act="pfReset">${ic("redo")} ${esc(t("pfReset"))}</button></div>
@@ -959,6 +965,8 @@ R.more = () => {
       <a class="li" href="#/elders">${ic("book")}<span class="grow"><b>${esc(t("eldersUpdates"))}</b></span>${ic("chev", "chev")}</a>
       <a class="li" href="#/bread">${ic("bread")}<span class="grow"><b>${esc(t("breadTitle"))}</b></span>${ic("chev", "chev")}</a>
       ${isOffice() && manage() ? `<a class="li" href="#/o/secretary">${ic("lock")}<span class="grow"><b>${esc(t("officeTitle"))}</b><small>${esc(officeGroups().map(gname).join(" · "))}</small></span>${ic("chev", "chev")}</a>` : ""}
+      <a class="li" href="#/prayer">${ic("heart")}<span class="grow"><b>🙏 ${esc(L3("Pokok Doa", "Pokok Tangiang", "Prayer requests"))}</b><small>${esc(L3("Bagikan dan ikut mendoakan", "Bagi dohot tangianghon", "Share and pray together"))}</small></span>${ic("chev", "chev")}</a>
+      ${D.me.is_admin && manage() ? `<a class="li" href="#/checkinqr">${ic("camera")}<span class="grow"><b>QR Check-in</b><small>${esc(L3("QR untuk pintu gereja dan data kehadiran", "QR tu pintu gareja", "Door QR and attendance"))}</small></span>${ic("chev", "chev")}</a>` : ""}
       <a class="li" href="#/people">${ic("cake")}<span class="grow"><b>${esc(t("people"))}</b><small>${esc(isAdmin() ? t("peopleAdmin") : t("peopleSub"))}</small></span>${ic("chev", "chev")}</a>
       <button class="li" data-act="notify">${ic("bell")}<span class="grow"><b>${esc(t("notifications"))}</b><small>${esc(perm === "granted" ? t("notifyOnTxt") : perm === "denied" ? t("notifyDenied") : t("notifyAskBody"))}</small></span>${ic("chev", "chev")}</button>
       ${hasRights() ? `<button class="li" data-act="toggleView">${ic("people")}<span class="grow"><b>${esc(t("layout"))}: ${esc(t(manage() ? "viewAdmin" : "viewMember"))}</b><small>${esc(t(manage() ? "toMember" : "toAdmin"))}</small></span>${ic("chev", "chev")}</button>` : ""}
@@ -993,7 +1001,7 @@ R.appstatus = () => {
   if (!isAdmin() || !isYB()) return shell("#/more", empty(t("notFound")), { back: "#/more" });
   AS.rows = null;
   Promise.all([api.appStatus(), api.phoneTries ? api.phoneTries().catch(() => []) : []]).then(([r, tr]) => { AS.rows = r || []; AS.tries = tr || []; asFill(); }).catch((e) => { const el = $("#asList"); if (el) el.innerHTML = empty(errMsg(e)); });
-  return shell("#/more", `<div id="asList"><p class="center pad"><span class="spin"></span></p></div>`, { back: "#/more", title: t("asShort"), sub: t("asSub") });
+  return shell("#/more", `<div id="asList">${skel(4)}</div>`, { back: "#/more", title: t("asShort"), sub: t("asSub") });
 };
 R.notFound = () => shell("#/home", empty(t("notFound")), { back: "#/home" });
 
@@ -1008,8 +1016,8 @@ async function render() {
     if (!api.hasSession() && await api.needsSetup()) { await R.login(); return; }
     if (!D) await refresh();
     if (!r) { history.replaceState(null, "", "#/home"); r = "home"; }
-    if (isGuest() && !["home", "bread"].includes(r)) { history.replaceState(null, "", "#/home"); r = "home"; arg = undefined; }
-    const map = { chat: R.chat, tata: R.tata, home: R.home, groups: R.groups, g: R.group, serve: R.serve, s: R.section, calendar: R.calendar, bread: R.bread, elders: R.elders, berita: R.berita, people: R.people, more: R.more, appstatus: R.appstatus, o: R.office, warta: R.warta };
+    if (isGuest() && !["home", "bread", "checkin"].includes(r)) { history.replaceState(null, "", "#/home"); r = "home"; arg = undefined; }
+    const map = { search: R.search, prayer: R.prayer, checkin: R.checkin, checkinqr: R.checkinqr, chat: R.chat, tata: R.tata, home: R.home, groups: R.groups, g: R.group, serve: R.serve, s: R.section, calendar: R.calendar, bread: R.bread, elders: R.elders, berita: R.berita, people: R.people, more: R.more, appstatus: R.appstatus, o: R.office, warta: R.warta };
     const html = (map[r] || R.notFound)(arg);
     if (typeof html === "string") view().innerHTML = html;
     draftRestore(view()); wAutoBase();
@@ -1050,6 +1058,299 @@ window.addEventListener("hashchange", () => { window.scrollTo(0, 0); render(); }
 // ---------- actions ----------
 const A = {};
 const F = {};
+
+// ---------- Improvements (YB 2026-10-29) ----------
+// Search, "This Sunday", "Can't make it", undo, profile photos, RSVP, unread badges, prayer requests, birthday wishes,
+// QR check-in, skeleton loading, pull to refresh. Each piece is small and uses the same app data (D) as everything else.
+
+// Skeleton placeholders while something loads.
+const skel = (n) => `<div class="skel-list" aria-hidden="true">${'<div class="skel"><i></i><span><b></b><b></b></span></div>'.repeat(n)}</div>`;
+
+// Undo bar: the thing disappears at once; after 5 seconds it is really deleted, unless "Undo" was tapped.
+let UNDO = null;
+function undoBar(text, commit, revert) {
+  if (UNDO) { clearTimeout(UNDO.t); UNDO.go(); }
+  const el = document.createElement("div"); el.className = "undo-bar"; el.setAttribute("role", "status");
+  el.innerHTML = `<span>${esc(text)}</span><button type="button">${esc(L3("Urungkan", "Urungkan", "Undo"))}</button>`;
+  document.body.appendChild(el); requestAnimationFrame(() => el.classList.add("show"));
+  const close = () => { el.classList.remove("show"); setTimeout(() => el.remove(), 250); };
+  const u = { go: () => { close(); if (UNDO === u) UNDO = null; commit(); } };
+  u.t = setTimeout(u.go, 5000);
+  el.querySelector("button").onclick = () => { clearTimeout(u.t); close(); if (UNDO === u) UNDO = null; if (revert) revert(); };
+  UNDO = u;
+}
+
+// Images made smaller on the phone before sending (profile photos, chat photos).
+async function resizeImage(file, max, q, square) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error("bad_image")); i.src = url; });
+    let w = img.naturalWidth, h = img.naturalHeight, sx = 0, sy = 0, sw = w, sh = h;
+    if (square) { const s0 = Math.min(w, h); sx = (w - s0) / 2; sy = (h - s0) / 2; sw = sh = s0; w = h = Math.min(max, s0); }
+    else { const k = Math.min(1, max / Math.max(w, h)); w = Math.round(w * k); h = Math.round(h * k); }
+    const c = document.createElement("canvas"); c.width = w; c.height = h; c.getContext("2d").drawImage(img, sx, sy, sw, sh, 0, 0, w, h);
+    return c.toDataURL("image/jpeg", q);
+  } finally { URL.revokeObjectURL(url); }
+}
+
+// Profile photo: tap your picture on More.
+A.photoPick = () => {
+  if (!(D.photos && D.photos[D.me.id])) return A.photoNew();
+  sheet(L3("Foto profil", "Foto profil", "Profile photo"), `<div class="stack"><button class="opt-card" data-act="photoNew">${ic("camera")}<span><b>${esc(L3("Ganti foto", "Ganti foto", "Change photo"))}</b></span>${ic("chev", "chev")}</button>
+    <button class="opt-card" data-act="photoRemove">${ic("trash")}<span><b>${esc(L3("Hapus foto", "Hapus foto", "Remove photo"))}</b></span>${ic("chev", "chev")}</button></div>`);
+};
+A.photoNew = () => {
+  closeSheet(); const inp = document.createElement("input"); inp.type = "file"; inp.accept = "image/*";
+  inp.onchange = async () => { const f = inp.files[0]; if (!f) return; try { const data = await resizeImage(f, 192, 0.8, true); await api.save("photo", { photo: data }); D.photos = { ...(D.photos || {}), [D.me.id]: data }; toast(t("saved")); render(); } catch (e) { toast(errMsg(e), true); } };
+  inp.click();
+};
+A.photoRemove = async () => { closeSheet(); try { await api.save("photo", { photo: "" }); if (D.photos) delete D.photos[D.me.id]; render(); } catch (e) { toast(errMsg(e), true); } };
+
+// Unread: groups with posts this phone has not opened yet, and chat rooms with new messages.
+function groupSeen() { let s = LS.get("seenG", null); if (!s) { s = {}; (D.groups || []).forEach((g) => (s[g.id] = new Date().toISOString())); LS.set("seenG", s); } return s; }
+const groupNew = (gid) => { if (!D || isGuest()) return false; const since = groupSeen()[gid] || ""; return (D.posts || []).some((p) => p.group_id === gid && !["warta", "finance"].includes(p.kind) && (p.created_at || "") > since); };
+function markGroupSeen(gid) { if (!D || isGuest()) return; const s = groupSeen(); s[gid] = new Date().toISOString(); LS.set("seenG", s); }
+const newBadge = (on) => (on ? `<span class="badge new">${esc(L3("Baru", "Baru", "New"))}</span>` : "");
+function tabBadge(h) {
+  if (!D || isGuest()) return "";
+  if (h === "#/chat") return chatRooms().some((r) => chatUnread(r.id)) ? `<i class="tab-dot"></i>` : "";
+  if (h === "#/groups") { const n = (D.groups || []).filter((g) => g.kind === "sermon" && canSee(g) && groupNew(g.id)).length; return n ? `<i class="tab-dot n">${n}</i>` : ""; }
+  return "";
+}
+
+// Search: members, groups, events, files and videos, posts, and roster lines.
+R.search = () => {
+  setTimeout(() => { const i = document.getElementById("searchIn"); if (i) { i.focus(); searchRun(i.value); } }, 0);
+  return shell("#/home", `<div class="search-top">${ic("search")}<input id="searchIn" type="search" enterkeyhint="search" autocomplete="off" placeholder="${esc(L3("Cari anggota, acara, file, roster…", "Bilang…", "Search members, events, files, rosters…"))}" value="${esc(LS.get("lastQ", "") || "")}"></div><div id="searchRes"></div>`,
+    { back: "#/home", title: L3("Cari", "Bilang", "Search") });
+};
+function searchRun(q) {
+  LS.set("lastQ", q); const el = document.getElementById("searchRes"); if (!el) return;
+  const n = norm(q); if (n.length < 2) { el.innerHTML = `<p class="muted small center pad">${esc(L3("Ketik minimal 2 huruf.", "Surat 2 huruf.", "Type at least 2 letters."))}</p>`; return; }
+  const has = (x) => norm(x || "").includes(n); const digits = q.replace(/\D/g, "");
+  const people = (D.people || []).filter((p) => has(p.name) || has(p.alias) || (digits.length >= 3 && (p.phone || "").includes(digits))).slice(0, 20);
+  const groups = (D.groups || []).filter((g) => canSee(g) && has(gname(g)));
+  const evs = (D.events || []).filter((e) => has(e.title) || has(e.place) || has(e.notes)).slice(0, 15);
+  const files = (D.files || []).filter((f) => has(f.title) || has(f.file_name) || has(f.note)).slice(0, 15);
+  const posts = (D.posts || []).filter((p) => !["warta", "finance"].includes(p.kind) && (has(p.title) || has(p.body))).slice(0, 10);
+  const lines = []; (D.rosters || []).forEach((r) => (r.table_json || []).forEach((tb) => { const rows = tb.rows || []; const head = rows[0] || []; rows.slice(1).forEach((row) => { if (row.some((c, j) => j && has(c))) lines.push({ r, row, head }); }); }));
+  const sec = (title, html) => (html ? `<h3 class="sec-h">${esc(title)}</h3><div class="card">${html}</div>` : "");
+  const out = sec(L3("Anggota", "Ruas", "Members"), people.map((p) => `<div class="li">${avatarOf(p)}<span class="grow"><b>${esc(p.name)}</b><small>${esc([fmtPhone(p.phone), ...Object.keys(p.groups || {}).map((g) => gname(G(g))).filter(Boolean)].filter(Boolean).join(" · "))}</small></span>${p.phone && p.id !== D.me.id ? `<a class="icon-btn wa" href="${wa("", p.phone)}" target="_blank" rel="noopener" aria-label="WhatsApp">${ic("wa")}</a>` : ""}</div>`).join(""))
+    + (groups.length ? `<h3 class="sec-h">${esc(t("tab_groups"))}</h3><div class="glist">${groups.map((g) => groupTile(g, esc(t(g.kind === "service" ? "kindService" : "kindSermon")))).join("")}</div>` : "")
+    + sec(L3("Acara", "Ulaon", "Events"), evs.map(eventRow).join(""))
+    + sec(L3("Roster", "Roster", "Rosters"), lines.slice(0, 15).map(({ r, row, head }) => `<a class="li" href="${rosterHome(r.group_id, r.month)}"><span class="grow"><b>${esc(gname(G(r.group_id)))} · ${esc(row[0] || "")}</b><small>${esc(row.map((c, j) => (j && c ? `${head[j] || ""}: ${c}` : "")).filter(Boolean).join(" · "))}</small></span>${ic("chev", "chev")}</a>`).join(""))
+    + sec(L3("File & video", "File & video", "Files & videos"), files.map((f) => `<div class="li"><span class="ftype">${f.link ? "▶" : esc(fileKind(f).toUpperCase())}</span><span class="grow"><b>${esc(f.title || f.file_name)}</b><small>${esc(gname(G(f.group_id)))}${f.day ? " · " + esc(fmtDay(f.day)) : ""}</small></span>${f.link ? `<a class="icon-btn" href="${esc(f.link)}" target="_blank" rel="noopener" aria-label="Video">${ic("screen")}</a>` : `<button class="icon-btn" data-act="openOffFile" data-id="${f.id}" aria-label="${esc(t("openOriginal"))}">${ic("file")}</button>`}</div>`).join(""))
+    + sec(L3("Kiriman", "Kiriman", "Posts"), posts.map((p) => `<a class="li" href="#/g/${p.group_id}?tab=${p.kind === "sermon" ? "sermon" : "news"}"><span class="grow"><b>${esc(p.title || "")}</b><small>${esc(gname(G(p.group_id)))} · ${esc(String(p.body || "").slice(0, 70))}</small></span>${ic("chev", "chev")}</a>`).join(""));
+  el.innerHTML = out || empty(L3("Tidak ditemukan.", "Ndang dapot.", "Nothing found."), "search");
+}
+document.addEventListener("input", (e) => { if (e.target && e.target.id === "searchIn") searchRun(e.target.value); });
+
+// "This Sunday" on Home: the Tata Ibadah, your duty, who serves in each section, and that day's events.
+function thisSundayCard() {
+  if (isGuest()) return "";
+  const sun = nextSunday(); const tata = (D.services || []).find((v) => v.service_date === sun);
+  const mine = duties().filter((d) => d.date === sun);
+  const serving = [];
+  (D.rosters || []).forEach((r) => { if (r.file_name || r.link) return; const tb = (r.table_json || [])[0]; if (!tb) return; const rows = tb.rows || []; const head = rows[0] || [];
+    rows.slice(1).forEach((row) => { if (rowDate(row, r.month) !== sun) return; const jobs = head.map((h, j) => [h, row[j]]).slice(1).filter(([h, w]) => h && w); if (jobs.length) serving.push({ g: G(r.group_id), jobs }); }); });
+  const evs = (D.events || []).filter((e) => sgParts(e.starts_at).date === sun);
+  if (!tata && !mine.length && !serving.length && !evs.length) return "";
+  return `<article class="card sunday"><div class="sun-kick">⛪ ${esc(L3("Minggu ini", "Minggu on", "This Sunday"))} · ${esc(fmt(sun, { weekday: "long", day: "numeric", month: "long" }))}</div>
+    ${tata ? `<a class="btn primary block" href="#/tata/${tata.id}">${ic("book")} ${esc(t("tataTitle"))}</a>` : ""}
+    ${mine.map((d) => `<div class="li sun-mine" style="--gc:${d.group ? d.group.color : "var(--brand)"}"><span class="grow"><b>✓ ${esc(L3("Anda bertugas", "Ho marhobas", "You're serving"))} · ${esc(gname(d.group))}</b><small>${esc(d.roles.join(", "))}</small></span><button class="btn sm ghost" data-act="cantMake" data-g="${esc(d.roster.group_id)}" data-day="${sun}" data-jobs="${esc(d.roles.join(", "))}">${esc(L3("Tidak bisa?", "Ndang boi?", "Can't make it?"))}</button></div>`).join("")}
+    ${serving.length ? `<details class="sun-serve"><summary>${esc(L3("Yang bertugas", "Na marhobas", "Who's serving"))} · ${serving.length} ${esc(L3("seksi", "seksi", "sections"))}</summary>${serving.map((x) => `<div class="li" style="--gc:${x.g ? x.g.color : "var(--brand)"}"><span class="sun-gi">${ic(x.g ? x.g.icon : "people")}</span><span class="grow"><b>${esc(gname(x.g))}</b><small>${esc(x.jobs.map(([h, w]) => `${h}: ${w}`).join(" · "))}</small></span></div>`).join("")}</details>` : ""}
+    ${evs.map(eventRow).join("")}</article>`;
+}
+
+// "I can't make it": tells that section's roster makers, with who is free that Sunday.
+A.cantMake = (d) => {
+  const g = G(d.g); const day = d.day; const taken = [];
+  (D.rosters || []).forEach((r) => (r.table_json || []).forEach((tb) => (tb.rows || []).forEach((row) => { if (rowDate(row, r.month) === day) row.forEach((c) => taken.push(c)); })));
+  const free = (D.people || []).filter((p) => p.id !== D.me.id && d.g in (p.groups || {}) && !taken.some((c) => hit(c, myNames(p)))).map((p) => p.name);
+  sheet(L3("Tidak bisa bertugas", "Ndang boi marhobas", "Can't make it"), `<form class="form" data-form="cantmake" data-g="${esc(d.g)}" data-day="${esc(day)}" data-jobs="${esc(d.jobs || "")}">
+    <p class="muted">${esc(gname(g))} · ${esc(fmtDay(day))}${d.jobs ? " · " + esc(d.jobs) : ""}</p>
+    <label>${esc(L3("Alasan (boleh kosong)", "Alasan", "Reason (optional)"))}<textarea name="note" rows="2" maxlength="200"></textarea></label>
+    ${free.length ? `<p class="small muted">${esc(L3("Yang kosong hari itu", "Na so marhobas", "Free that Sunday"))}: <b>${esc(free.join(", "))}</b></p>` : ""}
+    <input type="hidden" name="free" value="${esc(free.slice(0, 8).join(", "))}">
+    <button class="btn primary block">${esc(L3("Beri tahu makers", "Paboa tu makers", "Tell the makers"))}</button></form>`);
+};
+F.cantmake = async (f) => {
+  const r = await api.save("swap", { group_id: f.dataset.g, label: fmtDay(f.dataset.day), jobs: f.dataset.jobs, note: f.note.value.trim(), free: f.free.value, url: rosterHome(f.dataset.g, f.dataset.day.slice(0, 7)) });
+  closeSheet(); toast(L3(`Terkirim ke ${r.told || 0} makers.`, `Tarkirim tu ${r.told || 0} makers.`, `Sent to ${r.told || 0} makers.`));
+};
+
+// Event RSVP: Going / Maybe / Can't, with counts; reminders then go only to those coming.
+const rsvpOf = (e) => (D.rsvps && D.rsvps[e.id]) || { going: 0, maybe: 0, no: 0, who: [] };
+function rsvpLine(e) {
+  if (isGuest()) return ""; const r = rsvpOf(e);
+  return (r.going || r.maybe ? ` · ✓ ${r.going}${r.maybe ? " · ? " + r.maybe : ""}` : "") + (r.mine ? ` · ${r.mine === "going" ? L3("Anda hadir", "Ro ho", "You're going") : r.mine === "maybe" ? L3("Mungkin", "Boha", "Maybe") : L3("Tidak hadir", "Ndang ro", "Not going")}` : "");
+}
+function rsvpBlock(e) {
+  if (isGuest() || new Date(e.starts_at) < Date.now()) return ""; const r = rsvpOf(e);
+  const b = (st, icon, label) => `<button type="button" class="rsvp-btn${r.mine === st ? " on" : ""}" data-act="rsvp" data-id="${e.id}" data-s="${st}"><span>${icon} ${esc(label)}</span><b>${r[st] || 0}</b></button>`;
+  const who = (r.who || []).filter((x) => x.s === "going").map((x) => x.n);
+  return `<div class="rsvp"><p class="small muted">${esc(L3("Apakah Anda hadir?", "Ro do ho?", "Are you coming?"))}</p><div class="rsvp-row">${b("going", "✓", L3("Hadir", "Ro", "Going"))}${b("maybe", "?", L3("Mungkin", "Boha", "Maybe"))}${b("no", "✕", L3("Tidak", "Ndang", "Can't"))}</div>${who.length ? `<p class="small muted">✓ ${esc(who.join(", "))}</p>` : ""}</div>`;
+}
+A.rsvp = async (d) => {
+  const e = D.events.find((x) => x.id === d.id); if (!e) return; const r = { ...rsvpOf(e) }; const st = r.mine === d.s ? "" : d.s;
+  try {
+    await api.save("rsvp", { event_id: e.id, status: st });
+    if (r.mine) r[r.mine] = Math.max(0, (r[r.mine] || 0) - 1); if (st) r[st] = (r[st] || 0) + 1; r.mine = st || null;
+    r.who = (r.who || []).filter((x) => x.n !== D.me.name); if (st) r.who.push({ n: D.me.name, s: st });
+    D.rsvps = { ...(D.rsvps || {}), [e.id]: r }; render(); A.evMenu({ id: e.id });
+  } catch (err) { toast(errMsg(err), true); }
+};
+
+// Prayer requests: post one (optionally without your name; the elders still see it), pray along, mark answered.
+R.prayer = () => {
+  const list = D.prayers || []; const elder = D.me.is_admin || "parhalado" in (D.me.groups || {});
+  return shell("#/more", `<h2 class="page-h">🙏 ${esc(L3("Pokok Doa", "Pokok Tangiang", "Prayer requests"))}</h2>
+    <p class="lead">${esc(L3("Bagikan permohonan doa. Jemaat dapat ikut mendoakan, dan para sintua melihat semua permohonan.", "Bagi pangidoan tangiang. Ruas boi mangidoan, jala sintua mamereng sude.", "Share a prayer request. Others can pray along, and the elders see every request."))}</p>
+    <form class="card form" data-form="prayer"><label>${esc(L3("Permohonan doa", "Pangidoan", "Your request"))}<textarea name="body" rows="3" maxlength="1000" required></textarea></label>
+      <label class="check"><input type="checkbox" name="anon"> ${esc(L3("Tanpa nama (sintua tetap melihat nama Anda)", "Ndang marhite goar (sintua mamereng)", "Without my name (the elders still see it)"))}</label>
+      <button class="btn primary block">${ic("plus")} ${esc(L3("Kirim", "Kirim", "Post"))}</button></form>
+    ${list.length ? list.map((p) => `<article class="card prayer${p.answered ? " done" : ""}"><div class="meta">${esc(p.name || L3("Anonim", "Anonim", "Anonymous"))}${p.anon && p.name ? " · " + esc(L3("tanpa nama", "anonim", "anonymous")) : ""} · ${esc(fmt(p.at, { day: "numeric", month: "short" }))}${p.answered ? ` · <span class="badge chair">✓ ${esc(L3("Terjawab", "Dialusi", "Answered"))}</span>` : ""}</div>
+      <p class="pre">${esc(p.body)}</p>
+      <div class="row between"><button class="btn sm${p.i_prayed ? " primary" : ""}" data-act="pray" data-id="${p.id}">🙏 ${esc(p.i_prayed ? L3("Sudah didoakan", "Nunga ditangianghon", "Prayed") : L3("Saya mendoakan", "Hu tangianghon", "I prayed"))} · ${p.prayed}</button>
+        ${p.mine || elder ? `<span class="row" style="margin:0"><button class="btn sm ghost" data-act="prayerDone" data-id="${p.id}" aria-label="${esc(L3("Terjawab", "Dialusi", "Answered"))}">✓</button><button class="btn sm danger" data-act="del" data-kind="prayer" data-id="${p.id}" aria-label="${esc(t("delete"))}">${ic("trash")}</button></span>` : ""}</div></article>`).join("")
+      : empty(L3("Belum ada pokok doa.", "Dang adong.", "No prayer requests yet."), "heart")}`, { back: "#/more", title: L3("Pokok Doa", "Pokok Tangiang", "Prayer requests") });
+};
+F.prayer = async (f) => { const body = f.body.value.trim(); if (!body) return; await api.save("prayer", { body, anon: f.anon.checked }); await refresh(); toast(L3("Terkirim. Tuhan mendengar doa kita.", "Tarkirim. Tuhan manangihon.", "Posted. God hears our prayers.")); };
+A.pray = (d) => { const p = (D.prayers || []).find((x) => String(x.id) === String(d.id)); if (!p) return; p.i_prayed = !p.i_prayed; p.prayed += p.i_prayed ? 1 : -1; render(); api.save("pray", { prayer_id: +d.id }).catch((e) => toast(errMsg(e), true)); };
+A.prayerDone = async (d) => { try { await api.save("prayer_answered", { prayer_id: +d.id }); await refresh(); render(); } catch (e) { toast(errMsg(e), true); } };
+
+// Birthday wishes: members write one in the app; the birthday person gets them all in one push at 19:00 and reads them on Home.
+function wishBtn(p) {
+  if (isGuest() || !p || !p.id || p.id === D.me.id || p.kind === "list") return "";
+  const sent = (D.wished || []).includes(p.id);
+  return `<button class="btn sm${sent ? " ghost" : " primary"}" data-act="wishSend" data-id="${esc(p.id)}" data-name="${esc(firstName(p.name))}">${sent ? "✓ " + esc(L3("Terkirim", "Tarkirim", "Sent")) : "💌 " + esc(L3("Ucapan", "Ucapan", "Wish"))}</button>`;
+}
+A.wishSend = (d) => sheet(`💌 ${d.name}`, `<form class="form" data-form="wish" data-id="${esc(d.id)}">
+  <label>${esc(L3("Ucapan Anda", "Ucapanmu", "Your wish"))}<textarea name="body" rows="3" maxlength="300" required>${esc(L3(`Selamat ulang tahun, ${d.name}! Tuhan memberkati.`, `Selamat ari tubu, ${d.name}! Horas!`, `Happy birthday, ${d.name}! God bless you.`))}</textarea></label>
+  <p class="small muted">${esc(L3("Semua ucapan sampai jam 19.00 dalam satu notifikasi.", "Sude ucapan sahat jam 19.00.", "All wishes reach them together at 7 pm in one notification."))}</p>
+  <button class="btn primary block">💌 ${esc(L3("Kirim ucapan", "Kirim ucapan", "Send wish"))}</button></form>`);
+F.wish = async (f) => { await api.save("wish", { to: f.dataset.id, body: f.body.value.trim() }); closeSheet(); D.wished = [...new Set([...(D.wished || []), f.dataset.id])]; toast(L3("Ucapan terkirim 💌", "Ucapan tarkirim 💌", "Wish sent 💌")); };
+function wishesCard() {
+  const w = (D && D.wishes) || []; if (isGuest() || !w.length) return "";
+  return `<article class="card wishes"><div class="card-h"><h3>💌 ${esc(L3(`${w.length} ucapan untuk Anda`, `${w.length} ucapan tu ho`, `${w.length} wishes for you`))}</h3></div>${w.map((x) => `<div class="wish"><b>${esc(x.from)}</b><p>${esc(x.body)}</p></div>`).join("")}</article>`;
+}
+
+// QR check-in: the admin prints a QR for the church door; members scan it with the phone camera and are counted once a day.
+R.checkin = () => {
+  const k = new URLSearchParams(location.hash.split("?")[1] || "").get("k") || "";
+  if (isGuest()) { LS.set("afterLogin", location.hash); return shell("#/home", `<div class="card center pad"><h2>👋 Check-in</h2><p class="muted">${esc(L3("Masuk dulu, lalu Anda tercatat hadir.", "Bongot jolo.", "Sign in first, then you're checked in."))}</p><button class="btn primary" data-act="signIn">${ic("lock")} ${esc(t("signIn"))}</button></div>`, { title: "Check-in" }); }
+  setTimeout(async () => {
+    const el = document.getElementById("ciRes"); if (!el) return;
+    try { const r = await api.save("checkin", { key: k }); D.checked_in = true;
+      el.innerHTML = `<div class="ci-ok">${ic("check")}</div><h2>${esc(r.already ? L3("Sudah tercatat hari ini", "Nunga tarsurat", "Already checked in today") : L3("Selamat beribadah!", "Horas! Selamat marminggu!", "Welcome to church!"))}</h2><p class="muted">${esc(D.me.name)} · ${esc(r.cat)} · ${esc(fmtDay(r.day))}</p><a class="btn primary" href="#/home">${esc(t("tab_home"))}</a>`;
+    } catch (e) { el.innerHTML = `<p class="warn">${esc(e && /bad_code/.test(e.message || e.code || "") ? L3("Kode QR ini tidak berlaku.", "Kode QR ndang berlaku.", "This QR code is not valid.") : errMsg(e))}</p>`; }
+  }, 0);
+  return shell("#/home", `<div class="card center pad" id="ciRes">${skel(1)}</div>`, { back: "#/home", title: "Check-in" });
+};
+R.checkinqr = () => {
+  if (!D.me.is_admin) return R.notFound();
+  const url = appUrl() + "#/checkin?k=" + encodeURIComponent(D.checkin_key || "");
+  setTimeout(async () => {
+    const el = document.getElementById("qrBox"); if (!el) return;
+    try { await loadScript("https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"); el.innerHTML = ""; new window.QRCode(el, { text: url, width: 240, height: 240, correctLevel: window.QRCode.CorrectLevel.M }); }
+    catch (e) { el.innerHTML = `<p class="warn small">${esc(errMsg(e))}</p>`; }
+  }, 0);
+  const att = D.attendance || {}; const days = Object.keys(att).sort().reverse().slice(0, 8); const CATS = ["Bapak", "Ibu", "Naposo", "Remaja", "Sekolah Minggu", "Lainnya"];
+  return shell("#/more", `<div class="card center qr-card"><h3>📷 QR Check-in</h3><p class="small muted">${esc(L3("Cetak dan tempel di pintu gereja. Jemaat memindai dengan kamera HP saat datang; jumlahnya masuk ke Warta Jemaat.", "Cetak jala tempel di pintu gareja.", "Print it for the church door. Members scan it with their phone camera; the counts go into the Warta Jemaat."))}</p>
+      <div id="qrBox" class="qr-box">${skel(1)}</div><button class="btn" data-act="printPage">${ic("download")} ${esc(L3("Cetak", "Cetak", "Print"))}</button></div>
+    <h3 class="sec-h">${esc(L3("Kehadiran", "Na ro", "Attendance"))}</h3>
+    ${days.length ? `<div class="tbl-wrap"><table class="tbl"><tr><th>${esc(t("f_date"))}</th>${CATS.map((c) => `<th>${esc(c)}</th>`).join("")}<th>Total</th></tr>${days.map((d) => { const c = att[d]; const tot = Object.values(c).reduce((a, b) => a + b, 0); return `<tr><td>${esc(fmt(d, { day: "numeric", month: "short" }))}</td>${CATS.map((k) => `<td>${c[k] || ""}</td>`).join("")}<td><b>${tot}</b></td></tr>`; }).join("")}</table></div>` : `<p class="muted small">${esc(L3("Belum ada check-in.", "Dang adong.", "No check-ins yet."))}</p>`}`,
+    { back: "#/more", title: "QR Check-in" });
+};
+A.printPage = () => window.print();
+
+// Pull down at the top of a page to refresh.
+(() => {
+  let y0 = null, pulling = false; const ind = document.createElement("div"); ind.className = "ptr"; ind.textContent = "↻"; document.body.appendChild(ind);
+  addEventListener("touchstart", (e) => { const sh = document.getElementById("sheet"); y0 = window.scrollY <= 0 && (!sh || sh.hidden) && !document.getElementById("wb") ? e.touches[0].clientY : null; pulling = false; }, { passive: true });
+  addEventListener("touchmove", (e) => { if (y0 == null) return; const dy = e.touches[0].clientY - y0; if (dy > 12) { pulling = true; ind.style.opacity = String(Math.min(1, dy / 90)); ind.style.transform = `translate(-50%, ${Math.min(dy, 100) - 40}px) rotate(${dy * 3}deg)`; } }, { passive: true });
+  addEventListener("touchend", async (e) => {
+    if (y0 == null) return; const dy = e.changedTouches[0].clientY - y0; y0 = null;
+    if (!(pulling && dy > 90)) { ind.style.opacity = "0"; ind.style.transform = ""; return; }
+    ind.classList.add("spinning"); try { await refresh(); render(); } catch (err) {} ind.classList.remove("spinning"); ind.style.opacity = "0"; ind.style.transform = "";
+  }, { passive: true });
+})();
+
+// Look of all of the above (kept here so only app.js needs updating). Dark mode uses the same colour tokens.
+try { document.head.insertAdjacentHTML("beforeend", `<style>
+  #view > main { animation: pageIn .22s ease-out both; }
+  @keyframes pageIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  .skel-list { display: grid; gap: 12px; padding: 8px 0; }
+  .skel { display: flex; gap: 12px; align-items: center; }
+  .skel i { width: 42px; height: 42px; border-radius: 50%; flex: none; }
+  .skel span { flex: 1; display: grid; gap: 7px; } .skel b { height: 11px; border-radius: 6px; } .skel b + b { width: 60%; }
+  .skel i, .skel b { background: linear-gradient(90deg, var(--surface-2) 25%, color-mix(in srgb, var(--surface-2) 40%, var(--surface)) 50%, var(--surface-2) 75%); background-size: 200% 100%; animation: shimmer 1.2s infinite linear; }
+  @keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+  .undo-bar { position: fixed; left: 50%; bottom: calc(80px + env(safe-area-inset-bottom)); transform: translate(-50%, 30px); opacity: 0; transition: .22s; z-index: 70; display: flex; align-items: center; gap: 14px; padding: 10px 12px 10px 18px; border-radius: 14px; background: var(--ink); color: var(--bg); box-shadow: var(--shadow-lg); font-weight: 600; }
+  .undo-bar.show { transform: translate(-50%, 0); opacity: 1; }
+  .undo-bar button { border: 0; background: transparent; color: var(--gold); font-weight: 800; padding: 6px 8px; font-size: 15px; }
+  .ptr { position: fixed; top: calc(env(safe-area-inset-top) + 8px); left: 50%; transform: translate(-50%, -40px); opacity: 0; z-index: 40; width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; background: var(--surface); color: var(--brand); box-shadow: var(--shadow-lg); font-size: 20px; font-weight: 800; transition: opacity .15s; }
+  .ptr.spinning { opacity: 1 !important; transform: translate(-50%, 20px) !important; animation: spin .8s linear infinite; }
+  .search-entry { display: flex; align-items: center; gap: 10px; margin-top: 12px; padding: 11px 14px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); color: var(--muted); box-shadow: var(--shadow); }
+  .search-entry .ic { width: 19px; height: 19px; }
+  .search-top { display: flex; align-items: center; gap: 10px; margin: 12px 0; padding: 0 14px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); }
+  .search-top input { border: 0; background: transparent; padding: 13px 0; box-shadow: none; }
+  .search-top .ic { color: var(--muted); }
+  .card.sunday { border-top: 4px solid var(--gold); display: grid; gap: 10px; }
+  .sun-kick { font-weight: 800; font-size: 15px; }
+  .sun-mine { border: 1px solid color-mix(in srgb, var(--gc) 35%, var(--line)); border-radius: 12px; padding: 8px 10px; background: color-mix(in srgb, var(--gc) 6%, var(--surface)); }
+  .sun-serve summary { display: block !important; cursor: pointer; font-weight: 700; color: var(--brand); padding: 4px 0; }
+  .sun-gi { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; flex: none; background: color-mix(in srgb, var(--gc) 14%, var(--surface)); color: var(--gc); }
+  .sun-gi .ic { width: 18px; height: 18px; }
+  .rr-cant { font-size: 12px; font-weight: 700; margin-left: 6px; }
+  .badge.new { background: #ef4444; color: #fff; }
+  nav.tabs a { position: relative; }
+  .tab-dot { position: absolute; top: 3px; left: calc(50% + 8px); min-width: 10px; height: 10px; border-radius: 999px; background: #ef4444; border: 2px solid var(--surface); font-style: normal; }
+  .tab-dot.n { height: 17px; min-width: 17px; padding: 0 4px; font-size: 10.5px; line-height: 13px; color: #fff; font-weight: 800; text-align: center; }
+  .avatar img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block; }
+  .avatar-btn { position: relative; border: 0; background: none; padding: 0; border-radius: 50%; }
+  .avatar-edit { position: absolute; right: -2px; bottom: -2px; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; background: var(--brand); color: var(--brand-ink); border: 2px solid var(--surface); font-style: normal; }
+  .avatar-edit .ic { width: 13px; height: 13px; }
+  .rsvp { margin: 10px 0; } .rsvp-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .rsvp-btn { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 10px 6px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); font-weight: 700; color: var(--ink); }
+  .rsvp-btn b { font-size: 18px; } .rsvp-btn.on { background: var(--brand); border-color: var(--brand); color: var(--brand-ink); }
+  .card.prayer .meta { font-size: 13px; color: var(--muted); }
+  .card.prayer.done { opacity: .75; }
+  .card.wishes { border-left: 4px solid #ec4899; } .wish { padding: 8px 0; border-bottom: 1px solid var(--line); } .wish:last-child { border-bottom: 0; } .wish p { margin: 2px 0 0; }
+  .qr-card h3 { justify-content: center; } .qr-box { display: grid; place-items: center; margin: 14px auto; padding: 14px; background: #fff; border-radius: 16px; width: max-content; min-width: 200px; min-height: 200px; }
+  .ci-ok { width: 72px; height: 72px; margin: 0 auto 8px; border-radius: 50%; display: grid; place-items: center; background: #22c55e; color: #fff; } .ci-ok .ic { width: 38px; height: 38px; }
+  .chat { display: flex; flex-direction: column; gap: 10px; padding: 12px 0 120px; }
+  .ch-day { align-self: center; font-size: 12px; font-weight: 700; color: var(--muted); background: var(--surface-2); padding: 3px 10px; border-radius: 999px; margin: 6px 0; }
+  .ch-msg { max-width: 82%; align-self: flex-start; display: flex; flex-direction: column; gap: 3px; }
+  .ch-msg.mine { align-self: flex-end; align-items: flex-end; }
+  .ch-name { font-size: 12.5px; color: var(--brand); padding-left: 12px; }
+  .ch-bubble { background: var(--surface); border: 1px solid var(--line); padding: 9px 13px; border-radius: 18px 18px 18px 6px; line-height: 1.45; overflow-wrap: anywhere; box-shadow: var(--shadow); cursor: pointer; display: grid; gap: 6px; }
+  .ch-msg.mine .ch-bubble { background: var(--brand); border-color: var(--brand); color: var(--brand-ink); border-radius: 18px 18px 6px 18px; }
+  .ch-msg.sel .ch-bubble { outline: 2px solid var(--gold); outline-offset: 2px; }
+  .ch-quote { display: block; font-size: 13px; padding: 5px 9px; border-left: 3px solid var(--gold); border-radius: 6px; background: color-mix(in srgb, currentColor 8%, transparent); opacity: .9; }
+  .ch-quote b { display: block; font-size: 12px; }
+  .ch-img { max-width: 100%; max-height: 300px; border-radius: 12px; display: block; }
+  .ch-rxs { display: flex; gap: 4px; flex-wrap: wrap; }
+  .ch-rx { border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 1px 8px; font-size: 13px; font-weight: 700; color: var(--ink); }
+  .ch-rx.me { border-color: var(--brand); background: color-mix(in srgb, var(--brand) 12%, var(--surface)); }
+  .ch-acts { display: flex; gap: 4px; flex-wrap: wrap; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 4px; box-shadow: var(--shadow-lg); }
+  .ch-acts button { border: 0; background: transparent; font-size: 18px; padding: 4px 6px; border-radius: 10px; }
+  .ch-acts button:nth-last-child(-n+2) { font-size: 13px; font-weight: 700; color: var(--brand); }
+  .ch-time { font-size: 11.5px; color: var(--muted); padding: 0 8px; }
+  .ch-online { display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 12.5px; color: var(--muted); margin: 6px 0 0; min-height: 18px; }
+  .ch-online i { width: 9px; height: 9px; border-radius: 50%; background: #22c55e; display: inline-block; }
+  .ch-bar { position: fixed; left: 0; right: 0; bottom: calc(66px + env(safe-area-inset-bottom)); z-index: 19; display: grid; gap: 6px; padding: 8px max(12px, env(safe-area-inset-left)); background: color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-top: 1px solid var(--line); }
+  .ch-row { display: flex; gap: 8px; align-items: flex-end; }
+  .ch-pend { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 6px 8px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); }
+  .ch-pend img { width: 40px; height: 40px; object-fit: cover; border-radius: 8px; }
+  .ch-bar textarea { flex: 1; min-height: 44px; max-height: 140px; resize: none; padding: 11px 14px; border-radius: 22px; border: 1px solid var(--line); background: var(--surface); line-height: 1.35; }
+  .ch-bar .btn { width: 46px; min-width: 46px; height: 44px; border-radius: 50%; padding: 0; font-size: 18px; }
+  .ch-bar .icon-btn { width: 44px; height: 44px; border-radius: 50%; }
+  @media (orientation: landscape) and (max-height: 540px), (min-width: 900px) { .ch-bar { bottom: 0; left: calc(84px + env(safe-area-inset-left)); } }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .hbd { background: linear-gradient(135deg, #3b2a12, #3a1730); color: #ffe7c2; } :root:not([data-theme="light"]) .hbd h2 { color: #ffb4d3; } }
+  :root[data-theme="dark"] .hbd { background: linear-gradient(135deg, #3b2a12, #3a1730); color: #ffe7c2; } :root[data-theme="dark"] .hbd h2 { color: #ffb4d3; }
+  @media (prefers-reduced-motion: reduce) { #view > main, .skel i, .skel b, .ptr.spinning { animation: none; } }
+</style>`); } catch (e) {}
 // The phone-calendar options and the birthday tools open in a small menu, so the Agenda starts with the months themselves.
 A.phoneCal = () => sheet(L3("Ke kalender HP", "Tu kalender HP", "To my phone calendar"), `<div class="stack">
   <button class="opt-card" data-act="calSub">${ic("calendar")}<span><b>${esc(t("calSub"))}</b><small>${esc(t("calSubSub"))}</small></span>${ic("chev", "chev")}</button>
@@ -1068,7 +1369,7 @@ const isLive = (id) => !!id && !!D && ((D.me && id === D.me.id && !isGuest()) ||
 const seenText = (id) => { if (isLive(id)) return L3("Sedang aktif", "Adong di aplikasi", "Live now"); const t0 = seenAt(id); if (!t0) return L3("Belum aktif", "Dang adong", "Not seen yet");
   const m = Math.round((Date.now() - t0) / 60e3); const ago = m < 60 ? `${m} min` : m < 1440 ? `${Math.round(m / 60)} ${L3("jam", "jam", "h")}` : `${Math.round(m / 1440)} ${L3("hari", "ari", "d")}`; return L3(`Terakhir aktif ${ago} lalu`, `Parpudi ${ago} na salpu`, `Last seen ${ago} ago`); };
 const presDot = (id) => (id ? `<i class="pres ${isLive(id) ? "on" : "off"}" title="${esc(seenText(id))}" aria-label="${esc(seenText(id))}"></i>` : "");
-const avatarOf = (p, cls = "") => `<span class="avatar${cls ? " " + cls : ""}">${esc(initials(p && p.name))}${presDot(p && p.id)}</span>`;
+const avatarOf = (p, cls = "") => { const ph = p && p.id && D && D.photos && D.photos[p.id]; return `<span class="avatar${cls ? " " + cls : ""}">${ph ? `<img src="${esc(ph)}" alt="">` : esc(initials(p && p.name))}${presDot(p && p.id)}</span>`; };
 setInterval(() => { try { if (D && !isGuest() && !document.hidden && api.ping) api.ping(standalone()).catch(() => {}); } catch (e) {} }, 60e3);
 try { document.head.insertAdjacentHTML("beforeend", `<style>
   .avatar { position: relative; }
@@ -1084,76 +1385,103 @@ try { document.head.insertAdjacentHTML("beforeend", `<style>
 
 // ---------- Chat (YB 2026-10-29) ----------
 // Two rooms, both two-way: "makers" for the makers of every category and section (and the admin), "all" for every member.
-// Messages are read and sent through hk_save ("chat_list", "chat"); the open room checks for new messages every 4 seconds.
+// Tap a message to react (🙏 ❤️ 👍 😂 🎉), reply to it or delete your own; 📷 sends a photo. The open room checks every 4 seconds.
 const CHAT_ROLES = ["chair", "maker", "tmaker", "ychair", "ytreasurer", "ysecretary"];
 const isChatMaker = () => !!D && !isGuest() && (D.me.is_admin || Object.values(D.me.groups || {}).some((r) => CHAT_ROLES.includes(r)));
 const chatRooms = () => [
   ...(isChatMaker() ? [{ id: "makers", name: L3("Makers", "Makers", "Makers"), sub: L3("Makers semua kategorial dan seksi", "Makers sude kategorial dohot seksi", "Makers of every category and section") }] : []),
   { id: "all", name: L3("Jemaat", "Ruas", "Everyone"), sub: L3("Makers dan seluruh jemaat", "Makers dohot sude ruas", "Makers and all members") },
 ];
-let CH = { room: null, msgs: [], last: 0, timer: null, sending: false };
+const REACTS = ["🙏", "❤️", "👍", "😂", "🎉"];
+let CH = { room: null, msgs: [], last: 0, timer: null, sending: false, reacts: {}, sel: null, reply: null, image: null };
+// Unread: the newest message id per room (from the app data) against the last one this phone showed.
+function chatSeen() { let s = LS.get("chatSeen", null); if (!s) { s = { ...((D && D.chat_last) || {}) }; LS.set("chatSeen", s); } return s; }
+function markChatSeen(room, id) { const s = chatSeen(); if (id && (s[room] || 0) < id) { s[room] = id; LS.set("chatSeen", s); } }
+const chatUnread = (room) => !!D && !isGuest() && ((D.chat_last && D.chat_last[room]) || 0) > (chatSeen()[room] || 0);
 function chatHtml() {
   if (!CH.msgs.length) return empty(L3("Belum ada pesan. Mulai percakapan!", "Dang adong pesan. Mulai ma!", "No messages yet. Start the conversation!"), "people");
-  let lastDay = "";
+  let lastDay = ""; const me = D.me.name;
   return CH.msgs.map((m) => {
     const mine = m.member_id === D.me.id; const day = sgParts(m.at).date;
     const sep = day !== lastDay ? `<div class="ch-day">${esc(day === today() ? t("today") : fmt(day, { weekday: "long", day: "numeric", month: "long" }))}</div>` : ""; lastDay = day;
-    return `${sep}<div class="ch-msg${mine ? " mine" : ""}">${mine ? "" : `<b class="ch-name">${presDot(m.member_id)}${esc(m.name || "")}</b>`}<div class="ch-bubble">${esc(m.body).replace(/\n/g, "<br>")}</div>
-      <small class="ch-time">${esc(fmtTime(m.at))}${mine || D.me.is_admin ? ` · <button class="link ch-del" data-act="chatDel" data-id="${m.id}">${esc(t("delete"))}</button>` : ""}</small></div>`;
+    const rx = CH.reacts[m.id] || {}; const sel = CH.sel === m.id;
+    const chips = Object.keys(rx).map((e) => `<button class="ch-rx${rx[e].includes(me) ? " me" : ""}" data-act="chatReact" data-id="${m.id}" data-e="${e}" title="${esc(rx[e].join(", "))}">${e} ${rx[e].length}</button>`).join("");
+    return `${sep}<div class="ch-msg${mine ? " mine" : ""}${sel ? " sel" : ""}">${mine ? "" : `<b class="ch-name">${presDot(m.member_id)}${esc(m.name || "")}</b>`}
+      <div class="ch-bubble" data-act="chatMsg" data-id="${m.id}">${m.reply ? `<span class="ch-quote"><b>${esc(m.reply.name || "")}</b>${esc(m.reply.body || "")}</span>` : ""}${m.image ? `<img class="ch-img" src="${esc(m.image)}" alt="" data-act="chatImg" data-id="${m.id}">` : ""}${m.body ? `<span>${esc(m.body).replace(/\n/g, "<br>")}</span>` : ""}</div>
+      ${chips ? `<div class="ch-rxs">${chips}</div>` : ""}
+      ${sel ? `<div class="ch-acts">${REACTS.map((e) => `<button data-act="chatReact" data-id="${m.id}" data-e="${e}">${e}</button>`).join("")}<button data-act="chatReply" data-id="${m.id}">↩︎ ${esc(L3("Balas", "Balas", "Reply"))}</button>${mine || D.me.is_admin ? `<button data-act="chatDel" data-id="${m.id}">${esc(t("delete"))}</button>` : ""}</div>` : ""}
+      <small class="ch-time">${esc(fmtTime(m.at))}</small></div>`;
   }).join("");
 }
 function chatPaint(scroll) { const box = document.getElementById("chatBox"); if (!box) return; const atEnd = window.innerHeight + window.scrollY >= document.body.scrollHeight - 120; box.innerHTML = chatHtml(); if (scroll || atEnd) window.scrollTo(0, document.body.scrollHeight); }
+function chatPending() {
+  const el = document.getElementById("chReply"); if (!el) return;
+  const bits = [];
+  if (CH.reply) bits.push(`<span class="grow">↩︎ <b>${esc(CH.reply.name || "")}</b> ${esc(String(CH.reply.body || "📷").slice(0, 60))}</span>`);
+  if (CH.image) bits.push(`<img src="${esc(CH.image)}" alt=""><span class="grow">${esc(L3("Foto siap dikirim", "Foto siap", "Photo ready to send"))}</span>`);
+  el.hidden = !bits.length; el.innerHTML = bits.join("") + (bits.length ? `<button class="icon-btn" data-act="chatCancel" aria-label="${esc(t("cancel"))}">${ic("x")}</button>` : "");
+}
 async function chatLoad(first) {
   const room = CH.room; if (!room) return;
   const r = await api.save("chat_list", { room, after: CH.last || null }); if (CH.room !== room) return;
   const add = (r && r.messages) || []; add.forEach((m) => { if (!CH.msgs.some((x) => x.id === m.id)) CH.msgs.push(m); });
-  if (r && Array.isArray(r.online)) { CH_ONLINE.clear(); r.online.forEach((id) => CH_ONLINE.add(id)); const el = document.getElementById("chOnline"); if (el) el.innerHTML = `<i></i> ${esc(L3(`${r.online.length} sedang aktif`, `${r.online.length} adong di aplikasi`, `${r.online.length} live now`))}`; if (!add.length && !first) chatPaint(false); }
   if (add.length) CH.last = add[add.length - 1].id;
-  if (add.length || first) chatPaint(first);
+  markChatSeen(room, CH.last); if (D && D.chat_last) D.chat_last[room] = Math.max(D.chat_last[room] || 0, CH.last);
+  const rx = (r && r.reacts) || {}; const rxChanged = JSON.stringify(rx) !== JSON.stringify(CH.reacts); CH.reacts = rx;
+  let liveChanged = false;
+  if (r && Array.isArray(r.online)) { const before = [...CH_ONLINE].sort().join(); CH_ONLINE.clear(); r.online.forEach((id) => CH_ONLINE.add(id)); liveChanged = before !== [...CH_ONLINE].sort().join();
+    const el = document.getElementById("chOnline"); if (el) el.innerHTML = `<i></i> ${esc(L3(`${r.online.length} sedang aktif`, `${r.online.length} adong di aplikasi`, `${r.online.length} live now`))}`; }
+  if (add.length || first || rxChanged || liveChanged) chatPaint(first || add.length > 0);
 }
 R.chat = (room) => {
   if (isGuest()) return R.home();
   const rooms = chatRooms();
   if (!room) return shell("#/chat", `<h2 class="page-h">💬 Chat</h2><p class="lead">${esc(L3("Percakapan dua arah. Ketuk sebuah ruang untuk membuka.", "Marsiboto dua arah. Ketuk ruang asa bukka.", "Two-way conversations. Tap a room to open it."))}</p>
-    <div class="glist">${rooms.map((r) => `<a class="gtile" href="#/chat/${r.id}" style="--gc:${r.id === "makers" ? "var(--gold)" : "var(--brand)"}"><span class="gicon">${ic(r.id === "makers" ? "gear" : "people")}</span><span class="gname"><b>${esc(r.name)}</b><small>${esc(r.sub)}</small></span>${ic("chev", "chev")}</a>`).join("")}</div>`, { title: "Chat" });
+    <div class="glist">${rooms.map((r) => `<a class="gtile" href="#/chat/${r.id}" style="--gc:${r.id === "makers" ? "var(--gold)" : "var(--brand)"}"><span class="gicon">${ic(r.id === "makers" ? "gear" : "people")}</span><span class="gname"><b>${esc(r.name)}</b><small>${esc(r.sub)}</small></span>${newBadge(chatUnread(r.id))}${ic("chev", "chev")}</a>`).join("")}</div>`, { title: "Chat" });
   const rm = rooms.find((r) => r.id === room); if (!rm) return R.notFound();
-  if (CH.room !== room) { CH.room = room; CH.msgs = []; CH.last = 0; }
+  if (CH.room !== room) { CH.room = room; CH.msgs = []; CH.last = 0; CH.reacts = {}; CH.sel = null; CH.reply = null; CH.image = null; }
   clearInterval(CH.timer);
   CH.timer = setInterval(() => { if (!new RegExp("^#/chat/" + CH.room + "\\b").test(location.hash)) { clearInterval(CH.timer); return; } if (!document.hidden) chatLoad(false).catch(() => {}); }, 4000);
-  setTimeout(() => chatLoad(true).catch((e) => toast(errMsg(e), true)), 0);
-  return shell("#/chat", `<p class="ch-online" id="chOnline"></p><div id="chatBox" class="chat">${CH.msgs.length ? chatHtml() : `<p class="center pad"><span class="spin"></span></p>`}</div>
-    <div class="ch-bar"><textarea id="chatIn" rows="1" maxlength="1000" placeholder="${esc(L3("Tulis pesan…", "Surat pesan…", "Write a message…"))}"></textarea><button class="btn primary" data-act="chatSend" aria-label="${esc(L3("Kirim", "Kirim", "Send"))}">➤</button></div>`,
+  setTimeout(() => { chatPending(); chatLoad(true).catch((e) => toast(errMsg(e), true)); }, 0);
+  return shell("#/chat", `<p class="ch-online" id="chOnline"></p><div id="chatBox" class="chat">${CH.msgs.length ? chatHtml() : skel(4)}</div>
+    <div class="ch-bar"><div class="ch-pend" id="chReply" hidden></div><div class="ch-row"><button class="icon-btn" data-act="chatPhoto" aria-label="${esc(L3("Kirim foto", "Kirim foto", "Send a photo"))}">${ic("camera")}</button>
+      <textarea id="chatIn" rows="1" maxlength="1000" placeholder="${esc(L3("Tulis pesan…", "Surat pesan…", "Write a message…"))}"></textarea><button class="btn primary" data-act="chatSend" aria-label="${esc(L3("Kirim", "Kirim", "Send"))}">➤</button></div></div>`,
     { back: "#/chat", title: "💬 " + rm.name, sub: rm.sub });
 };
+A.chatMsg = (d) => { CH.sel = CH.sel === +d.id ? null : +d.id; chatPaint(false); };
+A.chatReact = async (d) => {
+  const id = +d.id, e = d.e, me = D.me.name; const rx = { ...(CH.reacts[id] || {}) }; const list = (rx[e] || []).slice();
+  const i = list.indexOf(me); if (i >= 0) list.splice(i, 1); else list.push(me);
+  if (list.length) rx[e] = list; else delete rx[e]; CH.reacts = { ...CH.reacts, [id]: rx }; CH.sel = null; chatPaint(false);
+  try { await api.save("chat_react", { msg_id: id, emoji: e }); } catch (err) { toast(errMsg(err), true); }
+};
+A.chatReply = (d) => { CH.reply = CH.msgs.find((m) => m.id === +d.id) || null; CH.sel = null; chatPaint(false); chatPending(); const i = document.getElementById("chatIn"); if (i) i.focus(); };
+A.chatCancel = () => { CH.reply = null; CH.image = null; chatPending(); };
+A.chatImg = (d) => { const m = CH.msgs.find((x) => x.id === +d.id); if (m && m.image) sheet(m.name || "", `<img src="${esc(m.image)}" alt="" style="width:100%;border-radius:14px">${m.body ? `<p>${esc(m.body)}</p>` : ""}`); };
+A.chatPhoto = () => {
+  const inp = document.createElement("input"); inp.type = "file"; inp.accept = "image/*";
+  inp.onchange = async () => { const f = inp.files[0]; if (!f) return; try { let data = await resizeImage(f, 1280, 0.72); if (data.length > 440000) data = await resizeImage(f, 900, 0.6); CH.image = data; chatPending(); } catch (e) { toast(errMsg(e), true); } };
+  inp.click();
+};
 A.chatSend = async (d, btn) => {
-  const inp = document.getElementById("chatIn"); const body = (inp && inp.value || "").trim(); if (!body || CH.sending) return;
+  const inp = document.getElementById("chatIn"); const body = (inp && inp.value || "").trim(); if ((!body && !CH.image) || CH.sending) return;
   CH.sending = true; btn.disabled = true;
-  try { const m = await api.save("chat", { room: CH.room, body }); inp.value = ""; inp.style.height = ""; if (m && m.id && !CH.msgs.some((x) => x.id === m.id)) { CH.msgs.push(m); CH.last = Math.max(CH.last, m.id); } chatPaint(true); inp.focus(); }
-  catch (e) { toast(e && /too_fast/.test(e.message || e.code || "") ? L3("Terlalu cepat, tunggu sebentar.", "Hatop hian, paima jolo.", "Too fast, wait a moment.") : errMsg(e), true); }
+  try {
+    const m = await api.save("chat", { room: CH.room, body, reply_to: CH.reply ? CH.reply.id : null, image: CH.image || null });
+    inp.value = ""; inp.style.height = ""; CH.reply = null; CH.image = null; chatPending();
+    if (m && m.id && !CH.msgs.some((x) => x.id === m.id)) { CH.msgs.push(m); CH.last = Math.max(CH.last, m.id); markChatSeen(CH.room, CH.last); }
+    chatPaint(true); inp.focus();
+  } catch (e) { toast(e && /too_fast/.test(e.message || e.code || "") ? L3("Terlalu cepat, tunggu sebentar.", "Hatop hian, paima jolo.", "Too fast, wait a moment.") : errMsg(e), true); }
   finally { CH.sending = false; btn.disabled = false; }
 };
-A.chatDel = async (d, btn) => {
-  if (btn.dataset.sure !== "1") { btn.dataset.sure = "1"; btn.textContent = t("tapAgain"); return; }
-  try { await api.del("chat", d.id); CH.msgs = CH.msgs.filter((m) => String(m.id) !== String(d.id)); chatPaint(false); } catch (e) { toast(errMsg(e), true); }
+A.chatDel = (d, btn) => {
+  const host = btn.closest(".ch-msg"); if (host) host.style.display = "none"; CH.sel = null;
+  undoBar(t("deleted"), async () => { try { await api.del("chat", d.id); CH.msgs = CH.msgs.filter((m) => String(m.id) !== String(d.id)); chatPaint(false); } catch (e) { if (host) host.style.display = ""; toast(errMsg(e), true); } }, () => { if (host) host.style.display = ""; });
 };
 // Enter sends, Shift+Enter makes a new line; the box grows with the text.
 document.addEventListener("keydown", (e) => { if (e.target && e.target.id === "chatIn" && e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); const b = document.querySelector('[data-act="chatSend"]'); if (b) A.chatSend(b.dataset, b); } });
 document.addEventListener("input", (e) => { if (e.target && e.target.id === "chatIn") { e.target.style.height = "auto"; e.target.style.height = Math.min(140, e.target.scrollHeight) + "px"; } });
-try { document.head.insertAdjacentHTML("beforeend", `<style>
-  .chat { display: flex; flex-direction: column; gap: 10px; padding: 12px 0 90px; }
-  .ch-day { align-self: center; font-size: 12px; font-weight: 700; color: var(--muted); background: var(--surface-2); padding: 3px 10px; border-radius: 999px; margin: 6px 0; }
-  .ch-msg { max-width: 82%; align-self: flex-start; display: flex; flex-direction: column; gap: 3px; }
-  .ch-msg.mine { align-self: flex-end; align-items: flex-end; }
-  .ch-name { font-size: 12.5px; color: var(--brand); padding-left: 12px; }
-  .ch-bubble { background: var(--surface); border: 1px solid var(--line); padding: 9px 13px; border-radius: 18px 18px 18px 6px; line-height: 1.45; overflow-wrap: anywhere; box-shadow: var(--shadow); }
-  .ch-msg.mine .ch-bubble { background: var(--brand); border-color: var(--brand); color: var(--brand-ink); border-radius: 18px 18px 6px 18px; }
-  .ch-time { font-size: 11.5px; color: var(--muted); padding: 0 8px; }
-  .ch-del { font-size: 11.5px; font-weight: 700; }
-  .ch-bar { position: fixed; left: 0; right: 0; bottom: calc(66px + env(safe-area-inset-bottom)); z-index: 19; display: flex; gap: 8px; align-items: flex-end; padding: 8px max(12px, env(safe-area-inset-left)); background: color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-top: 1px solid var(--line); }
-  .ch-bar textarea { flex: 1; min-height: 44px; max-height: 140px; resize: none; padding: 11px 14px; border-radius: 22px; border: 1px solid var(--line); background: var(--surface); line-height: 1.35; }
-  .ch-bar .btn { width: 46px; min-width: 46px; height: 44px; border-radius: 50%; padding: 0; font-size: 18px; }
-  @media (orientation: landscape) and (max-height: 540px), (min-width: 900px) { .ch-bar { bottom: 0; left: calc(84px + env(safe-area-inset-left)); } }
-</style>`); } catch (e) {}
+
 // Youth / ReNa Band file and video uploads (the tab itself is youthFilesTab).
 A.yAttach = (d) => sheet(rDateCell(d.day), `<div class="stack">
   <button class="opt-card" data-act="yUpload" data-g="${esc(d.g)}" data-day="${esc(d.day)}">${ic("upload")}<span><b>${esc(L3("Unggah file", "Upload file", "Upload a file"))}</b><small>${esc(L3("Partitur, chord, lagu, slide…", "Partitur, chord, ende…", "Sheet music, chords, songs, slides…"))}</small></span>${ic("chev", "chev")}</button>
@@ -1318,7 +1646,16 @@ R.tata = (id) => {
     { back: "#/s/multimedia", title: v.title || t("tataTitle"), sub: v.service_date ? fmtDay(v.service_date) : t("tataTitle") });
 };
 const tataCache = {};
-async function tataHtml(id) { if (!tataCache[id]) tataCache[id] = await api.serviceHtml(id); return tataCache[id]; }
+// Tata Ibadah offline (YB 2026-10-29): each one opened, and the coming Sunday's in the background, is kept on the phone,
+// so the slides still open during the service without signal. Only the latest two are kept.
+const tataLocal = (id) => { try { return localStorage.getItem("hkbp.tata." + id); } catch (e) { return null; } };
+function tataKeep(id, h) { try { Object.keys(localStorage).filter((k) => k.startsWith("hkbp.tata.") && k !== "hkbp.tata." + id).slice(0, -1).forEach((k) => localStorage.removeItem(k)); localStorage.setItem("hkbp.tata." + id, h); } catch (e) {} }
+async function tataHtml(id) {
+  if (tataCache[id]) return tataCache[id];
+  try { const h = await api.serviceHtml(id); tataCache[id] = h; tataKeep(id, h); return h; }
+  catch (e) { const c = tataLocal(id); if (c) { tataCache[id] = c; return c; } throw e; }
+}
+function tataPrefetch() { if (!D || !navigator.onLine) return; const v = (D.services || []).find((x) => x.service_date === nextSunday()) || (D.services || [])[0]; if (v && !tataLocal(v.id)) tataHtml(v.id).catch(() => {}); }
 function tataIframe(html) { const f = document.createElement("iframe"); f.setAttribute("sandbox", "allow-scripts"); f.title = t("tataTitle"); f.src = URL.createObjectURL(new Blob([html], { type: "text/html" })); return f; }
 A.tataFull = async (d) => { const html = await tataHtml(d.id); const el = $(".tata-frame"); if (el && el.requestFullscreen) el.requestFullscreen().catch(() => {}); else window.open(URL.createObjectURL(new Blob([html], { type: "text/html" })), "_blank"); };
 A.openWorkbench = (d) => {
@@ -1506,6 +1843,7 @@ A.evMenu = (d) => {
   const edit = canEvents();
   sheet(e.title, `<p class="muted">${esc(fmtDay(p.date))} · ${esc(fmtTime(e.starts_at))}${e.ends_at ? "–" + esc(fmtTime(e.ends_at)) : ""}</p>
     ${e.place ? `<p>${ic("pin")} ${esc(e.place)}</p>` : ""}<p class="small muted">${esc(gname(g))} · ${esc(t("remindTxt", remindLabel(e.remind_min)))}</p>${e.notes ? `<p class="pre">${esc(e.notes)}</p>` : ""}
+    ${rsvpBlock(e)}
     <div class="stack"><button class="btn primary block" data-act="icsOne" data-id="${e.id}">${ic("calendar")} ${esc(t("addPhoneCal"))}</button>
     <a class="btn block" href="${gcal(e)}" target="_blank" rel="noopener">${ic("globe")} Google Calendar</a>
     <a class="btn block wa" href="${wa(`🗓 *${e.title}*\n${fmtDay(p.date)} · ${fmtTime(e.starts_at)}${e.place ? "\n📍 " + e.place : ""}${e.notes ? "\n\n" + e.notes : ""}\n\n– HKBP Singapore`)}" target="_blank" rel="noopener">${ic("wa")} WhatsApp</a>
@@ -1568,9 +1906,11 @@ function updateForm(u) {
     <label class="check"><input type="checkbox" name="notify" ${u.id ? "" : "checked"}> ${esc(t("notifyNow"))}</label>
     <button class="btn primary block">${esc(t("save"))}</button></form>`);
 }
-A.del = async (d, btn) => {
-  if (btn.dataset.sure !== "1") { btn.dataset.sure = "1"; btn.classList.add("sure"); const old = btn.innerHTML; btn.innerHTML = `${ic("trash")} ${esc(t("tapAgain"))}`; setTimeout(() => { if (btn.isConnected) { btn.dataset.sure = ""; btn.classList.remove("sure"); btn.innerHTML = old; } }, 3000); return; }
-  try { await api.del(d.kind, d.id); closeSheet(); await refresh(); toast(t("deleted")); if (d.kind === "bread") location.hash = "#/bread"; render(); } catch (e) { toast(errMsg(e), true); }
+A.del = (d, btn) => {
+  // Deleted at once, with an "Undo" bar for 5 seconds (YB 2026-10-29); the server is only told when the time is up.
+  const inSheet = !!btn.closest("#sheet"); const host = inSheet ? null : btn.closest(".rr-day, .ch-msg, article, .card, .li");
+  if (inSheet) closeSheet(); if (host) host.style.display = "none";
+  undoBar(t("deleted"), async () => { try { await api.del(d.kind, d.id); await refresh(); if (d.kind === "bread" && /^#\/bread\//.test(location.hash)) location.hash = "#/bread"; render(); } catch (e) { if (host) host.style.display = ""; toast(errMsg(e), true); } }, () => { if (host) host.style.display = ""; });
 };
 A.openFile = async (d, btn) => {
   await busy(btn, async () => {
@@ -1693,14 +2033,15 @@ async function rosterRemoveDay(gid, day, btn) {
     catch (e) { toast(errMsg(e), true); }
   });
 }
-A.rrDel = async (d, btn) => {
-  if (btn.dataset.sure !== "1") { btn.dataset.sure = "1"; btn.classList.add("sure"); btn.innerHTML = `${ic("trash")} ${esc(t("tapAgain"))}`; return; }
-  const f = btn.closest("form"); await rosterRemoveDay(f.dataset.g, f.day.value, btn);
+A.rrDel = (d, btn) => {
+  const f = btn.closest("form"); const g = f.dataset.g, day = f.day.value; closeSheet();
+  const host = [...document.querySelectorAll('.rr-day [data-act="rrDelRow"]')].find((x) => x.dataset.day === day && x.dataset.g === g); const card = host && host.closest(".rr-day"); if (card) card.style.display = "none";
+  undoBar(t("deleted"), () => rosterRemoveDay(g, day, null), () => { if (card) card.style.display = ""; });
 };
 // Trash button on a roster row: the first tap turns it red, the second removes that Sunday.
-A.rrDelRow = async (d, btn) => {
-  if (btn.dataset.sure !== "1") { btn.dataset.sure = "1"; btn.classList.add("sure"); toast(t("tapAgain")); setTimeout(() => { if (btn.isConnected) { btn.dataset.sure = ""; btn.classList.remove("sure"); } }, 3000); return; }
-  await rosterRemoveDay(d.g, d.day, btn);
+A.rrDelRow = (d, btn) => {
+  const host = btn.closest(".rr-day"); if (host) host.style.display = "none";
+  undoBar(t("deleted"), () => rosterRemoveDay(d.g, d.day, null), () => { if (host) host.style.display = ""; });
 };
 A.uploadRosterFile = (d) => {
   const g = G(d.g);
@@ -2540,6 +2881,8 @@ function wartaAutoParts(day, team) {
     jadwal: evs.map((x, i) => `${"abcdefghijklmnopqrstuvwxyz"[i] || i + 1}. ${x.e.title} (${+x.d.slice(8)}/${+x.d.slice(5, 7)})`).join("\n"),
     team: team.map(([r, a, c]) => { const g = TEAM_ROSTER[r]; return g ? [r, rosterNames(g, day) || a, rosterNames(g, next) || c] : [r, a, c]; }),
     ...(b ? { renungan: b.body, renTitle: b.title || "", renVerse: b.verse || "", renunganBy: "" } : {}),
+    // attendance last Sunday, counted by the QR check-in at the church door
+    ...(((D.attendance || {})[addDays(day, -7)]) ? { attDate: fmtID(addDays(day, -7)), att: ["Bapak", "Ibu", "Naposo", "Remaja", "Sekolah Minggu"].map((k) => String(D.attendance[addDays(day, -7)][k] || "")) } : {}),
   };
 }
 function wartaLoad(day) {
