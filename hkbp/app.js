@@ -1376,41 +1376,55 @@ R.tutur = () => {
     <form class="card form" data-form="tutur">
       <div class="row2"><label>${esc(L3("Saya", "Ahu", "Me"))}<select name="g1"><option value="m">${esc(L3("Laki-laki", "Baoa", "Male"))}</option><option value="f">${esc(L3("Perempuan", "Boru-boru", "Female"))}</option></select></label>
         <label>${esc(L3("Dia", "Ibana", "Them"))}<select name="g2"><option value="m">${esc(L3("Laki-laki", "Baoa", "Male"))}</option><option value="f">${esc(L3("Perempuan", "Boru-boru", "Female"))}</option></select></label></div>
-      <div class="row2"><label>${esc(L3("Marga saya", "Margangku", "My marga"))}${mg("m1", ["Simanjuntak", "Hutabarat"].includes(me) ? me : "")}</label><label>${esc(L3("Marga dia", "Marga ni ibana", "Their marga"))}${mg("m2")}</label></div>
+      <div class="row2"><label>${esc(L3("Marga saya", "Margangku", "My marga"))}${mg("m1", (D.me.name || "").trim().split(/\s+/).length > 1 ? me : "")}</label><label>${esc(L3("Marga dia / boru dia", "Marga / boru ni ibana", "Their marga / boru"))}${mg("m2")}</label></div>
       <div class="row2"><label>${esc(L3("Boru ibu saya", "Boru ni inang", "My mother's boru"))}${mg("b1")}</label><label>${esc(L3("Boru ibu dia", "Boru ni inangna", "Their mother's boru"))}${mg("b2")}</label></div>
       <label>${esc(L3("Generasi dia dibanding saya", "Generasi", "Their generation"))}<select name="gen"><option value="up">${esc(L3("Satu generasi di atas (seperti orang tua)", "Di ginjang", "One above (like a parent)"))}</option><option value="same" selected>${esc(L3("Sebaya", "Sapangkat", "Same generation"))}</option><option value="down">${esc(L3("Satu generasi di bawah (seperti anak)", "Di toru", "One below (like a child)"))}</option></select></label>
-      <label>${esc(L3("Dia lebih tua?", "Ibana na umbalga?", "Are they older?"))}<select name="old"><option value="y">${esc(L3("Ya", "Olo", "Yes"))}</option><option value="n">${esc(L3("Tidak", "Ndang", "No"))}</option></select></label>
+      <label>${esc(L3("Lebih tua? (generasi di atas: dibanding ayah/ibu Anda di garis itu · sebaya: dibanding Anda)", "Umbalga? (di ginjang: sian ama/inang · sapangkat: sian ho)", "Older? (generation above: than your father/mother on that side · same generation: than you)"))}<select name="old"><option value="y">${esc(L3("Ya, lebih tua", "Olo", "Yes, older"))}</option><option value="n">${esc(L3("Tidak, lebih muda", "Ndang", "No, younger"))}</option><option value="u">${esc(L3("Tidak tahu", "Ndang huboto", "Not sure"))}</option></select></label>
       <button class="btn primary block">${esc(L3("Lihat panggilan", "Ida", "Show the term"))}</button></form>
     <div id="tuturRes"></div>`, { back: "#/more", title: "Partuturan" });
 };
 function tuturTerm(i) {
-  const n = (x) => norm(x || "").replace(/^(lumban|lumbantobing)$/, "tobing"); const same = (a, b) => !!a && !!b && (n(a) === n(b) || n(a).endsWith(n(b)) || n(b).endsWith(n(a)));
-  const M = i.g1 === "m", Mt = i.g2 === "m"; const older = i.old === "y";
-  if (same(i.m1, i.m2)) { // dongan tubu (same marga)
-    if (i.gen === "up") return Mt ? ["Amangtua / Amanguda", L3("Saudara laki-laki ayah semarga (tua = lebih tua dari ayah, uda = lebih muda).", "", "Your father's clansman: amangtua if older than your father, amanguda if younger.")] : ["Namboru", L3("Perempuan semarga dengan ayah, satu generasi di atas.", "", "A woman of your father's marga, one generation up.")];
-    if (i.gen === "down") return Mt ? ["Amang (anak)", L3("Anak laki-laki semarga.", "", "A son of your marga.")] : ["Inang (boru)", L3("Anak perempuan semarga.", "", "A daughter of your marga.")];
-    if (M && Mt) return [older ? "Abang / Angkang" : "Anggi", L3("Dongan tubu, satu marga.", "", "Dongan tubu: brothers of the same marga.")];
-    if (!M && !Mt) return [older ? "Kakak / Angkang" : "Anggi", L3("Sesama boru dari marga yang sama.", "", "Sisters of the same marga.")];
-    return ["Ito", L3("Laki-laki dan perempuan semarga saling memanggil Ito (dan tidak boleh menikah).", "", "A man and a woman of the same marga call each other Ito (and may not marry).")];
+  // Dalihan Na Tolu, general rules (ego = "saya"). "old": y/n/u; for the generation above it compares with the parent on that side.
+  const n = (x) => norm(x || "").replace(/^lumban\s*/, "").replace(/\s+/g, "");
+  const same = (a, b) => !!n(a) && !!n(b) && n(a) === n(b);
+  const M = i.g1 === "m", Mt = i.g2 === "m", o = i.old;
+  const pick = (older, younger, both) => (o === "y" ? older : o === "n" ? younger : both);
+  const T = (term, id, en) => [term, L3(id, "", en)];
+  if (same(i.m1, i.m2)) { // dongan tubu: the same marga
+    if (i.gen === "up") return Mt ? T(pick("Amangtua", "Amanguda", "Amangtua / Amanguda"), "Laki-laki semarga, satu generasi di atas: amangtua bila lebih tua dari ayah Anda, amanguda bila lebih muda.", "A man of your marga one generation up: amangtua if older than your father, amanguda if younger.")
+      : T("Namboru", "Perempuan semarga, satu generasi di atas (seperti saudari ayah).", "A woman of your marga one generation up (like your father's sister).");
+    if (i.gen === "down") return Mt ? T("Amang", "Laki-laki semarga, satu generasi di bawah (seperti anak Anda).", "A man of your marga one generation down (like your son).")
+      : T("Inang", "Perempuan semarga, satu generasi di bawah (seperti putri Anda).", "A woman of your marga one generation down (like your daughter).");
+    if (M !== Mt) return T("Ito", "Laki-laki dan perempuan semarga saling memanggil ito (dan tidak boleh menikah).", "A man and a woman of the same marga call each other ito (and may not marry).");
+    return T(pick("Angkang", "Anggi", "Angkang / Anggi"), M ? "Sesama laki-laki semarga (dongan tubu): angkang bila lebih tua, anggi bila lebih muda." : "Sesama perempuan semarga: angkang bila lebih tua, anggi bila lebih muda.",
+      M ? "Men of the same marga (dongan tubu): angkang if older, anggi if younger." : "Women of the same marga: angkang if older, anggi if younger.");
   }
-  if (same(i.m2, i.b1)) { // their marga = my mother's: they are my hula-hula side (Tulang's family)
-    if (i.gen === "up") return Mt ? ["Tulang", L3("Saudara laki-laki ibu, atau semarga dengan ibu, satu generasi di atas.", "", "Your mother's brother, or a man of your mother's marga one generation up.")] : ["Inang / Nantulang", L3("Perempuan dari marga ibu, satu generasi di atas (istri tulang dipanggil Nantulang).", "", "A woman of your mother's marga one generation up (the tulang's wife is Nantulang).")];
-    if (i.gen === "down") return Mt ? ["Tulang (na poso)", L3("Laki-laki muda dari marga ibu tetap dihormati sebagai pihak tulang.", "", "A younger man of your mother's marga is still honoured as the tulang side.")] : ["Inang / Pariban", L3("Perempuan muda dari marga ibu.", "", "A younger woman of your mother's marga.")];
-    if (M && !Mt) return ["Pariban", L3("Putri tulang: pariban (boleh dinikahi menurut adat).", "", "Your tulang's daughter: your pariban (marriageable by custom).")];
-    if (M && Mt) return ["Lae", L3("Putra tulang: lae.", "", "Your tulang's son: lae.")];
-    if (!M && Mt) return ["Ito", L3("Putra tulang dipanggil Ito oleh perempuan.", "", "A woman calls her tulang's son Ito.")];
-    return ["Eda", L3("Sesama perempuan dari keluarga tulang: eda.", "", "Women on the tulang side call each other Eda.")];
+  if (same(i.m2, i.b1)) { // their marga is my mother's marga: the hula-hula (tulang) side
+    if (i.gen === "up") return Mt ? T("Tulang", "Laki-laki dari marga ibu Anda, satu generasi di atas (seperti saudara ibu).", "A man of your mother's marga one generation up (like your mother's brother).")
+      : T(pick("Inangtua", "Inanguda", "Inanguda / Inangtua"), "Perempuan dari marga ibu Anda, satu generasi di atas (seperti saudari ibu): inangtua bila lebih tua dari ibu Anda, inanguda bila lebih muda. (Nantulang adalah istri tulang, yang bermarga lain.)",
+        "A woman of your mother's marga one generation up (like your mother's sister): inangtua if older than your mother, inanguda if younger. (Nantulang is the tulang's wife, of another marga.)");
+    if (i.gen === "down") return Mt ? T("Tulang", "Laki-laki dari marga ibu Anda tetap dihormati sebagai tulang, walau lebih muda.", "A man of your mother's marga is still honoured as tulang, even when younger.")
+      : T("Inang", "Perempuan dari marga ibu Anda, satu generasi di bawah.", "A woman of your mother's marga one generation down.");
+    if (M && Mt) return T("Lae", "Putra tulang (marga ibu Anda), sebaya: lae.", "Your tulang's son (your mother's marga), same generation: lae.");
+    if (M && !Mt) return T("Pariban", "Putri tulang (marga ibu Anda), sebaya: pariban, boleh dinikahi menurut adat.", "Your tulang's daughter (your mother's marga), same generation: pariban, marriageable by custom.");
+    if (!M && Mt) return T("Ito", "Bagi perempuan, putra tulang dipanggil ito.", "For a woman, her tulang's son is ito.");
+    return T("Pariban", "Sesama perempuan, putri tulang dan putri namboru saling memanggil pariban.", "Between women, the tulang's daughter and the namboru's daughter call each other pariban.");
   }
-  if (same(i.m1, i.b2)) { // my marga = their mother's: I am their tulang side
-    if (i.gen === "down") return Mt ? ["Bere", L3("Anak dari saudara perempuan (namboru-nya adalah marga Anda).", "", "Your bere: the child of a woman of your marga.")] : ["Bere", L3("Anak perempuan dari boru marga Anda.", "", "The daughter of a woman of your marga.")];
-    if (i.gen === "up") return Mt ? ["Amangboru", L3("Suami dari namboru.", "", "The husband of your namboru.")] : ["Namboru", L3("Perempuan semarga ayah, satu generasi di atas.", "", "A woman of your father's marga, one generation up.")];
-    if (M && Mt) return ["Lae", L3("Putra namboru: lae.", "", "Your namboru's son: lae.")];
-    if (!M && Mt) return ["Pariban", L3("Putra namboru: pariban bagi perempuan.", "", "For a woman, her namboru's son is her pariban.")];
-    if (M && !Mt) return ["Ito", L3("Putri namboru dipanggil Ito.", "", "Your namboru's daughter: Ito.")];
-    return ["Eda", L3("Sesama perempuan: eda.", "", "Women call each other Eda.")];
+  if (same(i.m1, i.b2)) { // my marga is their mother's marga: I am on their hula-hula side, they are the boru side
+    if (i.gen === "down") return T("Bere", "Anak dari perempuan semarga Anda (anak ito atau namboru generasi berikut): bere.", "The child of a woman of your marga: bere.");
+    if (i.gen === "up") return Mt ? T("Amangboru", "Laki-laki satu generasi di atas yang ibunya semarga Anda: dari pihak boru, dipanggil amangboru.", "A man one generation up whose mother is of your marga: the boru side, amangboru.")
+      : T("Namboru", "Perempuan satu generasi di atas yang ibunya semarga Anda: dipanggil namboru.", "A woman one generation up whose mother is of your marga: namboru.");
+    if (M && Mt) return T("Lae", "Putra namboru (ibunya semarga Anda), sebaya: lae.", "Your namboru's son (his mother is of your marga), same generation: lae.");
+    if (M && !Mt) return T("Ito", "Putri namboru, sebaya: ito (bukan pariban bagi laki-laki).", "Your namboru's daughter, same generation: ito (not pariban for a man).");
+    if (!M && Mt) return T("Pariban", "Bagi perempuan, putra namboru adalah pariban.", "For a woman, her namboru's son is her pariban.");
+    return T("Pariban", "Sesama perempuan, putri namboru dan putri tulang saling memanggil pariban.", "Between women, the namboru's daughter and the tulang's daughter call each other pariban.");
   }
-  return [M === Mt ? (M ? "Lae" : "Eda") : "Ito", L3("Marga kalian tidak berhubungan langsung di sini. Panggilan umum yang sopan; martarombo (telusuri silsilah) untuk panggilan yang tepat.", "", "Your margas aren't directly linked here. This is the polite general term; trace the tarombo for the exact one.")];
+  if (same(i.b1, i.b2)) // our mothers are of the same marga: like children of sisters
+    return T(M === Mt ? pick("Angkang", "Anggi", "Angkang / Anggi") : "Ito", "Ibu kalian semarga (seperti anak dua bersaudari): dianggap saudara sendiri.", "Your mothers are of the same marga (like children of two sisters): treated as siblings.");
+  return T(i.gen === "up" ? (Mt ? "Amang" : "Inang") : i.gen === "down" ? (Mt ? "Amang" : "Inang") : M === Mt ? (M ? "Lae" : "Eda") : "Ito",
+    "Marga kalian tidak langsung berhubungan di sini: ini panggilan umum yang sopan. Martarombo (telusuri silsilah) untuk panggilan yang tepat.", "Your margas aren't directly linked here: this is the polite general term. Trace the tarombo for the exact one.");
 }
+
 F.tutur = async (f) => {
   const i = { g1: f.g1.value, g2: f.g2.value, m1: f.m1.value, m2: f.m2.value, b1: f.b1.value, b2: f.b2.value, gen: f.gen.value, old: f.old.value };
   const [term, why] = tuturTerm(i);
