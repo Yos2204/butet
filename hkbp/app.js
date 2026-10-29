@@ -591,29 +591,6 @@ function youthFilesTab(gid, list) {
     + (docs.length ? `<h3 class="sec-h">📎 File</h3><div class="card">${docs.map(doc).join("")}</div>` : "")
     + (!vids.length && !docs.length ? empty(L3("Belum ada file atau video.", "Dang adong file manang video.", "No files or videos yet."), "folder") : "");
 }
-A.yUpload = (d) => sheet(L3("Unggah file", "Upload file", "Upload a file"), `<form class="form" data-form="yfile" data-g="${esc(d.g)}">
-  <label>${esc(t("f_file"))}<input type="file" name="file" required></label>
-  <label>${esc(t("f_title"))}<input name="title" placeholder="${esc(t("fileTitlePh"))}"></label>
-  <label>${esc(t("f_note"))}<input name="note"></label>
-  <label class="check"><input type="checkbox" name="notify" checked> ${esc(t("notifyGroup"))}</label>
-  <p class="small muted">${esc(L3("Semua jenis file: dokumen, foto, lagu, presentasi, dll. Maksimal 10 MB.", "Sude jenis file. Maksimal 10 MB.", "Any kind of file: documents, photos, songs, slides and more. Up to 10 MB."))}</p>
-  <button class="btn primary block">${ic("upload")} ${esc(L3("Unggah", "Upload", "Upload"))}</button></form>`);
-F.yfile = async (f) => {
-  const file = f.file.files[0]; if (!file) return;
-  await saveOfficeFile(f.dataset.g, file, f.title.value.trim(), f.note.value.trim(), f.notify.checked);
-  closeSheet(); toast(t("saved")); render();
-};
-A.yVideo = (d) => sheet(L3("Tambah video", "Tambah video", "Add a video"), `<form class="form" data-form="yvideo" data-g="${esc(d.g)}">
-  <label>${esc(L3("Link video (YouTube, Instagram, Google Drive, dll.)", "Link video (YouTube, dll.)", "Video link (YouTube, Instagram, Google Drive and more)"))}<input name="link" type="url" inputmode="url" required placeholder="https://youtu.be/…"></label>
-  <label>${esc(t("f_title"))}<input name="title" required></label>
-  <label>${esc(t("f_note"))}<input name="note"></label>
-  <label class="check"><input type="checkbox" name="notify" checked> ${esc(t("notifyGroup"))}</label>
-  <button class="btn primary block">${ic("plus")} ${esc(L3("Tambah video", "Tambah video", "Add a video"))}</button></form>`);
-F.yvideo = async (f) => {
-  const link = f.link.value.trim(); if (!/^https:\/\//.test(link)) throw new S.AppError("bad_link");
-  await api.save("file", { group_id: f.dataset.g, title: f.title.value.trim(), note: f.note.value.trim() || null, link, file_name: f.title.value.trim(), mime: "video/link", size: 0, notify: f.notify.checked });
-  await refresh(); closeSheet(); toast(t("saved")); render();
-};
 // Birthday and wedding anniversary wishes for a category. The leader saves the category's WhatsApp group link once;
 // after that one tap copies the ready-made wishes and opens that group, and the leader pastes and sends.
 const isGLead = (gid) => !!D && !isGuest() && (D.me.is_admin || ["chair", ...MAKERS].includes(roleIn(gid)));
@@ -1003,6 +980,30 @@ window.addEventListener("hashchange", () => { window.scrollTo(0, 0); render(); }
 // ---------- actions ----------
 const A = {};
 const F = {};
+// Youth / ReNa Band file and video uploads (the tab itself is youthFilesTab).
+A.yUpload = (d) => sheet(L3("Unggah file", "Upload file", "Upload a file"), `<form class="form" data-form="yfile" data-g="${esc(d.g)}">
+  <label>${esc(t("f_file"))}<input type="file" name="file" required></label>
+  <label>${esc(t("f_title"))}<input name="title" placeholder="${esc(t("fileTitlePh"))}"></label>
+  <label>${esc(t("f_note"))}<input name="note"></label>
+  <label class="check"><input type="checkbox" name="notify" checked> ${esc(t("notifyGroup"))}</label>
+  <p class="small muted">${esc(L3("Semua jenis file: dokumen, foto, lagu, presentasi, dll. Maksimal 10 MB.", "Sude jenis file. Maksimal 10 MB.", "Any kind of file: documents, photos, songs, slides and more. Up to 10 MB."))}</p>
+  <button class="btn primary block">${ic("upload")} ${esc(L3("Unggah", "Upload", "Upload"))}</button></form>`);
+F.yfile = async (f) => {
+  const file = f.file.files[0]; if (!file) return;
+  await saveOfficeFile(f.dataset.g, file, f.title.value.trim(), f.note.value.trim(), f.notify.checked);
+  closeSheet(); toast(t("saved")); render();
+};
+A.yVideo = (d) => sheet(L3("Tambah video", "Tambah video", "Add a video"), `<form class="form" data-form="yvideo" data-g="${esc(d.g)}">
+  <label>${esc(L3("Link video (YouTube, Instagram, Google Drive, dll.)", "Link video (YouTube, dll.)", "Video link (YouTube, Instagram, Google Drive and more)"))}<input name="link" type="url" inputmode="url" required placeholder="https://youtu.be/…"></label>
+  <label>${esc(t("f_title"))}<input name="title" required></label>
+  <label>${esc(t("f_note"))}<input name="note"></label>
+  <label class="check"><input type="checkbox" name="notify" checked> ${esc(t("notifyGroup"))}</label>
+  <button class="btn primary block">${ic("plus")} ${esc(L3("Tambah video", "Tambah video", "Add a video"))}</button></form>`);
+F.yvideo = async (f) => {
+  const link = f.link.value.trim(); if (!/^https:\/\//.test(link)) throw new S.AppError("bad_link");
+  await api.save("file", { group_id: f.dataset.g, title: f.title.value.trim(), note: f.note.value.trim() || null, link, file_name: f.title.value.trim(), mime: "video/link", size: 0, notify: f.notify.checked });
+  await refresh(); closeSheet(); toast(t("saved")); render();
+};
 A.lang = (d) => { lang = d.l; LS.set("lang", lang); gateRender(); render(); };
 A.pickView = (d) => { LS.set("view", d.v || null); closeSheet(); render(); };
 // Reset (YB 2026-10-25): opens both pop-ups again with empty answers; old answers stay until the new ones are saved.
