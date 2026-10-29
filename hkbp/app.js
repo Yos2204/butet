@@ -366,12 +366,13 @@ const backAfterLogin = () => { const h = LS.get("afterLogin", "#/home") || "#/ho
 const signInCard = (msg) => `<div class="card center pad sign-in-card">${ic("lock")}<p>${esc(msg)}</p><button class="btn primary" data-act="signIn">${ic("lock")} ${esc(t("signIn"))}</button></div>`;
 
 // ---------- layout ----------
+let CUR_TAB = "#/home"; // the bottom tab the current page belongs to (used by swipe navigation)
 const TABS = [["home", "#/home", "tab_home"], ["groups", "#/groups", "tab_groups"], ["calendar", "#/calendar", "sched"], ["chat", "#/chat", "Chat"], ["more", "#/more", "tab_more"]];
 function shell(active, inner, opts = {}) {
   // People who are not signed in see only Home, plus a Sign in tab (YB 2026-10-28).
   const tabs = isGuest() ? TABS.filter(([, h]) => h === "#/home") : TABS;
   // Rosters pages light up the Schedule tab too (YB 2026-10-29: calendar and rosters combined).
-  const act = active === "#/serve" ? "#/calendar" : active; const label = (k) => (k === "sched" ? L3("Jadwal", "Jadwal", "Schedule") : k === "Chat" ? "Chat" : t(k));
+  const act = active === "#/serve" ? "#/calendar" : active; CUR_TAB = act; const label = (k) => (k === "sched" ? L3("Jadwal", "Jadwal", "Schedule") : k === "Chat" ? "Chat" : t(k));
   const nav = tabs.map(([i, h, k]) => `<a href="${h}" class="${act === h ? "on" : ""}" ${act === h ? 'aria-current="page"' : ""}>${ic(i)}${tabBadge(h)}<span>${esc(label(k))}</span></a>`).join("")
     + (isGuest() ? `<a href="#/login" data-act="signIn">${ic("lock")}<span>${esc(t("signIn"))}</span></a>` : "");
   return `
@@ -1058,6 +1059,56 @@ window.addEventListener("hashchange", () => { window.scrollTo(0, 0); render(); }
 // ---------- actions ----------
 const A = {};
 const F = {};
+
+// Swipe between the bottom tabs (YB 2026-10-29): swipe left = next tab, swipe right = previous tab.
+// The page follows the finger and then slides in. Not while typing, in a pop-up, in the Tata Ibadah workbench,
+// or when the finger starts on something that scrolls sideways (tables, chips, the Agenda/Roster switch).
+(() => {
+  let sx = 0, sy = 0, t0 = 0, mode = null, main = null, dx = 0;
+  const order = () => TABS.map((x) => x[1]);
+  const scrollsSideways = (el) => { for (let n = el; n && n !== document.body; n = n.parentElement) { if (n.scrollWidth > n.clientWidth + 2) { const ox = getComputedStyle(n).overflowX; if (ox === "auto" || ox === "scroll") return true; } } return false; };
+  const blocked = (e) => {
+    if (!D || isGuest() || e.touches.length !== 1) return true;
+    const sh = document.getElementById("sheet"); if (sh && !sh.hidden) return true;
+    if (document.getElementById("wb")) return true;
+    const tg = e.target; if (!tg || !tg.closest) return true;
+    if (tg.closest("input, textarea, select, [contenteditable], nav.tabs, .ch-bar, iframe")) return true;
+    return scrollsSideways(tg);
+  };
+  addEventListener("touchstart", (e) => {
+    mode = null; dx = 0; if (blocked(e)) { mode = "off"; return; }
+    sx = e.touches[0].clientX; sy = e.touches[0].clientY; t0 = Date.now(); main = document.querySelector("#view > main");
+  }, { passive: true });
+  addEventListener("touchmove", (e) => {
+    if (mode === "off" || !main) return;
+    const x = e.touches[0].clientX - sx, y = e.touches[0].clientY - sy;
+    if (!mode) { if (Math.abs(x) < 12 && Math.abs(y) < 12) return; mode = Math.abs(x) > Math.abs(y) * 1.4 ? "h" : "off"; if (mode === "off") return; }
+    const list = order(); const i = list.indexOf(CUR_TAB);
+    const edge = (x > 0 && i <= 0) || (x < 0 && i >= list.length - 1);   // no tab beyond the first/last: resist
+    dx = edge ? x * 0.18 : x;
+    main.style.transition = "none"; main.style.transform = `translateX(${dx * 0.55}px)`; main.style.opacity = String(1 - Math.min(0.35, Math.abs(dx) / 900));
+  }, { passive: true });
+  addEventListener("touchend", () => {
+    if (mode !== "h" || !main) { mode = null; return; }
+    const list = order(); const i = list.indexOf(CUR_TAB); const fast = Date.now() - t0 < 350 && Math.abs(dx) > 40;
+    const go = (Math.abs(dx) > 80 || fast) ? (dx < 0 ? i + 1 : i - 1) : -1; const m = main; mode = null; main = null;
+    if (i < 0 || go < 0 || go >= list.length) { m.style.transition = "transform .22s ease, opacity .22s ease"; m.style.transform = ""; m.style.opacity = ""; return; }
+    m.style.transition = "transform .16s ease-in, opacity .16s ease-in"; m.style.transform = `translateX(${dx < 0 ? -60 : 60}px)`; m.style.opacity = "0";
+    SLIDE_IN = dx < 0 ? "from-right" : "from-left";
+    setTimeout(() => { location.hash = list[go]; window.scrollTo(0, 0); }, 120);
+  }, { passive: true });
+  // The new page slides in from the side it came from.
+  let SLIDE_IN = "";
+  try { new MutationObserver(() => { const m = document.querySelector("#view > main"); if (m && SLIDE_IN) { m.classList.add(SLIDE_IN); SLIDE_IN = ""; } })
+    .observe(document.getElementById("view") || document.body, { childList: true }); } catch (e) {}
+  try { document.head.insertAdjacentHTML("beforeend", `<style>
+    #view > main.from-right { animation: slideFromRight .24s ease-out both; }
+    #view > main.from-left { animation: slideFromLeft .24s ease-out both; }
+    @keyframes slideFromRight { from { opacity: 0; transform: translateX(48px); } to { opacity: 1; transform: none; } }
+    @keyframes slideFromLeft { from { opacity: 0; transform: translateX(-48px); } to { opacity: 1; transform: none; } }
+    @media (prefers-reduced-motion: reduce) { #view > main.from-right, #view > main.from-left { animation: none; } }
+  </style>`); } catch (e) {}
+})();
 
 // ---------- Improvements (YB 2026-10-29) ----------
 // Search, "This Sunday", "Can't make it", undo, profile photos, RSVP, unread badges, prayer requests, birthday wishes,
