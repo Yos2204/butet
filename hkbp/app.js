@@ -36,6 +36,7 @@ const IC = {
   roster: '<rect x="3" y="4" width="18" height="17" rx="3"/><path d="M3 9h18M8 2v4M16 2v4M7 13h4M7 17h7"/>',
   calendar: '<rect x="3" y="4" width="18" height="17" rx="3"/><path d="M3 9h18M8 2v4M16 2v4"/><circle cx="12" cy="15" r="1.6"/>',
   more: '<circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/>',
+  chat: '<path d="M4 5.5A2.5 2.5 0 0 1 6.5 3h11A2.5 2.5 0 0 1 20 5.5v8a2.5 2.5 0 0 1-2.5 2.5H10l-4.5 4v-4h0A1.5 1.5 0 0 1 4 14.5z"/><path d="M8.5 9.5h7M8.5 12.5h4"/>',
   child: '<circle cx="12" cy="6" r="3"/><path d="M8 21v-5l-2-3 6-3 6 3-2 3v5"/>',
   spark: '<path d="M12 2l2.2 6.3L21 10l-6.8 1.7L12 18l-2.2-6.3L3 10l6.8-1.7z"/><path d="M19 17l.8 2.2L22 20l-2.2.8L19 23l-.8-2.2L16 20l2.2-.8z"/>',
   heart: '<path d="M12 20s-7-4.4-9-9c-1.3-3 .7-6.5 4-6.5 2 0 3.5 1.2 5 3 1.5-1.8 3-3 5-3 3.3 0 5.3 3.5 4 6.5-2 4.6-9 9-9 9z"/>',
@@ -362,7 +363,7 @@ const backAfterLogin = () => { const h = LS.get("afterLogin", "#/home") || "#/ho
 const signInCard = (msg) => `<div class="card center pad sign-in-card">${ic("lock")}<p>${esc(msg)}</p><button class="btn primary" data-act="signIn">${ic("lock")} ${esc(t("signIn"))}</button></div>`;
 
 // ---------- layout ----------
-const TABS = [["home", "#/home", "tab_home"], ["groups", "#/groups", "tab_groups"], ["roster", "#/serve", "tab_serve"], ["calendar", "#/calendar", "tab_calendar"], ["more", "#/more", "tab_more"]];
+const TABS = [["home", "#/home", "tab_home"], ["groups", "#/groups", "tab_groups"], ["roster", "#/serve", "tab_serve"], ["calendar", "#/calendar", "tab_calendar"], ["chat", "#/chat", "Chat"], ["more", "#/more", "tab_more"]];
 function shell(active, inner, opts = {}) {
   // People who are not signed in see only Home, plus a Sign in tab (YB 2026-10-28).
   const tabs = isGuest() ? TABS.filter(([, h]) => h === "#/home") : TABS;
@@ -377,7 +378,7 @@ function shell(active, inner, opts = {}) {
   ${D && D.offline ? `<div class="banner">${esc(t("offline"))}</div>` : ""}
   ${api.mode === "local" ? `<div class="banner soft">${ic("phone")} ${esc(t("demoBanner"))}</div>` : ""}
   <main${opts.cols ? ' class="cols"' : ""}>${inner}</main>
-  <nav class="tabs"><div class="in"${isGuest() ? ' style="grid-template-columns:repeat(2,1fr)"' : ""}>${nav}</div></nav>`;
+  <nav class="tabs"><div class="in" style="grid-template-columns:repeat(${tabs.length + (isGuest() ? 1 : 0)},1fr)">${nav}</div></nav>`;
 }
 const langSwitch = () => `<div class="langs" role="group" aria-label="${esc(t("language"))}">${["id", "bt", "en"].map((l) => `<button data-act="lang" data-l="${l}" aria-pressed="${lang === l}">${l.toUpperCase()}</button>`).join("")}</div>`;
 const empty = (msg, icon = "star") => `<div class="empty">${ic(icon)}<p>${esc(msg)}</p></div>`;
@@ -449,7 +450,6 @@ R.home = () => {
     ${annivToday.length ? `<article class="card"><div class="card-h"><h3>💍 ${esc(t("annivs"))}</h3></div>${annivToday.map((p) => `<div class="li">${avatarOf(p)}<span class="grow"><b>${esc(p.name)}</b><small>${esc(t("today"))}</small></span>${p.phone && p.id !== m.id ? `<a class="icon-btn wa" href="${wa(t("annivWish", firstName(p.name)), p.phone)}" target="_blank" rel="noopener" aria-label="WhatsApp">${ic("wa")}</a>` : `<span class="party">🎉</span>`}</div>`).join("")}</article>` : ""}
     ${notifyAsk ? `<button class="card notify-ask" data-act="notify">${ic("bell")}<span><b>${esc(t("notifyAskTitle"))}</b><small>${esc(standalone() || !/iP(hone|ad)/.test(navigator.userAgent) ? t("notifyAskBody") : t("iosInstallFirst"))}</small></span>${ic("chev", "chev")}</button>` : ""}
 
-    ${!isGuest() ? `<a class="card li" href="#/chat">💬<span class="grow"><b>Chat</b><small>${esc(chatRooms().map((r) => r.name).join(" · "))}</small></span>${ic("chev", "chev")}</a>` : ""}
     ${!isGuest() && (D.services || []).length ? `<a class="card li tata-home" href="#/tata/${D.services[0].id}">${ic("book")}<span class="grow"><b>${esc(t("tataTitle"))}</b><small>${esc(D.services[0].title || "")}${D.services[0].service_date ? " · " + esc(fmtDay(D.services[0].service_date)) : ""}</small></span>${ic("chev", "chev")}</a>` : ""}
     <article class="card bread-card">
       <div class="kicker">${ic("bread")} ${esc(t("breadTitle"))}</div>
@@ -945,7 +945,6 @@ R.more = () => {
     <div class="menu card">
       <a class="li" href="#/elders">${ic("book")}<span class="grow"><b>${esc(t("eldersUpdates"))}</b></span>${ic("chev", "chev")}</a>
       <a class="li" href="#/bread">${ic("bread")}<span class="grow"><b>${esc(t("breadTitle"))}</b></span>${ic("chev", "chev")}</a>
-      <a class="li" href="#/chat">${ic("people")}<span class="grow"><b>💬 Chat</b><small>${esc(chatRooms().map((r) => r.name).join(" · "))}</small></span>${ic("chev", "chev")}</a>
       ${isOffice() && manage() ? `<a class="li" href="#/o/secretary">${ic("lock")}<span class="grow"><b>${esc(t("officeTitle"))}</b><small>${esc(officeGroups().map(gname).join(" · "))}</small></span>${ic("chev", "chev")}</a>` : ""}
       <a class="li" href="#/people">${ic("cake")}<span class="grow"><b>${esc(t("people"))}</b><small>${esc(isAdmin() ? t("peopleAdmin") : t("peopleSub"))}</small></span>${ic("chev", "chev")}</a>
       <button class="li" data-act="notify">${ic("bell")}<span class="grow"><b>${esc(t("notifications"))}</b><small>${esc(perm === "granted" ? t("notifyOnTxt") : perm === "denied" ? t("notifyDenied") : t("notifyAskBody"))}</small></span>${ic("chev", "chev")}</button>
@@ -1094,14 +1093,14 @@ async function chatLoad(first) {
 R.chat = (room) => {
   if (isGuest()) return R.home();
   const rooms = chatRooms();
-  if (!room) return shell("#/more", `<h2 class="page-h">💬 Chat</h2><p class="lead">${esc(L3("Percakapan dua arah. Ketuk sebuah ruang untuk membuka.", "Marsiboto dua arah. Ketuk ruang asa bukka.", "Two-way conversations. Tap a room to open it."))}</p>
-    <div class="glist">${rooms.map((r) => `<a class="gtile" href="#/chat/${r.id}" style="--gc:${r.id === "makers" ? "var(--gold)" : "var(--brand)"}"><span class="gicon">${ic(r.id === "makers" ? "gear" : "people")}</span><span class="gname"><b>${esc(r.name)}</b><small>${esc(r.sub)}</small></span>${ic("chev", "chev")}</a>`).join("")}</div>`, { back: "#/more", title: "Chat" });
+  if (!room) return shell("#/chat", `<h2 class="page-h">💬 Chat</h2><p class="lead">${esc(L3("Percakapan dua arah. Ketuk sebuah ruang untuk membuka.", "Marsiboto dua arah. Ketuk ruang asa bukka.", "Two-way conversations. Tap a room to open it."))}</p>
+    <div class="glist">${rooms.map((r) => `<a class="gtile" href="#/chat/${r.id}" style="--gc:${r.id === "makers" ? "var(--gold)" : "var(--brand)"}"><span class="gicon">${ic(r.id === "makers" ? "gear" : "people")}</span><span class="gname"><b>${esc(r.name)}</b><small>${esc(r.sub)}</small></span>${ic("chev", "chev")}</a>`).join("")}</div>`, { title: "Chat" });
   const rm = rooms.find((r) => r.id === room); if (!rm) return R.notFound();
   if (CH.room !== room) { CH.room = room; CH.msgs = []; CH.last = 0; }
   clearInterval(CH.timer);
   CH.timer = setInterval(() => { if (!new RegExp("^#/chat/" + CH.room + "\\b").test(location.hash)) { clearInterval(CH.timer); return; } if (!document.hidden) chatLoad(false).catch(() => {}); }, 4000);
   setTimeout(() => chatLoad(true).catch((e) => toast(errMsg(e), true)), 0);
-  return shell("#/more", `<p class="ch-online" id="chOnline"></p><div id="chatBox" class="chat">${CH.msgs.length ? chatHtml() : `<p class="center pad"><span class="spin"></span></p>`}</div>
+  return shell("#/chat", `<p class="ch-online" id="chOnline"></p><div id="chatBox" class="chat">${CH.msgs.length ? chatHtml() : `<p class="center pad"><span class="spin"></span></p>`}</div>
     <div class="ch-bar"><textarea id="chatIn" rows="1" maxlength="1000" placeholder="${esc(L3("Tulis pesan…", "Surat pesan…", "Write a message…"))}"></textarea><button class="btn primary" data-act="chatSend" aria-label="${esc(L3("Kirim", "Kirim", "Send"))}">➤</button></div>`,
     { back: "#/chat", title: "💬 " + rm.name, sub: rm.sub });
 };
