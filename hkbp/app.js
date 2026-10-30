@@ -458,7 +458,7 @@ R.home = () => {
     ${annivToday.length ? `<article class="card"><div class="card-h"><h3>💍 ${esc(t("annivs"))}</h3></div>${annivToday.map((p) => `<div class="li">${avatarOf(p)}<span class="grow"><b>${esc(p.name)}</b><small>${esc(t("today"))}</small></span>${p.phone && p.id !== m.id ? `<a class="icon-btn wa" href="${wa(t("annivWish", firstName(p.name)), p.phone)}" target="_blank" rel="noopener" aria-label="WhatsApp">${ic("wa")}</a>` : `<span class="party">🎉</span>`}</div>`).join("")}</article>` : ""}
     ${notifyAsk ? `<button class="card notify-ask" data-act="notify">${ic("bell")}<span><b>${esc(t("notifyAskTitle"))}</b><small>${esc(standalone() || !/iP(hone|ad)/.test(navigator.userAgent) ? t("notifyAskBody") : t("iosInstallFirst"))}</small></span>${ic("chev", "chev")}</button>` : ""}
 
-    ${liveBanner()}
+    ${nowCard()}
     ${thisSundayCard()}
     ${voyageHomeCard()}
     ${griefHomeCard()}
@@ -1065,6 +1065,45 @@ window.addEventListener("hashchange", () => { window.scrollTo(0, 0); render(); }
 // ---------- actions ----------
 const A = {};
 const F = {};
+
+// Pinned "now" card on Home (YB 2026-10-30), styled like an iPhone lock-screen activity: Sada's icon, a bold title,
+// the time on the right, and one big highlighted line. Shown only when something is happening:
+// a live service, then your duty (from the day before), then an event today.
+function nowCard() {
+  if (isGuest() || !D) return "";
+  const td = today(), tm = addDays(td, 1);
+  const icon = `<span class="nc-ic"><img src="icon-192.png" alt="" onerror="this.replaceWith(Object.assign(document.createElement('b'),{textContent:'⛪'}))"></span>`;
+  const card = (href, label, title, right, big, sub, live) => `<a class="nowcard${live ? " live" : ""}" href="${href}">
+    <div class="nc-top">${icon}<span class="grow"><small>${esc(label)}</small><b>${esc(title)}</b></span>${right ? `<span class="nc-time">${right}</span>` : ""}</div>
+    <div class="nc-box"><span class="nc-big">${esc(big)}</span><span class="nc-sub">${esc(sub)}</span></div></a>`;
+  if (D.live && D.live.service_id) return card("#/live", "Sada HKBPS", L3("Ibadah sedang berlangsung", "Partangiangan masa", "The service is on"), `<i class="live-dot"></i> LIVE`,
+    L3("Ikuti", "Ihuthon", "Follow"), L3("Slide Tata Ibadah di HP Anda, huruf besar. Ketuk untuk membuka.", "Slide di HP mu.", "The Tata Ibadah slides on your phone, in large text. Tap to open."), true);
+  const du = duties().filter((d) => d.date === td || d.date === tm).sort((a, b) => a.date.localeCompare(b.date));
+  if (du.length) {
+    const d = du[0]; const more = du.length > 1 ? ` · +${du.length - 1}` : "";
+    return card(rosterHome(d.roster.group_id, d.roster.month), "Sada HKBPS · " + gname(d.group), d.date === td ? L3("Bertugas hari ini", "Marhobas sadarion", "Serving today") : L3("Besok bertugas", "Marhobas marsogot", "Serving tomorrow"),
+      esc(fmt(d.date, { weekday: "short", day: "numeric", month: "short" })), d.roles.join(", ") + more,
+      L3("Tugas Anda hari Minggu ini. Roster dan Tata Ibadah ada di Sada.", "Ulaonmu di ari Minggu. Roster dohot Tata Ibadah di Sada.", "Your duty this Sunday. The roster and Tata Ibadah are in Sada."));
+  }
+  const now = Date.now();
+  const ev = (D.events || []).filter((e) => sgParts(e.starts_at).date === td && Date.parse(e.ends_at || e.starts_at) + (e.ends_at ? 0 : 2 * 3600e3) > now).sort((a, b) => a.starts_at.localeCompare(b.starts_at))[0];
+  if (ev) return card("#/calendar", "Sada HKBPS · " + L3("Acara hari ini", "Ulaon sadarion", "Today's event"), ev.title,
+    esc(fmtTime(ev.starts_at)) + (ev.ends_at ? " – " + esc(fmtTime(ev.ends_at)) : ""), fmtTime(ev.starts_at), ev.place || L3("Ketuk untuk detail", "Ketuk", "Tap for details"));
+  return "";
+}
+try { document.head.insertAdjacentHTML("beforeend", `<style>
+  .nowcard { display: block; margin: 12px 0; padding: 14px 16px 16px; border-radius: 26px; background: #121214; color: #fff; text-decoration: none; box-shadow: 0 10px 30px rgba(0, 0, 0, .25); border: 1px solid rgba(255, 255, 255, .08); }
+  .nc-top { display: flex; align-items: center; gap: 12px; }
+  .nc-ic { width: 44px; height: 44px; border-radius: 11px; background: #fff; display: grid; place-items: center; overflow: hidden; flex: none; }
+  .nc-ic img { width: 100%; height: 100%; object-fit: cover; } .nc-ic b { font-size: 24px; }
+  .nc-top small { display: block; color: rgba(255, 255, 255, .7); font-size: 13px; } .nc-top b { display: block; font-size: 18px; font-weight: 800; line-height: 1.2; }
+  .nc-time { color: #4ade80; font-weight: 800; font-size: 15px; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
+  .nowcard.live .nc-time { color: #f87171; }
+  .nc-box { display: flex; align-items: center; gap: 16px; margin-top: 12px; padding: 14px 16px; border-radius: 16px; border: 1.5px solid #3b82f6; background: #0f2233; }
+  .nowcard.live .nc-box { border-color: #ef4444; background: #2a1215; }
+  .nc-big { font-size: 30px; font-weight: 800; letter-spacing: .04em; line-height: 1.1; flex: none; max-width: 55%; overflow-wrap: anywhere; }
+  .nc-sub { font-size: 13.5px; line-height: 1.35; color: rgba(255, 255, 255, .78); }
+</style>`); } catch (e) {}
 
 // ---------- Hymn splitter (YB 2026-10-29) ----------
 // The same rules as the Tata Ibadah workbench (workbench/index.html) and hymn-split.js: one verse per slide, the Reff on its
