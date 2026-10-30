@@ -1061,6 +1061,34 @@ window.addEventListener("hashchange", () => { window.scrollTo(0, 0); render(); }
 // ---------- actions ----------
 const A = {};
 const F = {};
+try { document.head.insertAdjacentHTML("beforeend", `<style>
+  .taro-search { display: flex; align-items: center; gap: 10px; background: var(--surface); border: 1.5px solid var(--line); border-radius: 18px; padding: 4px 6px 4px 14px; margin: 10px 0 8px; box-shadow: 0 4px 14px rgba(20,22,60,.06); }
+  .taro-search:focus-within { border-color: var(--brand); box-shadow: 0 0 0 4px color-mix(in srgb, var(--brand) 14%, transparent); }
+  .taro-search svg { width: 20px; height: 20px; color: var(--muted); flex: none; }
+  .taro-search input { flex: 1; min-width: 0; border: 0 !important; outline: 0; background: transparent !important; box-shadow: none !important; font-size: 17px; padding: 10px 0; -webkit-appearance: none; appearance: none; }
+  .taro-search input::-webkit-search-cancel-button, .taro-search input::-webkit-calendar-picker-indicator { display: none; -webkit-appearance: none; }
+  .taro-x { width: 34px; height: 34px; border-radius: 50%; border: 0; background: color-mix(in srgb, var(--ink) 10%, var(--surface)); color: var(--ink); font-size: 15px; font-weight: 800; flex: none; display: grid; place-items: center; }
+  .taro-x[hidden] { display: none; }
+  .taro-tools { display: flex; gap: 8px; margin-bottom: 12px; } .taro-tools .btn { flex: 1; }
+  .taro-tree .taro-n { border-radius: 16px; margin: 6px 0; background: var(--surface); box-shadow: 0 2px 10px rgba(20,22,60,.05); border: 1px solid var(--line); overflow: hidden; }
+  .taro-tree .taro-n .taro-n { box-shadow: none; } .taro-n.d1 { background: color-mix(in srgb, var(--brand) 3%, var(--surface)); } .taro-n.d2 { background: color-mix(in srgb, var(--brand) 5%, var(--surface)); } .taro-n.d3, .taro-n.d4 { background: color-mix(in srgb, var(--brand) 7%, var(--surface)); }
+  .taro-n > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 10px; padding: 12px 14px; } .taro-n > summary::-webkit-details-marker { display: none; }
+  .taro-t { flex: 1; min-width: 0; display: grid; gap: 2px; } .taro-t b { font-size: 15.5px; } .taro-t small { color: var(--muted); font-size: 12.5px; line-height: 1.35; }
+  .taro-count { flex: none; font-size: 11.5px; font-weight: 800; color: var(--brand); background: color-mix(in srgb, var(--brand) 11%, var(--surface)); border-radius: 999px; padding: 3px 9px; }
+  .taro-arrow { flex: none; display: grid; color: var(--muted); transition: transform .2s; } .taro-arrow svg { width: 18px; height: 18px; } .taro-n[open] > summary .taro-arrow { transform: rotate(90deg); }
+  .taro-tree, .taro-tree .taro-tree { border-left: 0 !important; padding-left: 0 !important; margin: 0; list-style: none; }
+  .taro-n > summary::before { content: none !important; display: none !important; } .taro-n > summary small { flex-basis: auto !important; }
+  .taro-kids { padding: 0 8px 8px 8px; } .taro-kids > .taro-n { margin: 6px 0; } .taro-n.on-path > summary b { color: var(--brand); } .taro-n.on-path { border-color: color-mix(in srgb, var(--gold, #d8b25e) 70%, var(--line)); }
+  .taro-margas { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 0 2px; }
+  .taro-chip { display: inline-block; padding: 6px 12px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line); font-size: 13.5px; font-weight: 700; color: var(--ink); }
+  .taro-chip.hit { background: var(--gold, #d8b25e); border-color: var(--gold, #d8b25e); color: #111; box-shadow: 0 0 0 4px rgba(216,178,94,.3); }
+  .taro-sug { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 12px; } .taro-chip.pick { cursor: pointer; background: color-mix(in srgb, var(--brand) 8%, var(--surface)); border-color: transparent; color: var(--brand); }
+  .taro-res { background: linear-gradient(140deg, var(--brand), #2b2e74); color: #fff; border-radius: 20px; padding: 14px 16px; margin: 0 0 12px; box-shadow: 0 10px 24px rgba(30,32,90,.2); }
+  .taro-res-h { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 8px; } .taro-res-h b { font-size: 20px; } .taro-res-h small { opacity: .75; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
+  .taro-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; } .taro-steps li { position: relative; padding-left: 22px; font-size: 14px; opacity: .9; }
+  .taro-steps li::before { content: "↳"; position: absolute; left: 2px; opacity: .6; } .taro-steps li:first-child::before { content: "●"; font-size: 10px; top: 4px; }
+  .taro-steps li.me { opacity: 1; font-weight: 800; color: #ffe29a; } .taro-none { margin: 0 0 12px; }
+</style>`); } catch (e) {}
 
 // ---------- Liturgy workbench: build every week from the month's order of service (YB 2026-10-30) ----------
 // Agenda code lookup (YB 2026-10-30): "A.XV/A.1", "D.XIII.41", "B.7", "C.2" → the text, from an Agenda in Dokumen Gereja.
@@ -1682,7 +1710,7 @@ const TAROMBO = ["Si Raja Batak", "Leluhur orang Batak, di Pusuk Buhit", [
 // Dongan sapadan: margas bound by a pact (padan) treat each other as dongan sabutuha and do not intermarry.
 const PADAN = [["Marbun", "Sihotang"], ["Panjaitan", "Simanullang"], ["Tampubolon", "Sitompul"], ["Sitorus", "Hutajulu"], ["Sitorus", "Hutahaean"], ["Sitorus", "Aruan"], ["Nahampun", "Situmorang"],
   ["Banjarnahor", "Manalu"], ["Lumban Batu", "Purba"], ["Lumban Gaol", "Debataraja"]];
-const mnorm = (s) => norm(String(s || "").replace(/^(br\.?|boru)\s+/i, "")).replace(/\s+/g, "");
+const mnorm = (s) => norm(String(s || "").replace(/^(br\.?|boru)\s+/i, "")).replace(/[^a-z0-9]/g, "");
 const TARO_INDEX = (() => { const idx = {}; const walk = (n, path) => { if (typeof n === "string") { (idx[mnorm(n)] = idx[mnorm(n)] || []).push(path); return; } const p = [...path, n[0]]; n[2].forEach((c) => walk(c, p)); }; walk(TAROMBO, []); return idx; })();
 function taroFind(m) { const k = mnorm(m); if (!k) return null; if (TARO_INDEX[k]) return TARO_INDEX[k][0]; const hit = Object.keys(TARO_INDEX).find((x) => x === k.replace(/^lumban/, "") || "lumban" + x === k || x.endsWith(k) && k.length >= 4); return hit ? TARO_INDEX[hit][0] : null; }
 function taroRel(a, b) {
@@ -1697,29 +1725,47 @@ function taroRel(a, b) {
 }
 const taroPath = (p, m) => `<p class="taro-path">${p.map((x) => `<span>${esc(x)}</span>`).join(" › ")} › <b>${esc(m)}</b></p>`;
 R.tarombo = () => {
-  const node = (n, depth) => { if (typeof n === "string") return `<li class="taro-m" data-n="${esc(mnorm(n))}"><span class="taro-chip">${esc(n)}</span></li>`;
+  const countM = (n) => (typeof n === "string" ? 1 : n[2].reduce((s2, c) => s2 + countM(c), 0));
+  const node = (n, depth) => { if (typeof n === "string") return `<span class="taro-chip" data-n="${esc(mnorm(n))}">${esc(n)}</span>`;
     const kids = n[2]; const margas = kids.filter((k) => typeof k === "string"), subs = kids.filter((k) => typeof k !== "string");
-    return `<li class="taro-n"><details${depth < 2 ? " open" : ""}><summary><b>${esc(n[0])}</b>${n[1] ? `<small>${esc(n[1])}</small>` : ""}${kids.length ? `<span class="taro-count">${countM(n)}</span>` : ""}</summary>
-      ${subs.length ? `<ul class="taro-tree">${subs.map((c) => node(c, depth + 1)).join("")}</ul>` : ""}${margas.length ? `<ul class="taro-margas">${margas.map((c) => node(c, depth + 1)).join("")}</ul>` : ""}</details></li>`; };
-  const countM = (n) => (typeof n === "string" ? 1 : n[2].reduce((s, c) => s + countM(c), 0));
+    return `<details class="taro-n d${Math.min(depth, 4)}" data-name="${esc(n[0])}" data-def="${depth < 2 ? 1 : 0}"${depth < 2 ? " open" : ""}><summary><span class="taro-t"><b>${esc(n[0])}</b>${n[1] ? `<small>${esc(n[1])}</small>` : ""}</span>${kids.length ? `<span class="taro-count">${countM(n)}</span>` : ""}<span class="taro-arrow">${ic("chev")}</span></summary>
+      <div class="taro-kids">${subs.map((c) => node(c, depth + 1)).join("")}${margas.length ? `<div class="taro-margas">${margas.map((c) => node(c, depth + 1)).join("")}</div>` : ""}</div></details>`; };
   return shell("#/more", `<h2 class="page-h">🌳 Tarombo</h2><p class="lead">${esc(L3("Silsilah marga Batak dari Si Raja Batak. Ketuk untuk membuka dan menutup cabang.", "Tarombo sian Si Raja Batak. Ketuk asa terbuka manang tertutup.", "The Batak margas from Si Raja Batak. Tap to open and close each branch."))}</p>
-    <div class="row" style="gap:8px;margin:8px 0"><input type="search" id="taroFind" list="taroMargas" placeholder="${esc(L3("Cari marga…", "Lului marga…", "Find a marga…"))}" autocomplete="off" style="flex:1"><button class="btn" data-act="taroAll" data-o="1">⊕</button><button class="btn" data-act="taroAll" data-o="0">⊖</button></div>
-    <datalist id="taroMargas">${(() => { const s = new Set(); const w = (n) => (typeof n === "string" ? s.add(n) : n[2].forEach(w)); w(TAROMBO); return [...s].sort().map((m) => `<option value="${esc(m)}">`).join(""); })()}</datalist>
+    <div class="taro-search">${ic("search")}<input type="search" id="taroFind" placeholder="${esc(L3("Cari marga…", "Lului marga…", "Find a marga…"))}" autocomplete="off" autocapitalize="off" spellcheck="false"><button type="button" class="taro-x" data-act="taroClear" aria-label="${esc(L3("Hapus", "Apus", "Clear"))}" hidden>✕</button></div>
+    <div class="taro-tools"><button class="btn sm" data-act="taroAll" data-o="1">⊕ ${esc(L3("Buka semua", "Bukka sude", "Open all"))}</button><button class="btn sm" data-act="taroAll" data-o="0">⊖ ${esc(L3("Tutup semua", "Tutup sude", "Close all"))}</button></div>
     <div id="taroHit"></div>
-    <ul class="taro-tree root">${node(TAROMBO, 0)}</ul>
+    <div class="taro-tree">${node(TAROMBO, 0)}</div>
     <h3 class="sec-h">🤝 ${esc(L3("Dongan sapadan (marga yang terikat janji)", "Dongan sapadan", "Dongan sapadan (margas bound by a pact)"))}</h3>
     <div class="card"><p class="small">${esc(L3("“Togu urat ni bulu, toguan urat ni padang; togu nidok ni uhum, toguan nidok ni padan.” Marga yang marpadan saling menganggap dongan sabutuha dan tidak saling menikah:", "Togu urat ni bulu, toguan urat ni padang; togu nidok ni uhum, toguan nidok ni padan.", "“Strong are the roots of bamboo, stronger the roots of grass; strong is the word of law, stronger the word of a pact.” Margas bound by a pact count as dongan sabutuha and do not intermarry:"))}</p>
-      <div class="chips">${PADAN.map(([a, b]) => `<span class="chip">${esc(a)} ⇄ ${esc(b)}</span>`).join("")}</div></div>
+      <div class="chips">${PADAN.map(([a2, b2]) => `<span class="chip">${esc(a2)} ⇄ ${esc(b2)}</span>`).join("")}</div></div>
     <p class="small muted">${esc(L3("Sumber: “Silsilah dan Tarombo Batak dari Si Raja Batak” (menurut W. Hutagalung; M.A. Marbun & I.M.T. Hutapea). Tarombo dapat berbeda menurut keluarga; tanyakan tetua marga Anda.", "Sian buku tarombo.", "Source: “Silsilah dan Tarombo Batak dari Si Raja Batak” (after W. Hutagalung; M.A. Marbun & I.M.T. Hutapea). Family records may differ; ask your marga elders."))}</p>`,
     { back: "#/more", title: "Tarombo" });
 };
-document.addEventListener("input", (e) => { if (!e.target || e.target.id !== "taroFind") return; const k = mnorm(e.target.value); const hit = document.getElementById("taroHit");
-  document.querySelectorAll(".taro-m").forEach((li) => li.classList.toggle("hit", !!k && li.dataset.n === k));
-  const p = k.length >= 3 ? taroFind(e.target.value) : null;
-  if (p) { const target = [...document.querySelectorAll(".taro-m")].find((li) => li.dataset.n === mnorm(e.target.value)) || [...document.querySelectorAll(".taro-m")].find((li) => li.dataset.n.endsWith(k));
-    if (target) { let el = target.parentElement; while (el) { if (el.tagName === "DETAILS") el.open = true; el = el.parentElement; } target.classList.add("hit"); setTimeout(() => target.scrollIntoView({ block: "center", behavior: "smooth" }), 50); }
-    if (hit) hit.innerHTML = `<div class="card">${taroPath(p, e.target.value)}</div>`; } else if (hit) hit.innerHTML = ""; });
-A.taroAll = (d) => document.querySelectorAll(".taro-tree details").forEach((x) => (x.open = d.o === "1"));
+const TARO_ALL = (() => { const s2 = new Set(); const w = (n) => (typeof n === "string" ? s2.add(n) : n[2].forEach(w)); w(TAROMBO); return [...s2].sort((a, b) => a.localeCompare(b)); })();
+function taroReset() {
+  document.querySelectorAll(".taro-chip.hit").forEach((x) => x.classList.remove("hit"));
+  document.querySelectorAll(".taro-n.on-path").forEach((x) => x.classList.remove("on-path"));
+  document.querySelectorAll(".taro-n").forEach((x) => (x.open = x.dataset.def === "1"));
+  const hit = document.getElementById("taroHit"); if (hit) hit.innerHTML = "";
+}
+function taroShow(m) {
+  taroReset(); const k = mnorm(m); const p = taroFind(m); if (!p) return false;
+  const chips = [...document.querySelectorAll(".taro-tree .taro-chip")];
+  const chip = chips.find((c) => c.dataset.n === k) || chips.find((c) => c.dataset.n.endsWith(k) || k.endsWith(c.dataset.n));
+  if (chip) { chip.classList.add("hit"); let el = chip.parentElement; while (el) { if (el.tagName === "DETAILS") { el.open = true; el.classList.add("on-path"); } el = el.parentElement; } setTimeout(() => chip.scrollIntoView({ block: "center", behavior: "smooth" }), 80); }
+  const name = chip ? chip.textContent : m; const hit = document.getElementById("taroHit");
+  if (hit) hit.innerHTML = `<div class="taro-res"><div class="taro-res-h"><b>${esc(name)}</b><small>${esc(L3("Garis keturunan", "Tarombo", "Line of descent"))}</small></div><ol class="taro-steps">${p.map((x) => `<li>${esc(x)}</li>`).join("")}<li class="me">${esc(name)}</li></ol></div>`;
+  return true;
+}
+document.addEventListener("input", (e) => { if (!e.target || e.target.id !== "taroFind") return; const v = e.target.value; const x = document.querySelector(".taro-x"); if (x) x.hidden = !v;
+  const k = mnorm(v); if (!k) { taroReset(); return; }
+  const exact = TARO_ALL.find((m) => mnorm(m) === k); if (exact) { taroShow(exact); return; }
+  taroReset(); if (k.length < 2) return;
+  const sug = TARO_ALL.filter((m) => mnorm(m).includes(k)).slice(0, 10); const hit = document.getElementById("taroHit");
+  if (hit) hit.innerHTML = sug.length ? `<div class="taro-sug">${sug.map((m) => `<button class="taro-chip pick" data-act="taroPick" data-m="${esc(m)}">${esc(m)}</button>`).join("")}</div>` : `<p class="small muted taro-none">${esc(L3("Marga tidak ditemukan di tarombo ini.", "Marga ndang dapot.", "Marga not found in this tarombo."))}</p>`; });
+A.taroPick = (d) => { const i = document.getElementById("taroFind"); if (i) { i.value = d.m; const x = document.querySelector(".taro-x"); if (x) x.hidden = false; i.blur(); } taroShow(d.m); };
+A.taroClear = () => { const i = document.getElementById("taroFind"); if (i) i.value = ""; const x = document.querySelector(".taro-x"); if (x) x.hidden = true; taroReset(); window.scrollTo({ top: 0, behavior: "smooth" }); if (i) i.focus(); };
+A.taroAll = (d) => document.querySelectorAll(".taro-n").forEach((x) => (x.open = d.o === "1"));
 // Partuturan reference: who calls whom, including in-laws (from published guides to Batak Toba kinship terms).
 const TUTUR_REF = [
   ["Amang / Inang", "Ayah / ibu; sapaan hormat untuk laki-laki / perempuan yang lebih tua.", "Father / mother; a respectful address for older men / women."],
