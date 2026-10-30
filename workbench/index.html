@@ -32,7 +32,11 @@
   var mark = "wb.ok." + String(tok).slice(0, 12);
   fetch(URL_, { method: "POST", headers: { apikey: KEY, Authorization: "Bearer " + KEY, "Content-Type": "application/json" }, body: JSON.stringify({ p_token: tok }) })
     .then(function (r) { return r.json(); })
-    .then(function (ok) { if (ok === true) { try { localStorage.setItem(mark, String(Date.now())); } catch (e) {} pass(); } else block(); })
+    .then(function (ok) { if (ok === true) { try { localStorage.setItem(mark, String(Date.now())); } catch (e) {} pass();
+      // live key (YB 2026-10-30): written into every exported presentation so it can go live by itself on the service day
+      fetch(URL_.replace("hk_wb_access", "hk_live_key_issue"), { method: "POST", headers: { apikey: KEY, Authorization: "Bearer " + KEY, "Content-Type": "application/json" }, body: JSON.stringify({ p_token: tok }) })
+        .then(function (r) { return r.ok ? r.json() : null; }).then(function (k) { if (typeof k === "string" && k.length >= 32) { window.SADA_LIVE_KEY = k; try { localStorage.setItem("wb.livekey", k); } catch (e) {} } }).catch(function () {});
+    } else block(); })
     .catch(function () { // offline: allow a maker who was checked on this phone in the last 7 days
       var t = 0; try { t = +localStorage.getItem(mark) || 0; } catch (e) {}
       if (Date.now() - t < 7 * 864e5) pass(); else block();
@@ -3121,16 +3125,18 @@ var STATIC_CSS = 'html:not(.js),html:not(.js) body{height:auto;overflow:auto}htm
 
 /* Live to members' phones (YB 2026-10-30): the downloaded file sends the slide on screen to Sada with the church's live code.
    Inside Sada (in a frame) it stays quiet: Sada broadcasts there itself. */
-function liveCast(){
+function sadaLiveKey(){ try { return window.SADA_LIVE_KEY || localStorage.getItem("wb.livekey") || ""; } catch (e) { return window.SADA_LIVE_KEY || ""; } }
+function liveCast(KEYED){
   if (window.parent !== window) return;
   var API = "https://tbicfofdorwrupzlqgdm.supabase.co/rest/v1/rpc/", KEY = "sb_publishable_9vk_cadCXY8pt597XKqdSA_DSoYKZDt";
-  var on = false, last = "", timer = null, code = "";
+  var mode = KEYED ? "auto" : "off", last = "", first = null, timer = null, code = "", quietUntil = 0;
   try { code = localStorage.getItem("sadaLiveCode") || ""; } catch (e) {}
-  var b = document.createElement("button"); b.type = "button"; b.id = "sadaLive"; b.textContent = "📡 Live";
+  var b = document.createElement("button"); b.type = "button"; b.id = "sadaLive";
   b.setAttribute("style", "position:fixed;left:12px;bottom:12px;z-index:99999;border:0;border-radius:999px;padding:8px 14px;font:700 13px/1 Arial,sans-serif;color:#fff;background:rgba(0,0,0,.45);opacity:.35;cursor:pointer;transition:opacity .2s");
-  b.onmouseenter = function(){ b.style.opacity = 1; }; b.onmouseleave = function(){ if (!on) b.style.opacity = .35; };
-  var st = document.createElement("style"); st.textContent = "@media print{#sadaLive{display:none!important}}"; document.head.appendChild(st);
-  document.body.appendChild(b);
+  var st = document.createElement("style"); st.textContent = "@media print{#sadaLive{display:none!important}}"; document.head.appendChild(st); document.body.appendChild(b);
+  function show(){ var t = { auto: "📡 Live otomatis", live: "🔴 LIVE", paused: "⏸ Live dijeda", outside: "📡 Live di hari ibadah", off: "📡 Live" }[mode];
+    b.textContent = t; b.style.background = mode === "live" ? "#d92d20" : "rgba(0,0,0,.45)"; b.style.opacity = mode === "live" || mode === "paused" ? 1 : .35; }
+  b.onmouseenter = function(){ b.style.opacity = 1; }; b.onmouseleave = function(){ show(); };
   function call(fn, body){ return fetch(API + fn, { method: "POST", headers: { "content-type": "application/json", apikey: KEY }, body: JSON.stringify(body) })
     .then(function(r){ return r.json().then(function(j){ if (!r.ok) throw new Error((j && (j.message || j.hint)) || ("HTTP " + r.status)); return j; }); }); }
   function vis(e){ var s = getComputedStyle(e); return s.display !== "none" && s.visibility !== "hidden" && +s.opacity > 0.05; }
@@ -3138,23 +3144,25 @@ function liveCast(){
     for (var i = 0; i < els.length; i++) { var e = els[i], r = e.getBoundingClientRect(); if (r.width < 2 || r.height < 2 || !vis(e)) continue;
       var w = Math.max(0, Math.min(r.right, vw) - Math.max(r.left, 0)), h = Math.max(0, Math.min(r.bottom, vh) - Math.max(r.top, 0)); if (w * h > ba) { ba = w * h; best = e; } }
     return best; }
-  function show(){ b.textContent = on ? "🔴 LIVE" : "📡 Live"; b.style.background = on ? "#d92d20" : "rgba(0,0,0,.45)"; b.style.opacity = on ? 1 : .35; }
-  function fail(err){ var m = String(err && err.message || err);
-    if (/bad_code/.test(m)) { try { localStorage.removeItem("sadaLiveCode"); } catch (e) {} code = ""; alert("Kode live salah. Lihat kodenya di Sada: Jadwal → Roster → Multimedia → Tata Ibadah."); }
-    else if (/no_service/.test(m)) alert("Belum ada Tata Ibadah minggu ini di Sada, jadi siaran live belum bisa dimulai.");
-    else if (/too_many/.test(m)) alert("Terlalu banyak kode salah. Coba lagi 10 menit lagi.");
-    else alert("Siaran live gagal: " + m + ". Periksa internet.");
-    stop(true); }
-  function tick(){ if (!on) return; var c = cur(); if (!c) return; var t = (c.innerText || "").replace(/\n{3,}/g, "\n\n").trim().slice(0, 4000);
-    if (t && t !== last) { last = t; call("hk_live_cast", { p_code: code, p_body: t }).catch(fail); } }
-  function start(){
-    if (!code) { code = (prompt("Kode live Sada (6 angka) — ada di Sada: Jadwal → Roster → Multimedia → Tata Ibadah") || "").replace(/\D/g, ""); if (code.length !== 6) { code = ""; return; } }
-    b.textContent = "⏳"; call("hk_live_cast", { p_code: code, p_body: "" }).then(function(){
-      try { localStorage.setItem("sadaLiveCode", code); } catch (e) {} on = true; last = ""; show(); tick(); timer = setInterval(tick, 800); }).catch(fail); }
-  function stop(quiet){ var was = on; on = false; clearInterval(timer); show(); if (was && !quiet && code) call("hk_live_cast_stop", { p_code: code }).catch(function(){}); }
-  b.addEventListener("click", function(e){ e.stopPropagation(); if (on) { if (confirm("Hentikan siaran live ke HP jemaat?")) stop(); } else start(); });
-  document.addEventListener("keydown", function(e){ if ((e.key === "l" || e.key === "L") && !e.ctrlKey && !e.metaKey && !/INPUT|TEXTAREA/.test((e.target || {}).tagName || "")) { if (on) stop(); else start(); } });
-  window.addEventListener("beforeunload", function(){ if (on && code && navigator.sendBeacon) { try { navigator.sendBeacon(API + "hk_live_cast_stop?apikey=" + KEY, new Blob([JSON.stringify({ p_code: code })], { type: "application/json" })); } catch (e) {} } });
+  function text(){ var c = cur(); return c ? (c.innerText || "").replace(/\n{3,}/g, "\n\n").trim().slice(0, 4000) : ""; }
+  function send(t){
+    if (KEYED) return call("hk_live_cast_key", { p_key: KEYED, p_body: t }).then(function(r){ if (r && r.live === false) { mode = "outside"; quietUntil = Date.now() + 5 * 60e3; } else if (mode !== "paused") mode = "live"; show(); });
+    return call("hk_live_cast", { p_code: code, p_body: t }); }
+  function tick(){
+    var t = text(); if (!t) return; if (first === null) { first = t; return; }
+    if (mode === "paused" || mode === "off") return;
+    if (mode === "outside" && Date.now() < quietUntil) return;
+    if (t === first && mode === "auto") return;           // goes live from the first slide change, not just from opening the file
+    if (t !== last) { last = t; send(t).catch(function(err){ var m = String(err && err.message || err); if (/bad_key|bad_code/.test(m)) { mode = "off"; show(); } }); }
+  }
+  b.addEventListener("click", function(e){ e.stopPropagation();
+    if (mode === "live") { if (confirm("Jeda siaran live ke HP jemaat?")) { mode = "paused"; show(); if (KEYED) call("hk_live_cast_key_stop", { p_key: KEYED }).catch(function(){}); else if (code) call("hk_live_cast_stop", { p_code: code }).catch(function(){}); } return; }
+    if (mode === "paused" || mode === "outside" || mode === "auto") { mode = KEYED ? "auto" : "off"; last = ""; quietUntil = 0; first = first === null ? null : "\u0000"; show(); if (KEYED) return; }
+    if (!KEYED) {   // files made before this update: the one-time code, as before
+      if (!code) { code = (prompt("Kode live Sada (6 angka) — ada di Sada: Jadwal → Roster → Multimedia → Tata Ibadah") || "").replace(/\D/g, ""); if (code.length !== 6) { code = ""; return; } }
+      call("hk_live_cast", { p_code: code, p_body: "" }).then(function(){ try { localStorage.setItem("sadaLiveCode", code); } catch (e) {} mode = "live"; last = ""; show(); }).catch(function(){ try { localStorage.removeItem("sadaLiveCode"); } catch (e) {} code = ""; alert("Kode live salah."); });
+    } });
+  show(); timer = setInterval(tick, 800);
 }
 
 function buildStandalone(){
@@ -3176,7 +3184,7 @@ function buildStandalone(){
     '  pages.forEach(function(p){ p.addEventListener("click", function(){ DECK.go(+p.getAttribute("data-i")); }); });\n' +
     '  var lastPortrait = null; function onTurn(){ var portrait = matchMedia("(max-width:760px) and (orientation:portrait)").matches; if (portrait && lastPortrait === false) { var pg = document.querySelector(\'.st .pg[data-i="\' + DECK.index + \'"]\'); if (pg) pg.scrollIntoView({block: "start"}); } lastPortrait = portrait; }\n' +
     '  window.addEventListener("resize", onTurn); onTurn();\n' +
-    '})();\n<\/script>\n<script>(' + liveCast.toString() + ')();<\/script>\n</body>\n</html>\n';
+    '})();\n<\/script>\n<script>(' + liveCast.toString() + ')(' + JSON.stringify(sadaLiveKey()) + ');<\/script>\n</body>\n</html>\n';
 }
 $('bSave').onclick = function(){ saveFile(state.fileName + '.html', new Blob([buildStandalone()], {type: 'text/html'}), $('saveStatus')); };
 
