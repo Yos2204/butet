@@ -1455,7 +1455,7 @@ R.meet = () => {
     <h3 class="sec-h">${esc(L3("Akan datang", "Naeng ro", "Upcoming"))}</h3>${next.length ? next.map((x) => row(x, "next")).join("") : `<p class="muted small">${esc(L3("Belum ada rapat terjadwal.", "Dang adong.", "No meetings scheduled."))}</p>`}
     ${past.length ? `<h3 class="sec-h">${esc(L3("Sebelumnya", "Na salpu", "Earlier"))}</h3>${past.map((x) => row(x, "past")).join("")}` : ""}
     <p class="small muted">${esc(L3("Rapat berjalan di Jitsi Meet (meet.jit.si) di browser atau aplikasi Jitsi. Orang pertama yang masuk menjadi moderator dan diminta masuk dengan Google/GitHub sekali; peserta lain tidak perlu akun.", "", "Meetings run on Jitsi Meet (meet.jit.si) in the browser or the Jitsi app. The first person in becomes the moderator and is asked to sign in with Google/GitHub once; others need no account."))}</p>`,
-    { title: L3("Rapat", "Rapat", "Meetings") });
+    {});
 };
 A.meetNew = (d) => {
   const auds = meetAudiences(); const now = d.now === "1";
@@ -2606,7 +2606,7 @@ R.chat = (room) => {
     <div class="row between" style="margin:18px 0 6px"><h3 class="sec-h" style="margin:0">${esc(L3("Pesan pribadi", "Pesan pribadi", "Private messages"))}</h3><button class="btn sm primary" data-act="dmNew">✏️ ${esc(L3("Pesan baru", "Pesan baru", "New message"))}</button></div>
     ${(D.dms || []).length ? `<div class="card dm-list">${D.dms.map((x) => { const p = (D.people || []).find((q) => q.id === x.other) || { id: x.other, name: x.name };
       return `<a class="li${x.unread ? " unread" : ""}" href="#/chat/${esc(x.room)}">${avatarOf(p)}<span class="grow"><b>${esc(x.name || "")}</b><small>${x.last_mine ? esc(L3("Anda: ", "Ho: ", "You: ")) : ""}${esc(x.last || "")}</small></span><span class="dm-meta"><small>${esc(sgParts(x.at).date === today() ? fmtTime(x.at) : fmt(x.at, { day: "numeric", month: "short" }))}</small>${x.unread ? `<b class="dm-n">${x.unread}</b>` : ""}</span></a>`; }).join("")}</div>`
-      : `<p class="muted small">${esc(L3("Belum ada pesan pribadi. Ketuk “Pesan baru” untuk mengirim pesan ke seorang anggota.", "Dang adong.", "No private messages yet. Tap “New message” to write to a member."))}</p>`}`, { title: "Chat" });
+      : `<p class="muted small">${esc(L3("Belum ada pesan pribadi. Ketuk “Pesan baru” untuk mengirim pesan ke seorang anggota.", "Dang adong.", "No private messages yet. Tap “New message” to write to a member."))}</p>`}`);
   let rm = rooms.find((r) => r.id === room);
   if (!rm && String(room).startsWith("dm:")) { const oid = room.slice(3).split(":").find((x) => x !== D.me.id); const op = (D.people || []).find((p) => p.id === oid);
     if (op && room === dmRoom(oid)) rm = { id: room, name: op.name, sub: seenText(oid), dm: oid }; }
