@@ -165,7 +165,7 @@ const firstName = (n) => String(n || "").replace(/^(Pdt|St|Sintua|Bapak|Ibu|Kak|
 
 // ---------- toast / sheets ----------
 function toast(msg, bad) { const el = $("#toast"); el.textContent = msg; el.className = "toast show" + (bad ? " bad" : ""); clearTimeout(toast.h); toast.h = setTimeout(() => (el.className = "toast"), 2600); }
-function errMsg(e) { const c = (e && e.code) || (e && e.message) || "server"; return t("err_" + c) !== "err_" + c ? t("err_" + c) : t("err_server"); }
+function errMsg(e) { if (e && e.viewOnly) return e.message; const c = (e && e.code) || (e && e.message) || "server"; return t("err_" + c) !== "err_" + c ? t("err_" + c) : t("err_server"); }
 function sheet(title, body, onMount) {
   const el = $("#sheet");
   el.innerHTML = `<div class="sheet-card" role="dialog" aria-modal="true" aria-label="${esc(title)}"><div class="sheet-head"><h3>${esc(title)}</h3><button class="icon-btn" data-act="closeSheet" aria-label="${esc(t("close"))}">${ic("x")}</button></div><div class="sheet-body">${body}</div></div>`;
@@ -1030,7 +1030,7 @@ async function render() {
     if (!D) await refresh();
     if (!r) { history.replaceState(null, "", "#/home"); r = "home"; }
     if (isGuest() && !["home", "bread", "checkin"].includes(r)) { history.replaceState(null, "", "#/home"); r = "home"; arg = undefined; }
-    const map = { sswb: R.sswb, ssdeck: R.ssdeck, fx: R.fx, meet: R.meet, tutur: R.tutur, ende: R.ende, stories: R.stories, voyage: R.voyage, live: R.live, grief: R.grief, care: R.care, search: R.search, prayer: R.prayer, checkin: R.checkin, checkinqr: R.checkinqr, chat: R.chat, tata: R.tata, home: R.home, groups: R.groups, g: R.group, serve: R.serve, s: R.section, calendar: R.calendar, bread: R.bread, elders: R.elders, berita: R.berita, people: R.people, more: R.more, appstatus: R.appstatus, o: R.office, warta: R.warta };
+    const map = { access: R.access, sswb: R.sswb, ssdeck: R.ssdeck, fx: R.fx, meet: R.meet, tutur: R.tutur, ende: R.ende, stories: R.stories, voyage: R.voyage, live: R.live, grief: R.grief, care: R.care, search: R.search, prayer: R.prayer, checkin: R.checkin, checkinqr: R.checkinqr, chat: R.chat, tata: R.tata, home: R.home, groups: R.groups, g: R.group, serve: R.serve, s: R.section, calendar: R.calendar, bread: R.bread, elders: R.elders, berita: R.berita, people: R.people, more: R.more, appstatus: R.appstatus, o: R.office, warta: R.warta };
     const html = (map[r] || R.notFound)(arg);
     if (typeof html === "string") view().innerHTML = html;
     draftRestore(view()); wAutoBase();
@@ -1072,6 +1072,74 @@ window.addEventListener("hashchange", () => { window.scrollTo(0, 0); render(); }
 // ---------- actions ----------
 const A = {};
 const F = {};
+
+// ---------- Access & views (YB 2026-10-30, Yosafat only) ----------
+// Every category, service section and office with its members and their roles; tap 👁 to see Sada exactly as that member does
+// (the server sends their real data). While viewing, nothing can be saved; the banner's Keluar returns to your own view.
+const VIEWAS = { on: false, orig: null, api: null, data: null, name: "" };
+const ROLE_NAMES = { chair: "Ketua", maker: "Maker", tmaker: "Teacher Maker", teacher: "Guru", ychair: "Ketua", ytreasurer: "Bendahara", ysecretary: "Sekretaris", member: "Anggota" };
+const KIND_NAMES = { sermon: ["Kategorial", "Kategorial", "Categories"], service: ["Seksi pelayanan", "Seksi", "Service sections"], office: ["Kantor / jabatan", "Jabatan", "Offices"] };
+R.access = () => {
+  if (!isYB()) { location.replace("#/more"); return ""; }
+  const people = (D.people || []).slice().sort((a, b) => a.name.localeCompare(b.name));
+  const roleOrder = (r) => ["chair", "ychair", "maker", "tmaker", "ytreasurer", "ysecretary", "teacher", "member"].indexOf(r) + 1 || 9;
+  const row = (p, r) => `<div class="li acc-p" data-n="${esc(norm(p.name + " " + (p.alias || "")))}">${avatarOf(p)}<span class="grow"><b>${esc(p.name)}</b>${r ? `<small><span class="badge${r !== "member" ? " gold" : ""}">${esc(ROLE_NAMES[r] || r)}</span></small>` : ""}</span><button class="icon-btn" data-act="viewAs" data-id="${p.id}" aria-label="${esc(L3("Lihat sebagai", "Lihat sebagai", "View as"))} ${esc(p.name)}">👁</button></div>`;
+  const kinds = ["sermon", "service", "office"].map((k) => {
+    const gs = (D.groups || []).filter((g) => g.kind === k); if (!gs.length) return "";
+    return `<h3 class="sec-h">${esc(L3(...KIND_NAMES[k]))}</h3><div class="acc-grid">${gs.map((g) => {
+      const ms = people.filter((p) => g.id in (p.groups || {})).sort((a, b) => roleOrder(a.groups[g.id]) - roleOrder(b.groups[g.id]) || a.name.localeCompare(b.name));
+      const lead = ms.filter((p) => p.groups[g.id] !== "member").length;
+      return `<details class="card acc-g" style="--gc:${g.color || "var(--brand)"}"><summary><span class="gicon">${ic(g.icon || "people")}</span><span class="grow"><b>${esc(gname(g))}</b><small>${ms.length} ${esc(L3("anggota", "ruas", "members"))} · ${lead} ${esc(L3("pengurus/maker", "pengurus", "leaders/makers"))}</small></span></summary>
+        ${ms.length ? ms.map((p) => row(p, p.groups[g.id])).join("") : `<p class="muted small">${esc(L3("Belum ada anggota.", "Dang adong.", "No members yet."))}</p>`}</details>`; }).join("")}</div>`;
+  }).join("");
+  const none = people.filter((p) => !Object.keys(p.groups || {}).length);
+  return shell("#/more", `<h2 class="page-h">🔐 ${esc(L3("Akses & tampilan", "Akses", "Access & views"))}</h2>
+    <p class="lead">${esc(L3("Buka kategori atau seksi untuk melihat siapa anggotanya dan perannya. Ketuk 👁 untuk melihat Sada persis seperti yang dilihat anggota itu (data aslinya dari server). Selama melihat, tidak ada yang bisa disimpan.", "Lihat sebagai anggota.", "Open a category or section to see its members and roles. Tap 👁 to see Sada exactly as that member sees it (their real data from the server). While viewing, nothing can be saved."))}</p>
+    <input type="search" id="accFind" placeholder="${esc(L3("Cari anggota…", "Bilang…", "Find a member…"))}" autocomplete="off">
+    <div class="card acc-hits" id="accHits" hidden></div>
+    ${kinds}
+    ${none.length ? `<h3 class="sec-h">${esc(L3("Tanpa kategori", "Ndang adong", "In no group"))}</h3><div class="card">${none.map((p) => row(p, "")).join("")}</div>` : ""}`,
+    { back: "#/more", title: L3("Akses & tampilan", "Akses", "Access & views") });
+};
+document.addEventListener("input", (e) => { if (!e.target || e.target.id !== "accFind") return; const q = norm(e.target.value); const box = document.getElementById("accHits"); if (!box) return;
+  if (!q) { box.hidden = true; box.innerHTML = ""; return; }
+  const seen = new Set(); const hits = [...document.querySelectorAll(".acc-g .acc-p, .acc-p")].filter((el) => el.dataset.n.includes(q) && !seen.has(el.querySelector("[data-act=viewAs]").dataset.id) && seen.add(el.querySelector("[data-act=viewAs]").dataset.id));
+  box.hidden = false; box.innerHTML = hits.slice(0, 12).map((el) => el.outerHTML).join("") || `<p class="muted small">–</p>`; });
+A.viewAs = async (d, btn) => {
+  try {
+    const real = VIEWAS.on ? VIEWAS.api : api;
+    const data = await busy(btn, () => real.save("view_as", { member_id: d.id }));
+    if (!data || !data.me) throw new Error("not_found");
+    if (!VIEWAS.on) { VIEWAS.orig = D; VIEWAS.api = api; }
+    VIEWAS.on = true; VIEWAS.data = data; VIEWAS.name = data.me.name;
+    const readOnly = new Set(["save", "del", "pushSave", "setPassword", "membersUpsert", "settingsSave", "logout", "upload", "rosterSave"]);
+    api = new Proxy(VIEWAS.api, { get(t, k) {
+      if (k === "data") return () => Promise.resolve(VIEWAS.data);
+      if (k === "ping") return () => Promise.resolve();
+      if (k === "save") return (kind, body) => (["chat_list", "ss_html", "ai_get"].includes(kind) ? t.save(kind, body) : Promise.reject(Object.assign(new Error(L3("Mode lihat saja: tidak bisa menyimpan.", "Lihat saja.", "View-only: nothing can be saved.")), { viewOnly: true })));
+      if (readOnly.has(k)) return () => Promise.reject(Object.assign(new Error(L3("Mode lihat saja: tidak bisa menyimpan.", "Lihat saja.", "View-only: nothing can be saved.")), { viewOnly: true }));
+      const v = t[k]; return typeof v === "function" ? v.bind(t) : v; } });
+    D = data; viewAsBar(); closeSheet(); location.hash = "#/home"; render();
+  } catch (e) { toast(e.message || errMsg(e), true); }
+};
+A.viewAsExit = () => { if (!VIEWAS.on) return; api = VIEWAS.api; D = VIEWAS.orig; Object.assign(VIEWAS, { on: false, orig: null, api: null, data: null, name: "" }); viewAsBar(); location.hash = "#/access"; render(); refresh().then(render).catch(() => {}); };
+function viewAsBar() {
+  let el = document.getElementById("viewAsBar");
+  if (!VIEWAS.on) { if (el) el.remove(); document.body.classList.remove("viewing-as"); return; }
+  if (!el) { el = document.createElement("div"); el.id = "viewAsBar"; document.body.appendChild(el); }
+  document.body.classList.add("viewing-as");
+  el.innerHTML = `<span>👁 ${esc(L3("Melihat sebagai", "Lihat sebagai", "Viewing as"))} <b>${esc(VIEWAS.name)}</b></span><button data-act="viewAsExit">${esc(L3("Keluar", "Kaluar", "Exit"))}</button>`;
+}
+try { document.head.insertAdjacentHTML("beforeend", `<style>
+  .acc-grid { display: grid; gap: 10px; } @media (min-width: 900px) { .acc-grid { grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); align-items: start; } }
+  .acc-g { padding: 0; overflow: hidden; border-left: 5px solid var(--gc); } .acc-g summary { display: flex; align-items: center; gap: 12px; padding: 14px 16px; cursor: pointer; list-style: none; }
+  .acc-g summary::-webkit-details-marker { display: none; } .acc-g summary small { display: block; color: var(--muted); } .acc-g > .li, .acc-g > p { padding-left: 16px; padding-right: 16px; }
+  .acc-g .gicon { width: 38px; height: 38px; border-radius: 12px; background: var(--gc); color: #fff; display: grid; place-items: center; flex: none; }
+  #accFind { margin: 4px 0 10px; } .acc-hits { margin-bottom: 12px; }
+  #viewAsBar { position: fixed; left: 50%; transform: translateX(-50%); top: max(8px, env(safe-area-inset-top)); z-index: 190; display: flex; align-items: center; gap: 12px; background: #b45309; color: #fff; border-radius: 999px; padding: 8px 8px 8px 16px; font-size: 14px; box-shadow: 0 8px 24px rgba(0, 0, 0, .3); max-width: calc(100vw - 24px); }
+  #viewAsBar span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } #viewAsBar button { border: 0; border-radius: 999px; background: #fff; color: #b45309; font-weight: 800; padding: 6px 14px; flex: none; }
+  body.viewing-as header.top { padding-top: calc(48px + env(safe-area-inset-top)); }
+</style>`); } catch (e) {}
 try { document.head.insertAdjacentHTML("beforeend", `<style>
   .cat-links { margin-top: 16px; } .cat-link { display: grid; gap: 2px; padding: 14px 16px; text-decoration: none; color: inherit; border-left: 4px solid var(--gc, var(--brand)); margin: 0; }
   .cat-link b { font-size: 15.5px; } .cat-link small { color: var(--muted); font-size: 12.5px; line-height: 1.3; }
@@ -1897,7 +1965,8 @@ function communityMenu() {
   if (isGuest()) return "";
   const elder = "parhalado" in (D.me.groups || {});   // Time for a visit: Parhalado only (the pastor and the elders)
   const it = (href, icon, title, sub) => `<a class="li" href="${href}">${ic(icon)}<span class="grow"><b>${title}</b><small>${esc(sub)}</small></span>${ic("chev", "chev")}</a>`;
-  return it("#/fx", "coins", "💱 " + esc(L3("Kurs", "Kurs", "Exchange rates")), L3("Konversi mata uang, kurs terbaru", "Kurs hepeng", "Currency converter, latest rates"))
+  return (isYB() ? it("#/access", "lock", "🔐 " + esc(L3("Akses & tampilan", "Akses", "Access & views")), L3("Periksa setiap kategori dan seksi, dan lihat Sada sebagai anggota mana pun", "Lihat sebagai anggota", "Check every category and section, and see Sada as any member")) : "")
+    + it("#/fx", "coins", "💱 " + esc(L3("Kurs", "Kurs", "Exchange rates")), L3("Konversi mata uang, kurs terbaru", "Kurs hepeng", "Currency converter, latest rates"))
     + it("#/tutur", "people", "🤝 Partuturan", L3("Cara saling menyapa menurut Dalihan Na Tolu", "Partuturan Dalihan Na Tolu", "How to address each other (Dalihan Na Tolu)"))
     + it("#/ende", "book", "🎵 Buku Ende", L3("Arti setiap baris lagu", "Lapatan ni ende", "The meaning of every hymn line"))
     + it("#/stories", "mic", "🎙️ Turi-turian", L3("Cerita orang tua, direkam untuk generasi muda", "Turi-turian ni natua-tua", "Elders' stories, recorded for the young"))
