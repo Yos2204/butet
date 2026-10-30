@@ -1071,6 +1071,43 @@ window.addEventListener("hashchange", () => { window.scrollTo(0, 0); render(); }
 const A = {};
 const F = {};
 
+// ---------- Computer layout (YB 2026-10-30) ----------
+// From 900px wide Sada uses the side rail (index.html). These rules make the pages use a computer screen well: a wider centred page,
+// cards and tiles in columns, chat in a centred column, the Sunday School workbench with a live preview beside the editor.
+// Phones are not affected.
+try { document.head.insertAdjacentHTML("beforeend", `<style>
+  @media (min-width: 900px) {
+    #view { max-width: 1180px; margin-left: calc(84px + env(safe-area-inset-left) + max(0px, (100vw - 84px - 1180px) / 2)); margin-right: auto; padding-left: 28px; padding-right: 28px; }
+    body { font-size: 16px; }
+    .page-h { font-size: 30px; }
+    .lead { max-width: 760px; }
+    .glist { grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 12px; }
+    .gcards { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }
+    .gcards > * { margin: 0 !important; }
+    .rr-list { grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); }
+    .seg, .sched-seg { max-width: 640px; }
+    .search-top, .search-entry { max-width: 760px; }
+    .ghero { border-radius: 26px; }
+    .card.meet, .card.prayer, .card.grief, .card.wishes { max-width: 900px; }
+    .fx-card { max-width: 640px; } .fx-chips { flex-wrap: wrap; overflow: visible; } #fxList { max-width: 640px; }
+    .chat { max-width: 860px; margin: 0 auto; padding-bottom: 110px; }
+    .ch-online { max-width: 860px; margin-left: auto; margin-right: auto; }
+    .ch-bar { left: calc(84px + env(safe-area-inset-left)); bottom: 0; padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
+    .ch-bar > * { width: 100%; max-width: 860px; margin-left: auto; margin-right: auto; }
+    .live-body { max-width: 1000px; margin: 0 auto; }
+    .tata-frame, #ssBox iframe { max-height: calc(100vh - 220px); }
+    .sheet-card { max-width: 720px; }
+    .nowcard { max-width: 760px; }
+    .tbl-wrap { max-width: 100%; }
+  }
+  @media (min-width: 1100px) {
+    .ssw-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: 24px; align-items: start; }
+    .ssw-live { position: sticky; top: 76px; }
+    .ssw-edit .sticky-actions { position: static; }
+  }
+  @media (max-width: 1099px) { .ssw-live { display: none; } }
+</style>`); } catch (e) {}
+
 
 // ---------- Sunday School slides workbench (YB 2026-10-30) ----------
 // Learned from the Sunday School decks in the church Drive folder ("Worship (English|Indonesia|Batak) - <date>"):
@@ -1220,6 +1257,7 @@ R.sswb = () => {
   if (!SSW.lang) SSW.lang = LS.get("sswLang", "en"); if (!SSW.day) SSW.day = nextSunday();
   if (q.get("from")) { const src = (D.ss_decks || []).find((d) => d.id === q.get("from")); if (src) { SSW.lang = src.lang; SSW.day = src.day; } }
   if (!SSW.secs) { const dr = LS.get(ssKey(), null); SSW.secs = dr && dr.secs ? dr.secs : null; }
+  setTimeout(() => sswLive(true), 0);
   if (q.get("from") && SSV.sections && !SSW.secs) SSW.secs = SSV.sections;
   const secs = SSW.secs;
   const typeOpt = (sel) => SS_TYPES.map((tp) => `<option value="${tp}"${tp === sel ? " selected" : ""}>${esc(SS_NAMES[SSW.lang][tp])}</option>`).join("");
@@ -1238,13 +1276,20 @@ R.sswb = () => {
     <div class="seg" style="--gc:#e67e22">${Object.entries(SS_LANGS).map(([k, v]) => `<a role="tab" aria-selected="${SSW.lang === k}" href="javascript:void 0" data-act="sswLang" data-l="${k}">${v}</a>`).join("")}</div>
     <label>${esc(L3("Hari Minggu", "Ari Minggu", "Sunday"))}<input type="date" id="sswDay" value="${esc(SSW.day)}"></label>
     <div class="row two"><button class="btn" data-act="sswImport" data-src="drive">⬇️ ${esc(L3("Dari deck terakhir (Drive)", "Sian Drive", "From the latest deck (Drive)"))}</button><button class="btn" data-act="sswImport" data-src="sada">↺ ${esc(L3("Dari slide Sada terakhir", "Sian Sada", "From the latest Sada deck"))}</button></div>
-    ${secs ? `${secs.map(field).join("")}
+    ${secs ? `<div class="ssw-grid"><div class="ssw-edit">${secs.map(field).join("")}
       <div class="row two"><select id="sswAdd">${typeOpt("song")}</select><button class="btn" data-act="sswAdd">${ic("plus")} ${esc(L3("Tambah bagian", "Tambah", "Add section"))}</button></div>
-      <div class="row two sticky-actions"><button class="btn" data-act="sswPreview">👁 ${esc(L3("Pratinjau", "Ida", "Preview"))}</button><button class="btn primary" data-act="sswPublish">🚀 ${esc(L3("Terbitkan", "Terbitkan", "Publish"))}</button></div>`
+      <div class="row two sticky-actions"><button class="btn" data-act="sswPreview">👁 ${esc(L3("Pratinjau", "Ida", "Preview"))}</button><button class="btn primary" data-act="sswPublish">🚀 ${esc(L3("Terbitkan", "Terbitkan", "Publish"))}</button></div></div><aside class="ssw-live"><p class="small muted">👁 ${esc(L3("Pratinjau langsung", "Pratinjau", "Live preview"))} · ${esc(L3("klik slide atau gunakan panah", "", "click the slide or use the arrows"))}</p><div id="sswLive"></div></aside></div>`
       : `<button class="btn block" data-act="sswBlank">${esc(L3("Atau mulai dari template kosong", "Template kosong", "Or start from an empty template"))}</button>`}`,
     { back: "#/g/sekolah-minggu?tab=slides", title: L3("Workbench Sekolah Minggu", "Workbench", "Sunday School workbench"), sub: SS_LANGS[SSW.lang] });
 };
-const sswRe = () => { ssSave(); const y = window.scrollY; render(); setTimeout(() => window.scrollTo(0, y), 0); };
+const sswRe = () => { ssSave(); const y = window.scrollY; render(); setTimeout(() => { window.scrollTo(0, y); sswLive(true); }, 0); };
+// Live preview beside the editor on a computer (wide screens only); it redraws a moment after you stop typing.
+let SSW_T = null;
+function sswLive(now) {
+  clearTimeout(SSW_T);
+  SSW_T = setTimeout(() => { const box = document.getElementById("sswLive"); if (!box || !SSW.secs || !matchMedia("(min-width: 1100px)").matches) return;
+    const f = tataIframe(ssRender(SSW.lang, SSW.day, SSW.secs)); f.style.cssText = "width:100%;aspect-ratio:16/9;border:0;border-radius:14px;background:#0b1022;box-shadow:var(--shadow)"; box.innerHTML = ""; box.appendChild(f); }, now ? 50 : 700);
+}
 A.sswLang = (d) => { SSW.lang = d.l; LS.set("sswLang", d.l); const dr = LS.get(ssKey(), null); SSW.secs = dr && dr.secs ? dr.secs : null; render(); };
 A.sswBlank = () => { SSW.secs = ssTemplate(SSW.lang); sswRe(); };
 A.sswAdd = () => { const tp = (document.getElementById("sswAdd") || {}).value || "song"; SSW.secs.push({ type: tp, title: SS_NAMES[SSW.lang][tp], extra: "", body: "" }); sswRe(); };
@@ -1254,7 +1299,7 @@ A.sswImg = (d) => { const inp = document.createElement("input"); inp.type = "fil
   inp.onchange = async () => { const sec = SSW.secs[+d.i]; sec.images = sec.images || []; for (const f of inp.files) { try { sec.images.push(await resizeImage(f, 1600, 0.8)); } catch (e) {} } sswRe(); }; inp.click(); };
 A.sswImgDel = (d) => { const sec = SSW.secs[+d.i]; (sec.images || []).splice(+d.k, 1); sswRe(); };
 document.addEventListener("input", (e) => { const el = e.target; if (!el || !el.classList) return;
-  if (el.classList.contains("ssw-in") && SSW.secs) { SSW.secs[+el.dataset.i][el.dataset.k] = el.value; ssSave(); }
+  if (el.classList.contains("ssw-in") && SSW.secs) { SSW.secs[+el.dataset.i][el.dataset.k] = el.value; ssSave(); sswLive(false); }
   if (el.id === "sswDay" && el.value) { SSW.day = el.value; } });
 document.addEventListener("change", (e) => { const el = e.target; if (el && el.classList && el.classList.contains("ssw-type") && SSW.secs) { SSW.secs[+el.dataset.i].type = el.value; sswRe(); } });
 A.sswImport = async (d, btn) => {
