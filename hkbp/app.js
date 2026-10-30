@@ -372,7 +372,7 @@ function shell(active, inner, opts = {}) {
   // People who are not signed in see only Home, plus a Sign in tab (YB 2026-10-28).
   const tabs = isGuest() ? TABS.filter(([, h]) => h === "#/home") : TABS;
   // Rosters pages light up the Schedule tab too (YB 2026-10-29: calendar and rosters combined).
-  const act = active === "#/serve" ? "#/calendar" : active; CUR_TAB = act; const label = (k) => (k === "sched" ? L3("Jadwal", "Jadwal", "Schedule") : k === "lib" ? L3("Alkitab", "Bibel", "Bible") : k === "Chat" ? "Chat" : t(k));
+  const act = active === "#/serve" ? "#/calendar" : active; CUR_TAB = act; const label = (k) => (k === "sched" ? L3("Jadwal", "Jadwal", "Schedule") : k === "lib" ? L3("Dokumen", "Dokumen", "Documents") : k === "Chat" ? "Chat" : t(k));
   const nav = tabs.map(([i, h, k]) => `<a href="${h}" class="${act === h ? "on" : ""}" ${act === h ? 'aria-current="page"' : ""}>${ic(i)}${tabBadge(h)}<span>${esc(label(k))}</span></a>`).join("")
     + (isGuest() ? `<a href="#/login" data-act="signIn">${ic("lock")}<span>${esc(t("signIn"))}</span></a>` : "");
   return `
@@ -1030,7 +1030,7 @@ async function render() {
     if (!D) await refresh();
     if (!r) { history.replaceState(null, "", "#/home"); r = "home"; }
     if (isGuest() && !["home", "bread", "checkin"].includes(r)) { history.replaceState(null, "", "#/home"); r = "home"; arg = undefined; }
-    const map = { library: R.library, song: R.song, access: R.access, sswb: R.sswb, ssdeck: R.ssdeck, fx: R.fx, meet: R.meet, tutur: R.tutur, ende: R.ende, stories: R.stories, voyage: R.voyage, live: R.live, grief: R.grief, care: R.care, search: R.search, prayer: R.prayer, checkin: R.checkin, checkinqr: R.checkinqr, chat: R.chat, tata: R.tata, home: R.home, groups: R.groups, g: R.group, serve: R.serve, s: R.section, calendar: R.calendar, bread: R.bread, elders: R.elders, berita: R.berita, people: R.people, more: R.more, appstatus: R.appstatus, o: R.office, warta: R.warta };
+    const map = { doc: R.doc, library: R.library, song: R.song, access: R.access, sswb: R.sswb, ssdeck: R.ssdeck, fx: R.fx, meet: R.meet, tutur: R.tutur, ende: R.ende, stories: R.stories, voyage: R.voyage, live: R.live, grief: R.grief, care: R.care, search: R.search, prayer: R.prayer, checkin: R.checkin, checkinqr: R.checkinqr, chat: R.chat, tata: R.tata, home: R.home, groups: R.groups, g: R.group, serve: R.serve, s: R.section, calendar: R.calendar, bread: R.bread, elders: R.elders, berita: R.berita, people: R.people, more: R.more, appstatus: R.appstatus, o: R.office, warta: R.warta };
     const html = (map[r] || R.notFound)(arg);
     if (typeof html === "string") view().innerHTML = html;
     draftRestore(view()); wAutoBase();
@@ -1073,47 +1073,209 @@ window.addEventListener("hashchange", () => { window.scrollTo(0, 0); render(); }
 const A = {};
 const F = {};
 
+// ---------- Dokumen Gereja: church documents (YB 2026-10-30) ----------
+// Church document text → sections (YB 2026-10-30): Agenda, Konfessi, Juklak RPP. Chapters (BAGIAN/BAB/BINDU/Pasal/Roman numerals/ALL CAPS)
+// and subsections (A. / 1.) with their lines; the table of contents at the front is dropped (entries with no text under them).
+function docFromText(text) {
+  const unspace = (l) => l.replace(/\b(?:[A-Za-z] ){2,}[A-Za-z]{1,3}\b/g, (m) => m.replace(/ /g, "")).replace(/\s+([.,;:!?])/g, "$1");
+  const raw = String(text || "").replace(/\r/g, "").replace(/[\u00a0\uf0b7\u2022]/g, " ").split("\n").map((l) => unspace(l.replace(/\s{2,}/g, " ").trim()));
+  const isCaps = (l) => l.length <= 90 && !/[a-z]/.test(l) && /[A-Z]{3}/.test(l) && !/:\s*$/.test(l);   // "PELAYAN LITURGI :" is a speaker, not a heading
+  const L1 = (l) => /^(BAGIAN|BAB|BINDU|PASAL|Pasal)\b/.test(l) && l.length < 90 || /^[IVXL]+\.\s+\S/.test(l) && isCaps(l);
+  const L2 = (l) => /^[A-Z]\.\s+\S/.test(l) && isCaps(l) && l.length < 90 || /^\d{1,2}\.\s+\S/.test(l) && l.length < 64 && !/[.;,]$/.test(l) && !/\.\s+\S/.test(l.slice(3));   // "1. Title", not "1. Item. Sentence…"
+  const toc = (l) => /\.{4,}/.test(l) || /\s\d{1,3}$/.test(l) && /^[IVXL]+\.|^[A-Z]\.\s|^\(/.test(l);
+  const secs = []; let cur = null, last = null;
+  const open = (title, level) => { cur = { title, level, lines: [] }; secs.push(cur); last = cur; };
+  for (let i = 0; i < raw.length; i++) {
+    const l = raw[i]; if (!l) { if (cur && cur.lines.length && cur.lines[cur.lines.length - 1] !== "") cur.lines.push(""); continue; }
+    if (toc(l)) continue;
+    if (L1(l)) { let title = l; while ((raw[i + 1] && isCaps(raw[i + 1]) && !L1(raw[i + 1]) && !L2(raw[i + 1])) || (raw[i + 1] === "" && raw[i + 2] && isCaps(raw[i + 2]) && !L1(raw[i + 2]) && !L2(raw[i + 2]) && /^(BAGIAN|BAB|BINDU)/.test(title))) { if (raw[i + 1] === "") i++; title += " " + raw[++i]; } open(title, 1); continue; }
+    if (isCaps(l) && !/^[A-Z]\.\s/.test(l)) { if (cur && !cur.lines.some(Boolean) && cur.level === 1 && !/^[IVXL]+\.|^(BAGIAN|BAB|BINDU|PASAL|Pasal)/.test(cur.title)) { cur.title += " " + l; continue; } open(l, cur && cur.level === 1 && cur.lines.some(Boolean) ? 2 : 1); continue; }
+    if (L2(l)) { const nx = raw.slice(i + 1).find((x) => x) || ""; if (/^[A-Z]\.\s/.test(l) || /^[A-ZÀ-Ý0-9“"(]/.test(nx)) { open(l, 2); continue; } }
+    if (!cur) open("", 1);
+    const p = cur.lines[cur.lines.length - 1];
+    if (p && p !== "" && !/[.:;!?)”"»…]$/.test(p) && /^[a-z(“"]/.test(l) && !/^[a-z]\.\s/.test(l)) cur.lines[cur.lines.length - 1] = p + " " + l; else cur.lines.push(l);
+  }
+  // drop table-of-contents entries and empty headings; trim blank edges
+  const out = secs.map((s) => ({ ...s, lines: s.lines.join("\n").replace(/^\n+|\n+$/g, "").replace(/\n{3,}/g, "\n\n").split("\n").filter((l, i, a) => !(l === "" && a[i - 1] === "")) }));
+  // a heading with nothing under it is a table-of-contents entry when the same heading appears again later with text
+  const later = (i) => out.slice(i + 1).some((x) => x.title === out[i].title && x.lines.some(Boolean));
+  return out.filter((s, i) => (s.lines.some(Boolean) || (s.title && !later(i) && !/\s\d{1,3}$/.test(s.title) && out[i + 1] && out[i + 1].level === 2)) && (s.title || s.lines.some(Boolean)));
+}
+// Agenda (Batak), Agenda/Liturgi (Indonesia), Konfessi HKBP and Juklak RPP, imported by the admin from text files (📥 on the tile),
+// read as books (chapters, sections, search, text size) and, for the two Agendas, shown as slides for the projector.
+// The two Agendas are for Parhalado (the pastor and the elders) only; the server enforces that too.
+const DOC_META = {
+  "agenda-bt": { title: "Agenda HKBP", sub: ["Bahasa Batak", "Hata Batak", "Batak"], lang: "bt", restricted: true, slides: true, icon: "📘" },
+  "agenda-id": { title: "Agenda / Liturgi", sub: ["Bahasa Indonesia", "Hata Indonesia", "Indonesian"], lang: "id", restricted: true, slides: true, icon: "📗" },
+  "konfessi": { title: "Konfessi HKBP", sub: ["Pengakuan Iman HKBP 2023", "Panindangion Haporseaon", "Confession of Faith 2023"], lang: "bt", restricted: false, icon: "📕" },
+  "juklak-rpp": { title: "Juklak RPP HKBP", sub: ["Ruhut Parmahanion dohot Paminsangon", "Ruhut Parmahanion", "Pastoral care and discipline guide"], lang: "bt", restricted: false, icon: "📙" },
+};
+const DOCS = { list: null, cache: {} };
+const isParhalado = () => !!D && !isGuest() && "parhalado" in (D.me.groups || {});
+async function docList(force) { if (DOCS.list && !force) return DOCS.list; const c = LS.get("docList", null); if (c && !force) DOCS.list = c; try { DOCS.list = (await api.save("doc_list", {})) || []; LS.set("docList", DOCS.list); } catch (e) { DOCS.list = DOCS.list || (c || []); } return DOCS.list; }
+async function docLoad(slug, force) {
+  if (DOCS.cache[slug] && !force) return DOCS.cache[slug];
+  const c = LS.get("doc:" + slug, null); if (c && !force) { DOCS.cache[slug] = c; }
+  try { const r = await api.save("doc_get", { slug }); DOCS.cache[slug] = r; LS.set("doc:" + slug, r); } catch (e) { if (!DOCS.cache[slug]) throw e; }
+  return DOCS.cache[slug];
+}
+function docsHome() {
+  setTimeout(() => docList(false).then(() => { const el = document.getElementById("docTiles"); if (el) el.innerHTML = docTiles(); }), 0);
+  return shell("#/library", `<h2 class="page-h">📚 ${esc(L3("Dokumen Gereja", "Dokumen Huria", "Church documents"))}</h2>
+    <h3 class="sec-h">${esc(L3("Alkitab & Nyanyian", "Bibel & Ende", "Bible & songbooks"))}</h3>
+    <div class="doc-grid">
+      ${tile("#/library?s=bible", "📖", L3("Alkitab", "Bibel", "Bible"), L3("TB · Toba · KJV, offline", "TB · Toba · KJV", "TB · Toba · KJV, offline"))}
+      ${tile("#/library?s=KJ", "🎵", "Kidung Jemaat", L3("Nomor & judul", "Nomor & judul", "By number and title"))}
+      ${tile("#/library?s=BE", "🎶", "Buku Ende", L3("Nomor & judul", "Nomor & judul", "By number and title"))}
+      ${tile("#/library?s=BN", "🎼", "Buku Nyanyian", "HKBP")}
+    </div>
+    <h3 class="sec-h">${esc(L3("Buku gereja", "Buku ni huria", "Church books"))}</h3>
+    <div class="doc-grid" id="docTiles">${docTiles()}</div>`, {});
+}
+const tile = (href, icon, title, sub, extra) => `<a class="doc-tile" href="${esc(href)}"><span class="doc-ic">${icon}</span><b>${esc(title)}</b><small>${esc(sub)}</small>${extra || ""}</a>`;
+function docTiles() {
+  const have = Object.fromEntries((DOCS.list || []).map((x) => [x.slug, x]));
+  return Object.entries(DOC_META).filter(([slug, m]) => !m.restricted || isParhalado()).map(([slug, m]) => { const h = have[slug];
+    const extra = `${m.restricted ? `<span class="doc-lock">🔒 Parhalado</span>` : ""}${D.me.is_admin ? `<button class="icon-btn doc-imp" data-act="docImport" data-slug="${slug}" aria-label="${esc(L3("Impor", "Impor", "Import"))}">📥</button>` : ""}`;
+    return h ? tile("#/doc/" + slug, m.icon, m.title, L3(...m.sub) + ` · ${h.sections} ${L3("bagian", "bagian", "sections")}`, extra)
+      : `<div class="doc-tile off"><span class="doc-ic">${m.icon}</span><b>${esc(m.title)}</b><small>${esc(L3(...m.sub))} · ${esc(L3("belum diimpor", "dang diimpor dope", "not imported yet"))}</small>${extra}</div>`; }).join("");
+}
+R.doc = (arg) => {
+  const slug = String(arg || "").split("?")[0]; const idx = new URLSearchParams(location.hash.split("?")[1] || "").get("i");
+  const m = DOC_META[slug]; if (!m) return R.notFound();
+  if (m.restricted && !isParhalado()) { location.replace("#/library"); return ""; }
+  setTimeout(async () => { const box = document.getElementById("docBox"); if (!box) return;
+    try { const doc = await docLoad(slug, false); box.innerHTML = idx == null ? docToc(doc, slug) : docSection(doc, slug, +idx); }
+    catch (e) { box.innerHTML = empty(L3("Belum ada isi. Admin perlu mengimpornya dulu.", "Dang adong isi.", "No content yet. The admin needs to import it first."), "book"); } }, 0);
+  return shell("#/library", `<div id="docBox">${skel(4)}</div>`, { back: idx == null ? "#/library" : "#/doc/" + slug, title: m.title, sub: L3(...m.sub) });
+};
+function docToc(doc, slug) {
+  const secs = doc.sections || [];
+  return `<input type="search" id="docFind" data-slug="${slug}" placeholder="${esc(L3("Cari di buku ini…", "Bilang di buku on…", "Search this book…"))}" autocomplete="off"><div id="docHits"></div>
+    <div class="card doc-toc">${secs.map((x, i) => `<a class="li lv${x.level}" href="#/doc/${slug}?i=${i}"><span class="grow"><b>${esc(x.title || L3("(tanpa judul)", "", "(untitled)"))}</b></span>${ic("chev", "chev")}</a>`).join("")}</div>`;
+}
+document.addEventListener("input", (e) => { const el = e.target; if (!el || el.id !== "docFind") return; const doc = DOCS.cache[el.dataset.slug]; const box = document.getElementById("docHits"); if (!doc || !box) return;
+  const q = norm(el.value); if (q.length < 2) { box.innerHTML = ""; return; }
+  const hits = []; (doc.sections || []).forEach((x, i) => { const txt = x.lines.join("\n"); const k = norm(txt).indexOf(q); if (norm(x.title).includes(q) || k >= 0) hits.push({ i, x, snip: k >= 0 ? txt.slice(Math.max(0, k - 50), k + 90).replace(/\n/g, " ") : "" }); });
+  box.innerHTML = hits.length ? `<div class="card">${hits.slice(0, 30).map((h) => `<a class="li" href="#/doc/${el.dataset.slug}?i=${h.i}"><span class="grow"><b>${esc(h.x.title)}</b><small>…${esc(h.snip)}…</small></span>${ic("chev", "chev")}</a>`).join("")}</div>` : `<p class="muted small">${esc(L3("Tidak ditemukan.", "Ndang dapot.", "Nothing found."))}</p>`; });
+const SPEAK = /^([A-ZÀ-Ý][A-ZÀ-Ý .\/]{0,28}?|[A-Z][a-z]{0,12}(?: [A-Z][a-z]{0,12})?)\s*:\s*(.*)$/;
+const docLine = (l) => { const m = l.match(SPEAK); if (m && m[1].length <= 30) return `<p class="say"><b>${esc(m[1].trim())}:</b> ${esc(m[2])}</p>`; return `<p>${esc(l)}</p>`; };
+function docSection(doc, slug, i) {
+  const secs = doc.sections || [], x = secs[i]; if (!x) return empty("–", "book"); const m = DOC_META[slug]; const fs = LS.get("docFs", 18);
+  const parent = x.level === 2 ? secs.slice(0, i).reverse().find((y) => y.level === 1) : null;
+  return `<div class="doc-head">${parent ? `<small class="muted">${esc(parent.title)}</small>` : ""}<h2>${esc(x.title)}</h2></div>
+    <div class="doc-text" style="font-size:${fs}px">${x.lines.map((l) => (l ? docLine(l) : `<p class="gap"></p>`)).join("")}</div>
+    <div class="row two" style="margin-top:14px"><button class="btn" data-act="docFs" data-d="-1">A−</button><button class="btn" data-act="docFs" data-d="1">A+</button></div>
+    ${m.slides ? `<button class="btn primary block" data-act="docSlides" data-slug="${slug}" data-i="${i}">📽 ${esc(L3("Tampilkan sebagai slide", "Patuduhon slide", "Show as slides"))}</button>` : ""}
+    <div class="row two"><a class="btn${i > 0 ? "" : " off"}" href="#/doc/${slug}?i=${Math.max(0, i - 1)}">‹ ${esc(L3("Sebelumnya", "Na parjolo", "Previous"))}</a><a class="btn${i < secs.length - 1 ? "" : " off"}" href="#/doc/${slug}?i=${Math.min(secs.length - 1, i + 1)}">${esc(L3("Berikutnya", "Na mangihut", "Next"))} ›</a></div>`;
+}
+A.docFs = (d) => { const v = Math.max(14, Math.min(32, LS.get("docFs", 18) + +d.d)); LS.set("docFs", v); const el = document.querySelector(".doc-text"); if (el) el.style.fontSize = v + "px"; };
+// Slides for the projector: the chapter (with its sections) as 16:9 slides, at most 7 lines each, speakers in gold, the congregation's lines highlighted.
+function docDeck(doc, i) {
+  const secs = doc.sections || []; let a = i; while (a > 0 && secs[a].level === 2) a--; let b = a + 1; while (b < secs.length && secs[b].level === 2) b++;
+  const e = (x) => String(x == null ? "" : x).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  const S = []; const slide = (cls, inner) => S.push(`<section class="dk-slide ${cls}"><div class="in">${inner}</div><footer>${e(doc.title)} · HKBP SINGAPORE</footer></section>`);
+  slide("title", `<p class="kick">${e(doc.title)}</p><h1>${e(secs[a].title)}</h1>`);
+  for (let k = a; k < b; k++) { const x = secs[k]; if (k > a) slide("title sub", `<p class="kick">${e(secs[a].title)}</p><h1>${e(x.title)}</h1>`);
+    const w = (l) => Math.max(1, Math.ceil(l.length / 46)); const label = (l) => /:\s*$/.test(l) && l.length < 40;
+    const chunks = []; let cur = [], n = 0;
+    x.lines.filter(Boolean).forEach((l) => { if (n + w(l) > 7 && cur.length) { const keep = label(cur[cur.length - 1]) ? cur.pop() : null; if (cur.length) chunks.push(cur); cur = keep ? [keep] : []; n = keep ? w(keep) : 0; } cur.push(l); n += w(l); });
+    if (cur.length) chunks.push(cur);
+    chunks.forEach((ls) => slide("text", `<p class="kick">${e(x.title)}</p><div class="tx">${ls.map((l) => { const m = l.match(SPEAK); const resp = m && /^(J|JEMAAT|H|HURIA|RUAS|SEMUA|S|ALL)\b/i.test(m[1]); return m && m[1].length <= 30 ? `<p class="${resp ? "resp" : "say"}"><b>${e(m[1].trim())}:</b> ${e(m[2])}</p>` : `<p>${e(l)}</p>`; }).join("")}</div>`)); }
+  const css = `*{box-sizing:border-box;margin:0}html,body{height:100%;background:#0b1022;font-family:Arial,"Helvetica Neue",sans-serif}
+  .stage{position:fixed;inset:0;display:grid;place-items:center}.deck{position:relative;width:min(100vw,177.78vh);aspect-ratio:16/9;container-type:inline-size;overflow:hidden;background:radial-gradient(circle at 20% 10%,#1d2b5a,#0b1022 60%)}
+  .dk-slide{position:absolute;inset:0;display:none;color:#f2efe6;padding:5cqw 7cqw 7cqw}.dk-slide.on{display:flex;animation:in .25s ease-out}@keyframes in{from{transform:translateX(1.5cqw)}to{transform:none}}
+  .dk-slide .in{margin:auto 0;width:100%;max-height:100%;overflow:hidden}.dk-slide footer{position:absolute;left:0;right:0;bottom:2cqw;text-align:center;font-size:1.4cqw;letter-spacing:.14em;font-weight:700;opacity:.55}
+  .kick{font-size:2cqw;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#d8b25e;margin-bottom:1.4cqw}.title .in{text-align:center}.title h1{font-size:6.5cqw;line-height:1.12;font-weight:900}.title.sub h1{font-size:5cqw}
+  .tx{font-size:3.3cqw}.tx p{font-size:1em;line-height:1.38;margin:0 0 .9cqw;font-weight:600}.tx p.say b{color:#d8b25e}.tx p.resp{background:rgba(216,178,94,.16);border-left:.6cqw solid #d8b25e;padding:.6cqw 1.2cqw;border-radius:.6cqw;font-weight:800}.tx p.resp b{color:#ffe29a}
+  .bar{position:fixed;right:12px;bottom:12px;display:flex;gap:8px;align-items:center;background:rgba(0,0,0,.55);color:#fff;border-radius:999px;padding:6px 10px;font:600 13px Arial;z-index:9;transition:opacity .3s}.bar button{border:0;background:rgba(255,255,255,.18);color:#fff;border-radius:999px;padding:6px 12px;font:700 13px Arial}body.idle .bar{opacity:0}`;
+  const js = `(function(){var s=[].slice.call(document.querySelectorAll('.dk-slide')),i=0,c=document.getElementById('cnt');function fit(sl){var tx=sl.querySelector('.tx'),box=sl.querySelector('.in');if(!tx||!box)return;var f=100;tx.style.fontSize='';while(f>50&&box.scrollHeight>box.clientHeight+1){f-=5;tx.style.fontSize=f+'%'}}
+  function go(n){i=Math.max(0,Math.min(s.length-1,n));s.forEach(function(x,k){x.classList.toggle('on',k===i)});c.textContent=(i+1)+' / '+s.length;fit(s[i])}go(0);window.addEventListener('resize',function(){fit(s[i])});
+  document.addEventListener('keydown',function(e){if(['ArrowRight','PageDown',' ','Enter'].indexOf(e.key)>=0){go(i+1);e.preventDefault()}if(['ArrowLeft','PageUp','Backspace'].indexOf(e.key)>=0){go(i-1);e.preventDefault()}});
+  document.querySelector('.deck').addEventListener('click',function(e){var r=this.getBoundingClientRect();go(i+(e.clientX-r.left>r.width/3?1:-1))});var x0=null;document.addEventListener('touchstart',function(e){x0=e.touches[0].clientX},{passive:true});document.addEventListener('touchend',function(e){if(x0==null)return;var d=e.changedTouches[0].clientX-x0;if(Math.abs(d)>50)go(i+(d<0?1:-1));x0=null},{passive:true});
+  document.getElementById('prev').onclick=function(e){e.stopPropagation();go(i-1)};document.getElementById('next').onclick=function(e){e.stopPropagation();go(i+1)};document.getElementById('fs').onclick=function(e){e.stopPropagation();var d=document.documentElement;(d.requestFullscreen||d.webkitRequestFullscreen||function(){}).call(d)};
+  var t;function wake(){document.body.classList.remove('idle');clearTimeout(t);t=setTimeout(function(){document.body.classList.add('idle')},2500)}['mousemove','touchstart','keydown'].forEach(function(n){document.addEventListener(n,wake,{passive:true})});wake()})();`;
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${e(doc.title)} · ${e(secs[a].title)}</title><style>${css}</style></head><body><div class="stage"><div class="deck">${S.join("")}</div></div><div class="bar"><button id="prev">‹</button><span id="cnt"></span><button id="next">›</button><button id="fs">⛶</button></div><script>${js}<\/script></body></html>`;
+}
+A.docSlides = async (d) => { const doc = await docLoad(d.slug, false); const html = docDeck(doc, +d.i);
+  sheet("📽 " + L3("Slide", "Slide", "Slides"), `<div id="docPrev"></div><div class="row two" style="margin-top:10px"><button class="btn primary" data-act="docSlidesFull">⛶ ${esc(L3("Layar penuh", "Layar penuh", "Full screen"))}</button><button class="btn" data-act="closeSheet">${esc(L3("Tutup", "Tutup", "Close"))}</button></div><p class="small muted">${esc(L3("Ketuk sisi kanan/kiri atau gunakan panah. Di komputer: sambungkan proyektor lalu layar penuh.", "", "Tap right/left or use the arrows. On a computer, connect the projector and go full screen."))}</p>`);
+  const f = tataIframe(html); f.style.cssText = "width:100%;aspect-ratio:16/9;border:0;border-radius:12px;background:#0b1022"; f.setAttribute("allowfullscreen", ""); document.getElementById("docPrev").appendChild(f); };
+A.docSlidesFull = () => { const f = document.querySelector("#docPrev iframe"); if (f) (f.requestFullscreen || f.webkitRequestFullscreen || function () {}).call(f); };
+A.docImport = (d) => {
+  const m = DOC_META[d.slug]; if (!m) return;
+  const inp = document.createElement("input"); inp.type = "file"; inp.accept = ".txt,.pdf,text/plain,application/pdf";
+  inp.onchange = async () => { const file = inp.files && inp.files[0]; if (!file) return;
+    sheet("📥 " + m.title, `<p class="small muted">${esc(file.name)}</p><div class="rec-bar"><i id="impBar"></i></div><p class="small" id="impPct"></p>`);
+    try { const text = /\.txt$/i.test(file.name) ? await file.text() : await pdfText(file, (p, n) => { const b = document.getElementById("impBar"); if (b) b.style.width = Math.round((p / n) * 100) + "%"; const e = document.getElementById("impPct"); if (e) e.textContent = `${p} / ${n}`; });
+      const secs = docFromText(text); if (!secs.length || secs.reduce((n, x) => n + x.lines.filter(Boolean).length, 0) < 20) throw new Error(L3("Teks tidak terbaca (berkas scan?)", "Ndang terbaca.", "No readable text (a scanned file?)"));
+      const l1 = secs.filter((x) => x.level === 1);
+      DOCS.pending = { slug: d.slug, secs };
+      sheet("📥 " + m.title, `<p>${esc(L3(`${l1.length} bab, ${secs.length - l1.length} bagian, ${secs.reduce((n, x) => n + x.lines.filter(Boolean).length, 0)} baris teks.`, `${l1.length} bab.`, `${l1.length} chapters, ${secs.length - l1.length} sections, ${secs.reduce((n, x) => n + x.lines.filter(Boolean).length, 0)} lines of text.`))}</p>
+        <div class="chips imp-chips">${l1.slice(0, 60).map((x) => `<span class="chip on">${esc(x.title.slice(0, 40))}</span>`).join("")}</div>
+        <button class="btn primary block" data-act="docImportSave">💾 ${esc(L3("Simpan ke Sada", "Simpan", "Save to Sada"))}</button><button class="btn ghost block" data-act="closeSheet">${esc(t("cancel"))}</button>`); }
+    catch (e) { closeSheet(); toast(e.message || errMsg(e), true); } };
+  inp.click();
+};
+A.docImportSave = async (d, btn) => { const p = DOCS.pending; if (!p) return; const m = DOC_META[p.slug];
+  try { await busy(btn, () => api.save("doc_save", { slug: p.slug, title: m.title, lang: m.lang, restricted: m.restricted, sections: p.secs })); delete DOCS.cache[p.slug]; LS.set("doc:" + p.slug, null); await docList(true); closeSheet(); render(); toast(L3("Tersimpan.", "Tarsimpan.", "Saved.")); }
+  catch (e) { toast(errMsg(e), true); } };
+try { document.head.insertAdjacentHTML("beforeend", `<style>
+  .doc-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 8px; } @media (min-width: 900px) { .doc-grid { grid-template-columns: repeat(4, 1fr); } }
+  .doc-tile { position: relative; display: grid; gap: 4px; padding: 16px 14px 14px; border-radius: 20px; background: var(--surface); box-shadow: var(--shadow); text-decoration: none; color: inherit; min-height: 118px; align-content: start; }
+  .doc-tile.off { opacity: .6; } .doc-ic { font-size: 30px; line-height: 1; margin-bottom: 4px; } .doc-tile b { font-size: 15.5px; line-height: 1.2; } .doc-tile small { color: var(--muted); font-size: 12px; line-height: 1.3; }
+  .doc-lock { font-size: 11px; font-weight: 800; color: var(--gold); } .doc-imp { position: absolute; top: 10px; right: 10px; }
+  .lib-back { display: inline-block; font-weight: 700; margin: 8px 0 4px; text-decoration: none; }
+  .doc-toc .li.lv2 { padding-left: 34px; } .doc-toc .li.lv2 b { font-weight: 600; } .doc-toc .li.lv1 b { font-weight: 800; }
+  .doc-head { margin: 6px 0 14px; } .doc-head h2 { margin: 2px 0 0; font-size: 22px; line-height: 1.2; }
+  .doc-text { line-height: 1.55; } .doc-text p { margin: 0 0 .5em; } .doc-text p.gap { height: .6em; } .doc-text p.say b { color: var(--brand); }
+  @media (min-width: 900px) { .doc-text { max-width: 780px; } }
+</style>`); } catch (e) {}
+
 // ---------- Import a songbook PDF (YB 2026-10-30) ----------
 // Song book text → songs (YB 2026-10-30). Used by Sada's "Impor buku lagu"; tested here on the church's KJ.pdf.
 function songsFromText(text, defBook) {
-  const HEAD = /\b(B\.\s*E|BUKU\s*ENDE|BE|PKJ|NKB|KJ|BN|KLB)\b\.?\s*(?:No\.?|Nomor|Nr\.?)?\s*(\d{1,4})/i;
-  let t = String(text || "").replace(/\r/g, "").replace(/[\u00a0\t]+/g, " ");
-  // a heading glued to the end of the line before it (page breaks): put it on its own line
+  // Headings: "KJ No. 363 : 1 – 2 “title”" (Tata Ibadah), "B.E. No. 103 TITLE BL. 80" / "BE. 393. TITLE" (Buku Ende), "BN 21 TITLE" (Buku Nyanyian)
+  const HEAD = /\b(B\.\s*E|BUKU\s*ENDE|BE|PKJ|NKB|KJ|BN|KLB)\b\.?(?:\s*(?:No|NO|Nomor|Nr)\.?)*\s*(\d{1,4})/i;
+  let t = String(text || "").replace(/\r/g, "").replace(/[\uf0b7\u2022\u25cf\u25aa]/g, "").replace(/[\u00a0\t]+/g, " ");
   t = t.replace(/([^\n])(?=\s*(?:\(\s*[KPJ]\s*\+\s*[KPJ]\s*\)|\d{1,2}\.\s*(?:\(\s*[KPJ]\s*\+\s*[KPJ]\s*\)\s*)?(?:Bernyanyi|Nyanyi(?:an)?\s+[Bb]ersama|Nyanyian\s+Sambutan|Nyanyan)|(?:Bernyanyi|Nyanyian\s+[Bb]ersama|Nyanyian\s+Sambutan|Nyanyan\s+Bersama)\b))/g, "$1\n");
   const lines = t.split("\n").map((l) => l.trim());
-  const songs = []; let cur = null, mode = "v", vn = 0;
+  const songs = [], seen = new Set(); let cur = null, mode = "v", vn = 0;
+  const caps = (x) => (x && x === x.toUpperCase() && /[A-Z]{3}/.test(x) ? x.toLowerCase().replace(/(^|[\s(‘'"-])(\p{L})/gu, (m, a, c) => a + c.toUpperCase()) : x);
   const isCue = (l) => /^[.…·_\s]{4,}/.test(l) || /^\(?\s*(Jemaat|Persembahan|persembahan)/.test(l) || /^[.…]+\s*\(.*\)\s*$/.test(l) || /^`$/.test(l);
+  const isInfo = (l) => /^\d\s*=\s*[A-G]/i.test(l) || /^Vers(i|e)?\s*\d+$/i.test(l) || /\((?:BL|BE|B\.E\.?|KJ|BN)\.?\s*No\.?\s*\d+[a-z]?\)\s*$/i.test(l) || /^BL\.?\s*\d+$/i.test(l) || /^\d{3}\s+[^-–\s]/.test(l);
   const finish = () => { if (!cur) return; const vs = cur.blocks.filter((b) => b.lines.length);
-    // no verse numbers printed, but the heading names several verses and the lines divide evenly: one stanza each
     if (vs.length === 1 && !vs[0].n && cur.nums.length > 1 && vs[0].lines.length % cur.nums.length === 0) { const per = vs[0].lines.length / cur.nums.length; const all = vs[0].lines; vs.splice(0, 1, ...cur.nums.map((n, k) => ({ n, lines: all.slice(k * per, (k + 1) * per) }))); }
-    if (vs.length) { const verses = {}; vs.forEach((b, i) => { let n = b.n || (cur.nums.length === vs.length ? cur.nums[i] : (cur.nums[0] || 1) + i); while (verses[n]) n++; verses[n] = b.lines; }); songs.push({ book: cur.book, num: cur.num, title: cur.title, verses, reff: cur.reff }); } cur = null; };
+    const key = cur.book + ":" + cur.num;
+    if (vs.length && !seen.has(key)) { seen.add(key); const verses = {}; vs.forEach((b, i) => { let n = b.n || (cur.nums.length === vs.length ? cur.nums[i] : (cur.nums[0] || 1) + i); while (verses[n]) n++; verses[n] = b.lines; }); songs.push({ book: cur.book, num: cur.num, title: caps(cur.title), verses, reff: cur.reff }); } cur = null; };
   for (let i = 0; i < lines.length; i++) {
     let l = lines[i]; if (!l) continue;
     const h = l.match(HEAD);
-    if (h && /(Bernyanyi|Nyanyi|Nyanyan|Sambutan|\bNo\b|\(\s*[KPJ])/i.test(l.slice(0, h.index + 3)) || (h && h.index < 4)) {
+    if (h && (h.index < 4 || /^\d{3}\s*[-–]\s*$/.test(l.slice(0, h.index)) || /(Bernyanyi|Nyanyi|Nyanyan|Sambutan|\(\s*[KPJ])/i.test(l.slice(0, h.index + 3))) && !/^\d{3}\s+[^-–\s]/.test(l) && !isInfo(l)) {
       finish(); let book = h[1].toUpperCase().replace(/[\s.]/g, ""); if (book === "BUKUENDE") book = "BE";
-      const rest = l.slice(h.index + h[0].length); const vs = (rest.match(/^\s*[:.]\s*([\d\s,\-–+dst]+)/) || [])[1] || "";
+      const rest = l.slice(h.index + h[0].length); const vs = (rest.match(/^\s*:\s*([\d\s,\-–+dst]+)/) || [])[1] || "";
       const nums = []; vs.replace(/dst/g, "").split(/[,+]/).forEach((p) => { const r = p.split(/[-–]/).map((x) => parseInt(x, 10)).filter((x) => x > 0); if (r.length === 2 && r[1] >= r[0] && r[1] - r[0] < 30) for (let k = r[0]; k <= r[1]; k++) nums.push(k); else if (r.length === 1) nums.push(r[0]); });
       let title = (rest.match(/[“"”]\s*([^“"”]+?)\s*[”"“]/) || [])[1] || "";
+      if (!title && !vs) title = rest.replace(/^[\s.:–-]+/, "").replace(/\s*\(?\s*(?:BL|BE|B\.E\.?)\.?\s*(?:No\.?)?\s*\d+\s*\)?\s*\.?$/i, "").replace(/[.\s]+$/, "").trim();
       if (!title && lines[i + 1] && /^[“"”]/.test(lines[i + 1])) { title = lines[i + 1].replace(/[“"”]/g, "").trim(); i++; }
       cur = { book: book || defBook, num: +h[2], nums, title: title.replace(/\s+/g, " ").trim(), blocks: [], reff: [] }; mode = "v"; vn = 0; continue;
     }
-    if (!cur || isCue(l)) continue;
+    if (cur && /^Vers(i|e)?\s*\d+$/i.test(l) && cur.blocks.some((x) => x.lines.length)) { mode = "stop"; continue; }   // a second version of the same song: keep the first
+    if (!cur || isCue(l) || isInfo(l) || mode === "stop") continue;
+    if (/^\(\s*[KPJ]\s*\+\s*[KPJ]\s*\)\s*:?$/.test(l)) continue;
+    if (/^\d{1,2}$/.test(l)) { if (+l > vn && +l <= vn + 3) { vn = +l; cur.blocks.push({ n: vn, lines: [] }); mode = "v"; } continue; }   // a verse number on its own line, or a stray number
     l = l.replace(/\s*[.…]{3,}\s*\((?:Jemaat|Persembahan|persembahan)[^)]*\)\s*$/, "").trim(); if (!l) continue;
-    if (/^\(\s*[KPJ]\s*\+\s*[KPJ]\s*\)\s*:?$/.test(l)) continue;   // a lone "(K+J)" left over from a split heading
     const nextL = (lines.slice(i + 1).find((x) => x) || "");
-    if (/^\d{1,2}\s*[.)]\s*(\(\s*[KPJ]\s*\+\s*[KPJ]\s*\))?\s*:?$/.test(l) && (HEAD.test(nextL) || /^\(\s*[KPJ]/.test(nextL))) continue;   // "2." numbering of the next heading
+    if (/^\d{1,2}\s*[.)]\s*(\(\s*[KPJ]\s*\+\s*[KPJ]\s*\))?\s*:?$/.test(l) && (HEAD.test(nextL) || /^\(\s*[KPJ]/.test(nextL))) continue;
     const vm = l.match(/^(\d{1,2})\s*[).]\s*\.?\s*(.*)$/) || (/^\d\s+[A-Z‘'’]/.test(l) && +l[0] === vn + 1 ? [l, l[0], l.slice(2)] : null);
-    if (vm && +vm[1] <= 12) { vn = +vm[1]; cur.blocks.push({ n: vn, lines: [] }); mode = "v"; l = vm[2].trim(); if (!l) continue; }
-    const rm = l.match(/^Reff?\s*:?\s*(.*)$/i);
-    if (rm) { const rest = rm[1].trim(); if (cur.reff.length || /^[.…\s]*$/.test(rest) || /(\.\.\.|…)\s*$/.test(rest)) { mode = "skip"; continue; } mode = "r"; if (rest) cur.reff.push(rest); continue; }
+    if (vm && +vm[1] <= 30) { vn = +vm[1]; cur.blocks.push({ n: vn, lines: [] }); mode = "v"; l = vm[2].trim(); if (!l) continue; }
+    const rm = l.match(/^(?:Reff?|Refrein|Koor|Ref)\s*[:.]?\s*(.*)$/i);
+    if (rm && /^(?:Reff?|Refrein|Koor|Ref)\b/i.test(l)) { const rest = rm[1].trim(); if (cur.reff.length || /^[.…\s]*$/.test(rest) || /(\.\.\.|…)\s*$/.test(rest)) { mode = "skip"; continue; } mode = "r"; if (rest) cur.reff.push(rest); continue; }
     if (mode === "skip") continue;
     if (mode === "r") { cur.reff.push(l); continue; }
     if (!cur.blocks.length) cur.blocks.push({ n: 0, lines: [] });
     cur.blocks[cur.blocks.length - 1].lines.push(l);
   }
   finish();
-  // songs printed with no verse numbers but several verses in the heading (e.g. 1 – 3): split evenly when the lines divide exactly
   return songs;
 }
 
@@ -1276,9 +1438,10 @@ async function songsCollect(quiet) {
 }
 // Page
 R.library = () => {
-  const q = new URLSearchParams(location.hash.split("?")[1] || ""); let sec = q.get("s") || LS.get("libSec", "bible"); if (!["bible", "KJ", "BE", "BN"].includes(sec)) sec = "bible"; LS.set("libSec", sec);
+  const q = new URLSearchParams(location.hash.split("?")[1] || ""); let sec = q.get("s") || ""; if (!["bible", "KJ", "BE", "BN"].includes(sec)) sec = ""; LS.set("libSec", sec || "KJ");
+  if (!sec) return docsHome();
   const seg = (k, label) => `<a role="tab" aria-selected="${sec === k}" href="#/library?s=${k}">${esc(label)}</a>`;
-  const head = `<div class="seg lib-seg" role="tablist" style="--gc:var(--brand)">${seg("bible", L3("Alkitab", "Bibel", "Bible"))}${seg("KJ", "Kidung Jemaat")}${seg("BE", "Buku Ende")}${seg("BN", "Buku Nyanyian")}</div>`;
+  const head = `<a class="lib-back" href="#/library">‹ ${esc(L3("Dokumen Gereja", "Dokumen Huria", "Church documents"))}</a><div class="seg lib-seg" role="tablist" style="--gc:var(--brand)">${seg("bible", L3("Alkitab", "Bibel", "Bible"))}${seg("KJ", "Kidung Jemaat")}${seg("BE", "Buku Ende")}${seg("BN", "Buku Nyanyian")}</div>`;
   if (sec === "bible") { setTimeout(bibPaint, 0); return shell("#/library", `${head}<div id="bibBox">${skel(3)}</div>`, {}); }
   setTimeout(async () => { await songsLoad(false); songListPaint(sec); songsCollect(true).then((n) => { if (n) songListPaint(sec); }); }, 0);
   return shell("#/library", `${head}
@@ -1338,7 +1501,7 @@ async function bibPaint() {
   let ver = LS.get("bibVer", lang === "en" ? "kjv" : lang === "bt" ? "toba" : "tb"); if (!BIB_VERS[ver]) { ver = lang === "en" ? "kjv" : "tb"; LS.set("bibVer", ver); }
   const b = LS.get("bibB", 19), c = LS.get("bibC", 23), fs = LS.get("bibFs", 19);
   const kjvReady = !!(await bibCache() && await (await bibCache()).match(KJV_URL));
-  box.innerHTML = `<div class="chips bib-vers">${Object.entries(BIB_VERS).map(([k, v]) => `<button class="chip${k === ver ? " on" : ""}" data-act="bibVer" data-v="${k}">${esc(v.short)}${v.kjv ? (kjvReady ? " ✓" : " ⬇") : ""}</button>`).join("")}</div>
+  box.innerHTML = `<div class="chips bib-vers">${Object.entries(BIB_VERS).map(([k, v]) => `<button class="chip${k === ver ? " on" : ""}" data-act="bibVer" data-v="${k}">${esc(v.short)}${v.kjv && !kjvReady ? " ⬇" : ""}</button>`).join("")}</div>
     <form class="bib-search" data-form="bibSearch"><input name="q" type="search" placeholder="${esc(L3("Cari ayat: Yoh 3:16, Mazmur 23, Roma 8:28-39", "Bilang ayat: Joh 3:16", "Find a passage: John 3:16, Psalm 23, Romans 8:28-39"))}" autocomplete="off" enterkeyhint="search"><button class="btn primary" aria-label="${esc(t("search"))}">${ic("search")}</button></form>
     <div id="bibHit"></div>
     <div class="bib-nav"><button class="icon-btn" data-act="bibGo" data-d="-1" aria-label="${esc(L3("Pasal sebelumnya", "Na parjolo", "Previous chapter"))}">‹</button><button class="bib-ref" data-act="bibPick">${esc(bibName(ver, b))} ${c} ▾</button><button class="icon-btn" data-act="bibGo" data-d="1" aria-label="${esc(L3("Pasal berikutnya", "Na mangihut", "Next chapter"))}">›</button></div>
