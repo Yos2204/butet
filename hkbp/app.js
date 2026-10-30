@@ -790,9 +790,11 @@ R.calendar = () => {
   const evs = D.events.filter((e) => show || new Date(e.starts_at) > now - 3 * 3600e3);
   const canAdd = canEvents();
   // Each month is split into Events, Birthdays and Wedding anniversaries (YB 2026-10-28).
-  const byMonth = {}; const add = (k, part, item) => { byMonth[k] = byMonth[k] || { du: [], ev: [], bd: [], an: [] }; byMonth[k][part].push(item); };
+  const byMonth = {}; const add = (k, part, item) => { byMonth[k] = byMonth[k] || { du: [], mt: [], ev: [], bd: [], an: [] }; byMonth[k][part].push(item); };
   if (!isGuest()) duties().forEach((d) => { if (d.date && (show || d.date >= day)) add(monthKey(d.date), "du", { k: d.date, html: dutyRow(d) }); });
   evs.forEach((e) => { const p = sgParts(e.starts_at); add(monthKey(p.date), "ev", { k: p.date + " " + p.time, html: eventRow(e) }); });
+  if (!isGuest()) (D.meetings || []).filter((x) => !x.event_id && (show || meetEnd(x) >= Date.now())).forEach((x) => { const p = sgParts(x.starts_at);
+    add(monthKey(p.date), "mt", { k: p.date + " " + p.time, html: `<a class="li" href="#/meet"><span class="date-chip"><b>${esc(fmt(x.starts_at, { day: "numeric" }))}</b><small>${esc(fmt(x.starts_at, { month: "short" }))}</small></span><span class="grow"><b>📹 ${esc(x.title)}</b><small>${esc(fmtTime(x.starts_at))} · ${esc(x.by || "")}</small></span>${ic("chev", "chev")}</a>` }); });
   // Birthdays and anniversaries fill this month and the next two.
   const all = allBdays(); const wed = (D.people || []).filter((p) => p.anniv); let [y, mo] = day.split("-").map(Number);
   for (let i = 0; i < 3; i++) {
@@ -808,6 +810,7 @@ R.calendar = () => {
     <div class="row two">${canAdd ? `<button class="btn primary" data-act="newEvent">${ic("plus")} ${esc(t("newEvent"))}</button>` : ""}${isElder() ? `<button class="btn" data-act="bdayTools">${ic("cake")} ${esc(L3("Ulang tahun", "Ari tubu", "Birthdays"))}</button>` : ""}<button class="btn" data-act="phoneCal">${ic("download")} ${esc(L3("Ke kalender HP", "Tu kalender HP", "To my phone"))}</button></div>
     ${months.length ? months.map((k) => `<h3 class="sec-h">${esc(monthName(k))}</h3>
       ${part(ic("check"), L3("Tugas Anda", "Ulaonmu", "Your duties"), byMonth[k].du)}
+      ${part(ic("screen"), L3("Rapat", "Rapat", "Meetings"), byMonth[k].mt)}
       ${part(ic("calendar"), L3("Acara", "Ulaon", "Events"), byMonth[k].ev)}
       ${part(ic("cake"), L3("Ulang Tahun", "Ari Tubu", "Birthdays"), byMonth[k].bd)}
       ${part("💍", L3("Ulang Tahun Pernikahan", "Ulang Taon Pardongan Saripeon", "Wedding anniversaries"), byMonth[k].an)}`).join("") : empty(t("noEvents"), "calendar")}
@@ -822,8 +825,8 @@ function annivRow(p, d) {
 function schedHead(which) {
   const seg = (k, href, icon, label) => `<a role="tab" aria-selected="${which === k}" href="${href}">${ic(icon)} ${esc(label)}</a>`;
   return `<h2 class="page-h">${esc(L3("Jadwal", "Jadwal", "Schedule"))}</h2>
-    <div class="seg sched-seg" role="tablist" style="--gc:var(--brand)">${seg("agenda", "#/calendar", "calendar", L3("Agenda", "Agenda", "Agenda"))}${seg("roster", "#/serve", "roster", "Roster")}</div>
-    <p class="lead">${esc(which === "agenda" ? L3("Acara, tugas Anda, ulang tahun dan ulang tahun pernikahan setiap bulan.", "Ulaon, ulaonmu, ari tubu dohot ari pardongan saripeon sadarion bulan.", "Each month's events, your duties, birthdays and anniversaries.") : t("serveLead"))}</p>`;
+    <div class="seg sched-seg" role="tablist" style="--gc:var(--brand)">${seg("agenda", "#/calendar", "calendar", L3("Agenda", "Agenda", "Agenda"))}${seg("roster", "#/serve", "roster", "Roster")}${isGuest() ? "" : seg("meet", "#/meet", "screen", L3("Rapat", "Rapat", "Meetings"))}</div>
+    <p class="lead">${esc(which === "agenda" ? L3("Acara, tugas Anda, rapat, ulang tahun dan ulang tahun pernikahan setiap bulan.", "Ulaon, ulaonmu, rapat, ari tubu dohot ari pardongan saripeon sadarion bulan.", "Each month's events, your duties, meetings, birthdays and anniversaries.") : which === "meet" ? L3("Rapat video gratis: video, suara, berbagi layar, chat, angkat tangan, ruang kecil, polling, latar virtual, dan rekam.", "Rapat video.", "Free video meetings: video, audio, screen sharing, chat, raise hand, breakout rooms, polls, virtual backgrounds and recording.") : t("serveLead"))}</p>`;
 }
 try { document.head.insertAdjacentHTML("beforeend", `<style>
   .sched-seg { margin: 12px 0 6px; }
@@ -1400,14 +1403,13 @@ R.meet = () => {
       ${state !== "past" ? `<div class="row two"><a class="btn${state === "live" ? " primary" : ""}" href="${esc(meetUrl(x))}" target="_blank" rel="noopener">📹 ${esc(state === "live" ? L3("Gabung sekarang", "Masuk", "Join now") : L3("Buka ruang", "Bukka", "Open room"))}</a><a class="btn wa" href="${wa(`📹 *${x.title}*\n${fmt(x.starts_at, { weekday: "long", day: "numeric", month: "long" })} · ${fmtTime(x.starts_at)}\n${"https://meet.jit.si/" + x.room}\n\n– HKBP Singapore`)}" target="_blank" rel="noopener">${ic("wa")} WhatsApp</a></div>` : ""}
       ${x.notes ? `<details class="meet-notes"${state === "past" ? " open" : ""}><summary>📝 ${esc(L3("Notulen", "Notulen", "Notes"))}</summary><p class="pre small">${esc(x.notes)}</p></details>` : ""}
       ${x.mine || D.me.is_admin ? `<div class="row end" style="margin-top:6px"><button class="btn sm ghost" data-act="meetNotes" data-id="${x.id}">📝 ${esc(L3("Notulen", "Notulen", "Notes"))}</button>${state !== "past" ? `<button class="btn sm danger" data-act="del" data-kind="meet" data-id="${x.id}" aria-label="${esc(t("delete"))}">${ic("trash")}</button>` : ""}</div>` : ""}</article>`;
-  return shell("#/more", `<h2 class="page-h">📹 ${esc(L3("Rapat", "Rapat", "Meetings"))}</h2>
-    <p class="lead">${esc(L3("Rapat video gratis: video, suara, berbagi layar, chat, angkat tangan, ruang kecil (breakout), polling, latar virtual, dan rekam.", "Rapat video.", "Free video meetings: video, audio, screen sharing, chat, raise hand, breakout rooms, polls, virtual backgrounds and recording."))}</p>
+  return shell("#/calendar", `${schedHead("meet")}
     ${canMeet() ? `<div class="row two"><button class="btn primary" data-act="meetNew" data-now="1">⚡ ${esc(L3("Mulai sekarang", "Mulai", "Start now"))}</button><button class="btn" data-act="meetNew">🗓 ${esc(L3("Jadwalkan", "Jadwalhon", "Schedule"))}</button></div>` : ""}
     ${live.length ? `<h3 class="sec-h">🔴 ${esc(L3("Sedang berlangsung", "Masa", "On now"))}</h3>${live.map((x) => row(x, "live")).join("")}` : ""}
     <h3 class="sec-h">${esc(L3("Akan datang", "Naeng ro", "Upcoming"))}</h3>${next.length ? next.map((x) => row(x, "next")).join("") : `<p class="muted small">${esc(L3("Belum ada rapat terjadwal.", "Dang adong.", "No meetings scheduled."))}</p>`}
     ${past.length ? `<h3 class="sec-h">${esc(L3("Sebelumnya", "Na salpu", "Earlier"))}</h3>${past.map((x) => row(x, "past")).join("")}` : ""}
     <p class="small muted">${esc(L3("Rapat berjalan di Jitsi Meet (meet.jit.si) di browser atau aplikasi Jitsi. Orang pertama yang masuk menjadi moderator dan diminta masuk dengan Google/GitHub sekali; peserta lain tidak perlu akun.", "", "Meetings run on Jitsi Meet (meet.jit.si) in the browser or the Jitsi app. The first person in becomes the moderator and is asked to sign in with Google/GitHub once; others need no account."))}</p>`,
-    { back: "#/more", title: L3("Rapat", "Rapat", "Meetings") });
+    { title: L3("Rapat", "Rapat", "Meetings") });
 };
 A.meetNew = (d) => {
   const auds = meetAudiences(); const now = d.now === "1";
@@ -1781,7 +1783,6 @@ function communityMenu() {
   const elder = D.me.is_admin || "parhalado" in (D.me.groups || {});
   const it = (href, icon, title, sub) => `<a class="li" href="${href}">${ic(icon)}<span class="grow"><b>${title}</b><small>${esc(sub)}</small></span>${ic("chev", "chev")}</a>`;
   return it("#/fx", "coins", "💱 " + esc(L3("Kurs", "Kurs", "Exchange rates")), L3("Konversi mata uang, kurs terbaru", "Kurs hepeng", "Currency converter, latest rates"))
-    + it("#/meet", "screen", "📹 " + esc(L3("Rapat", "Rapat", "Meetings")), L3("Rapat video: layar, chat, angkat tangan, rekam", "Rapat video", "Video meetings: screen share, chat, raise hand, record"))
     + it("#/tutur", "people", "🤝 Partuturan", L3("Cara saling menyapa menurut Dalihan Na Tolu", "Partuturan Dalihan Na Tolu", "How to address each other (Dalihan Na Tolu)"))
     + it("#/ende", "book", "🎵 Buku Ende", L3("Arti setiap baris lagu", "Lapatan ni ende", "The meaning of every hymn line"))
     + it("#/stories", "mic", "🎙️ Turi-turian", L3("Cerita orang tua, direkam untuk generasi muda", "Turi-turian ni natua-tua", "Elders' stories, recorded for the young"))
