@@ -327,26 +327,12 @@ async function localReminders() {
 
 // ---------- Claude (daily bread writer) ----------
 async function claudeBread(day, langCode, recent) {
-  const key = LS.get("claudeKey", "");
-  if (!key) throw new Error(t("needClaudeKey"));
-  const L = { id: "Bahasa Indonesia", bt: "Bahasa Batak Toba", en: "English" }[langCode];
-  const prompt = `You write the "Daily Bread" (Renungan Harian) for HKBP Singapore, a Batak Lutheran congregation in Singapore (members include families, youth, sailors and migrant workers).
-Write the devotion for ${day} in ${L}.
-- Pick one Bible passage that fits the church year around this date. Do not reuse these recent passages: ${recent.join("; ") || "none"}.
-- Give the reference in ${L} book names (for example "Mazmur 23:1-3").
-- Title: short and warm. Body: 120 to 170 words: quote or paraphrase the key verse briefly, one clear thought, one practical step for today, and a one-line prayer.
-- Lutheran, Christ-centred, simple words, no politics.
-Reply with JSON only: {"verse": "...", "title": "...", "body": "..."}`;
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: { "content-type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
-    body: JSON.stringify({ model: "claude-opus-5-5", max_tokens: 1200, messages: [{ role: "user", content: prompt }] }),
-  });
-  const j = await res.json();
-  if (!res.ok) throw new Error((j.error && j.error.message) || "Claude error");
-  const txt = (j.content || []).filter((c) => c.type === "text").map((c) => c.text).join("");
-  const m = txt.match(/\{[\s\S]*\}/); if (!m) throw new Error("Claude reply was not readable");
-  return JSON.parse(m[0]);
+  // free (YB 2026-10-30): a well-known verse, read from SABDA, with a short prayer; the elder can add their own reflection
+  const L = ["Mazmur 23:1-4", "Yohanes 3:16-17", "Roma 8:28", "Filipi 4:6-7", "Yesaya 41:10", "Amsal 3:5-6", "Matius 11:28-30", "Yeremia 29:11", "Mazmur 121:1-8", "Yesaya 40:29-31", "Matius 6:33-34", "Yosua 1:9", "Ratapan 3:22-23", "Mikha 6:8", "1 Tesalonika 5:16-18", "Yohanes 14:27", "2 Korintus 12:9", "Galatia 5:22-23", "Filipi 4:13", "Mazmur 46:2-4"];
+  const ref = L.filter((r) => !recent.includes(r))[Math.floor(Math.random() * L.length) % Math.max(1, L.filter((r) => !recent.includes(r)).length)] || L[0];
+  const vs = await litPassage(ref, langCode === "bt" ? "toba" : "tb");
+  const pray = { id: "Doa: Tuhan, terima kasih untuk firman-Mu hari ini. Tolonglah kami hidup menurut firman-Mu. Amin.", bt: "Tangiang: Ale Tuhan, mauliate di hata-Mu sadarion. Urupi ma hami mangolu hombar tu hata-Mu. Amen.", en: "Prayer: Lord, thank you for your word today. Help us to live by it. Amen." }[langCode] || "";
+  return { verse: ref, title: langCode === "bt" ? "Ayat Siganup Ari" : langCode === "en" ? "Verse of the Day" : "Ayat Harian", body: vs.map((v) => `${v.v} ${v.t}`).join(" ") + "\n\n" + pray };
 }
 
 // ---------- data refresh ----------
@@ -370,7 +356,7 @@ let CUR_TAB = "#/home"; // the bottom tab the current page belongs to (used by s
 const TABS = [["home", "#/home", "tab_home"], ["groups", "#/groups", "tab_groups"], ["calendar", "#/calendar", "sched"], ["chat", "#/chat", "Chat"], ["book", "#/library", "lib"], ["more", "#/more", "tab_more"]];
 function shell(active, inner, opts = {}) {
   // People who are not signed in see only Home, plus a Sign in tab (YB 2026-10-28).
-  const tabs = isGuest() ? TABS.filter(([, h]) => h === "#/home") : TABS;
+  const tabs = isGuest() ? TABS.filter(([, h]) => h === "#/home") : navTabs();
   // Rosters pages light up the Schedule tab too (YB 2026-10-29: calendar and rosters combined).
   const act = active === "#/serve" ? "#/calendar" : active; CUR_TAB = act; const label = (k) => (k === "sched" ? L3("Jadwal", "Jadwal", "Schedule") : k === "lib" ? L3("Dokumen", "Dokumen", "Documents") : k === "Chat" ? "Chat" : t(k));
   const nav = tabs.map(([i, h, k]) => `<a href="${h}" class="${act === h ? "on" : ""}" ${act === h ? 'aria-current="page"' : ""}>${ic(i)}${tabBadge(h)}<span>${esc(label(k))}</span></a>`).join("")
@@ -434,6 +420,7 @@ R.login = async () => {
 };
 
 R.home = () => {
+  if (!isGuest() && simpleKind()) return simpleHome();
   const day = today(); const m = me();
   const b = D.bread.find((x) => x.day === day);
   const bdays = birthdaysBetween(day, 7);
@@ -449,9 +436,9 @@ R.home = () => {
     <section class="hello">
       <p class="muted small">${esc(fmtDay(day))}</p>
       <h1>${esc(t(hour < 11 ? "morning" : hour < 15 ? "afternoon" : hour < 18 ? "evening1" : "evening2"))}${m.name ? ", " + esc(firstName(m.name)) : ""}</h1>
-      ${isGuest() ? "" : `<a class="search-entry" href="#/search">${ic("search")}<span>${esc(L3("Cari anggota, acara, file, roster…", "Bilang ruas, ulaon, file…", "Search members, events, files, rosters…"))}</span></a>`}
+      ${isGuest() ? "" : `<a class="search-entry" href="#/search">${ic("search")}<span>${esc(L3("Cari anggota, acara, file, roster…", "Lului ruas, ulaon, file…", "Search members, events, files, rosters…"))}</span></a>`}
     </section>
-    ${isGuest() ? `<button class="card notify-ask" data-act="signIn">${ic("lock")}<span><b>${esc(t("guestTitle"))}</b><small>${esc(L3("Masuk untuk melihat Tata Ibadah, kalender, roster, kategorial dan tugas Anda.", "Masuk asa diida Tata Ibadah, kalender, roster, kategorial dohot ulaonmu.", "Sign in to see the Tata Ibadah, calendar, rosters, your categories and your duties."))}</small></span>${ic("chev", "chev")}</button>` : ""}
+    ${isGuest() ? `<button class="card notify-ask" data-act="signIn">${ic("lock")}<span><b>${esc(t("guestTitle"))}</b><small>${esc(L3("Masuk untuk melihat Tata Ibadah, kalender, roster, kategorial dan tugas Anda.", "Bongot jolo asa diida Tata Ibadah, kalender, roster, kategorial dohot ulaonmu.", "Sign in to see the Tata Ibadah, calendar, rosters, your categories and your duties."))}</small></span>${ic("chev", "chev")}</button>` : ""}
     ${mine ? `<div class="card hbd">${ic("cake")}<div><h2>${esc(t("hbdTitle", firstName(m.name)))}</h2><p>${esc(t("hbdBody"))}</p></div></div>` : ""}
     ${wishesCard()}
     ${m.wed && m.wed.slice(5) === day.slice(5) ? `<div class="card hbd">💍<div><h2>${esc(t("annivTitle", firstName(m.name)))}</h2><p>${esc(t("annivBody"))}</p></div></div>` : ""}
@@ -459,6 +446,7 @@ R.home = () => {
     ${notifyAsk ? `<button class="card notify-ask" data-act="notify">${ic("bell")}<span><b>${esc(t("notifyAskTitle"))}</b><small>${esc(standalone() || !/iP(hone|ad)/.test(navigator.userAgent) ? t("notifyAskBody") : t("iosInstallFirst"))}</small></span>${ic("chev", "chev")}</button>` : ""}
 
     ${nowCard()}
+    <a class="card sun-link" href="#/sunday"><span>📅</span><span class="grow"><b>${esc(L3("Minggu Ini", "Minggu On", "This Sunday"))}</b><small>${esc(L3("Tata Ibadah, lagu, nas dan live dalam satu halaman", "Tata Ibadah, ende, turpuk dohot live", "Tata Ibadah, songs, readings and live on one page"))}</small></span>${ic("chev", "chev")}</a>
     ${thisSundayCard()}
     ${voyageHomeCard()}
     ${griefHomeCard()}
@@ -606,7 +594,7 @@ function youthFilesTab(gid, list) {
   return (mk ? `<div class="row two"><button class="btn primary" data-act="yUpload" data-g="${gid}">${ic("upload")} ${esc(L3("Unggah file", "Upload file", "Upload a file"))}</button><button class="btn" data-act="yVideo" data-g="${gid}">${ic("screen")} ${esc(L3("Tambah video", "Tambah video", "Add a video"))}</button></div>` : "")
     + (vids.length ? `<h3 class="sec-h">🎬 Video</h3>${vids.map(video).join("")}` : "")
     + (docs.length ? `<h3 class="sec-h">📎 File</h3><div class="card">${docs.map(doc).join("")}</div>` : "")
-    + (!vids.length && !docs.length ? empty(L3("Belum ada file atau video.", "Dang adong file manang video.", "No files or videos yet."), "folder") : "");
+    + (!vids.length && !docs.length ? empty(L3("Belum ada file atau video.", "Ndang adong file manang video.", "No files or videos yet."), "folder") : "");
 }
 // Birthday and wedding anniversary wishes for a category. The leader saves the category's WhatsApp group link once;
 // after that one tap copies the ready-made wishes and opens that group, and the leader pastes and sends.
@@ -710,7 +698,7 @@ function rosterBlock(gid, ym) {
     </div>
     ${mine.length ? `<div class="card mine" style="--gc:${g.color}"><h3>${ic("check")} ${esc(t("youServe"))}</h3>${mine.map(dutyRow).join("")}</div>` : ""}
     ${edit ? `<button class="btn primary block" data-act="uploadRoster" data-g="${gid}" data-m="${ym}" style="--gc:${g.color}">${ic("plus")} ${esc(L3("Buat Roster", "Bahen Roster", "Make Roster"))}</button>` : ""}
-    ${edit ? `<button class="btn block" data-act="rosterDraft" data-g="${gid}" data-m="${ym}">✨ ${esc(L3("Draf roster bulan ini secara adil", "Draf roster na adil", "Draft this month fairly"))}</button>` : ""}
+    ${edit ? `<button class="btn block" data-act="rosterDraft" data-g="${gid}" data-m="${ym}">✨ ${esc(L3("Buat draf roster bulan ini secara adil", "Draf roster na adil", "Draft this month fairly"))}</button>` : ""}
     ${rs.length ? rs.map((r) => rosterCard(r, edit)).join("") : empty(t("noRoster", monthName(ym)), "roster")}`;
 }
 // Files and videos tagged to this roster's Sundays, one line per Sunday, shown with the roster.
@@ -805,16 +793,16 @@ R.calendar = () => {
     if (++mo > 12) { mo = 1; y++; }
   }
   const months = Object.keys(byMonth).sort();
-  const part = (icon, title, list) => list.length ? `<div class="card cal-part"><div class="card-h"><h3>${icon} ${esc(title)}</h3><span class="badge">${list.length}</span></div>${list.sort((a, c) => a.k.localeCompare(c.k)).map((x) => x.html).join("")}</div>` : "";
+  const part = (icon, title, list, kind) => list.length ? `<div class="card cal-part ${kind || ""}"><div class="card-h"><h3>${icon} ${esc(title)}</h3><span class="badge">${list.length}</span></div>${list.sort((a, c) => a.k.localeCompare(c.k)).map((x) => x.html).join("")}</div>` : "";
   return shell("#/calendar", `
     ${schedHead("agenda")}
     <div class="row two">${canAdd ? `<button class="btn primary" data-act="newEvent">${ic("plus")} ${esc(t("newEvent"))}</button>` : ""}${isElder() ? `<button class="btn" data-act="bdayTools">${ic("cake")} ${esc(L3("Ulang tahun", "Ari tubu", "Birthdays"))}</button>` : ""}<button class="btn" data-act="phoneCal">${ic("download")} ${esc(L3("Ke kalender HP", "Tu kalender HP", "To my phone"))}</button></div>
-    ${months.length ? months.map((k) => `<h3 class="sec-h">${esc(monthName(k))}</h3>
-      ${part(ic("check"), L3("Tugas Anda", "Ulaonmu", "Your duties"), byMonth[k].du)}
-      ${part(ic("screen"), L3("Rapat", "Rapat", "Meetings"), byMonth[k].mt)}
-      ${part(ic("calendar"), L3("Acara", "Ulaon", "Events"), byMonth[k].ev)}
-      ${part(ic("cake"), L3("Ulang Tahun", "Ari Tubu", "Birthdays"), byMonth[k].bd)}
-      ${part("💍", L3("Ulang Tahun Pernikahan", "Ulang Taon Pardongan Saripeon", "Wedding anniversaries"), byMonth[k].an)}`).join("") : empty(t("noEvents"), "calendar")}
+    ${months.length ? months.map((k) => `<h2 class="month-h"><span>📅 ${esc(monthName(k))}</span></h2>
+      ${part(ic("check"), L3("Tugas Anda", "Ulaonmu", "Your duties"), byMonth[k].du, "du")}
+      ${part(ic("screen"), L3("Rapat", "Rapat", "Meetings"), byMonth[k].mt, "mt")}
+      ${part(ic("calendar"), L3("Acara", "Ulaon", "Events"), byMonth[k].ev, "ev")}
+      ${part(ic("cake"), L3("Ulang Tahun", "Ari Tubu", "Birthdays"), byMonth[k].bd, "bd")}
+      ${part("💍", L3("Ulang Tahun Pernikahan", "Ulang Taon Pardongan Saripeon", "Wedding anniversaries"), byMonth[k].an, "an")}`).join("") : empty(t("noEvents"), "calendar")}
     <p class="center"><button class="btn sm ghost" data-act="calPast">${esc(t(show ? "hidePast" : "showPast"))}</button></p>`);
 };
 function annivRow(p, d) {
@@ -826,7 +814,7 @@ function annivRow(p, d) {
 function schedHead(which) {
   const seg = (k, href, icon, label) => `<a role="tab" aria-selected="${which === k}" href="${href}">${ic(icon)} ${esc(label)}</a>`;
   return `<h2 class="page-h">${esc(L3("Jadwal", "Jadwal", "Schedule"))}</h2>
-    <div class="seg sched-seg" role="tablist" style="--gc:var(--brand)">${seg("agenda", "#/calendar", "calendar", L3("Agenda", "Agenda", "Agenda"))}${seg("roster", "#/serve", "roster", "Roster")}${isGuest() ? "" : seg("meet", "#/meet", "screen", L3("Rapat", "Rapat", "Meetings"))}${isLit() ? seg("lit", "#/lit", "book", L3("Liturgi", "Liturgi", "Liturgy")) : ""}</div>
+    <div class="seg sched-seg" role="tablist" style="--gc:var(--brand)">${seg("agenda", "#/calendar", "calendar", "Warnasari")}${seg("roster", "#/serve", "roster", "Roster")}${isGuest() ? "" : seg("meet", "#/meet", "screen", L3("Rapat", "Rapat", "Meetings"))}${isLit() ? seg("lit", "#/lit", "book", L3("Liturgi", "Liturgi", "Liturgy")) : ""}</div>
     <p class="lead">${esc(which === "agenda" ? L3("Acara, tugas Anda, rapat, ulang tahun dan ulang tahun pernikahan setiap bulan.", "Ulaon, ulaonmu, rapat, ari tubu dohot ari pardongan saripeon sadarion bulan.", "Each month's events, your duties, meetings, birthdays and anniversaries.") : which === "lit" ? L3("Naskah liturgis setiap minggu: sambutan, nyanyian, Agenda, nas, dan aba-aba berdiri/duduk. Tampilkan sebagai slide.", "Naskah paragenda.", "The liturgist's script for each week: welcome, songs, Agenda, readings and stand/sit cues. Show it as slides.") : which === "meet" ? L3("Rapat video gratis: video, suara, berbagi layar, chat, angkat tangan, ruang kecil, polling, latar virtual, dan rekam.", "Rapat video.", "Free video meetings: video, audio, screen sharing, chat, raise hand, breakout rooms, polls, virtual backgrounds and recording.") : t("serveLead"))}</p>`;
 }
 try { document.head.insertAdjacentHTML("beforeend", `<style>
@@ -848,7 +836,7 @@ R.bread = (arg) => {
   const future = isBreadMaker() ? D.bread.filter((x) => x.day > day).sort((a, c) => a.day.localeCompare(c.day)) : [];
   return shell("#/home", `
     ${b ? `<article class="bread-full">
-      <div class="kicker">${ic("bread")} ${esc(t("breadTitle"))} · ${esc(fmtDay(b.day))}</div>
+      <div class="kicker">${ic("bread")} ${esc(t("breadTitle"))} · ${esc(fmtDay(b.day))}</div><p>${speakBtn(".bread-full")}</p>
       <h1>${esc(b.title || "")}</h1>
       <p class="verse-ref big">${esc(b.verse || "")}</p>
       <div class="pre body">${esc(b.body || "")}</div>
@@ -1030,7 +1018,8 @@ async function render() {
     if (!D) await refresh();
     if (!r) { history.replaceState(null, "", "#/home"); r = "home"; }
     if (isGuest() && !["home", "bread", "checkin"].includes(r)) { history.replaceState(null, "", "#/home"); r = "home"; arg = undefined; }
-    const map = { lit: R.lit, litwb: R.litwb, doc: R.doc, library: R.library, song: R.song, access: R.access, sswb: R.sswb, ssdeck: R.ssdeck, fx: R.fx, meet: R.meet, tutur: R.tutur, ende: R.ende, stories: R.stories, voyage: R.voyage, live: R.live, grief: R.grief, care: R.care, search: R.search, prayer: R.prayer, checkin: R.checkin, checkinqr: R.checkinqr, chat: R.chat, tata: R.tata, home: R.home, groups: R.groups, g: R.group, serve: R.serve, s: R.section, calendar: R.calendar, bread: R.bread, elders: R.elders, berita: R.berita, people: R.people, more: R.more, appstatus: R.appstatus, o: R.office, warta: R.warta };
+    const map = { sunday: R.sunday, usage: R.usage, tarombo: R.tarombo, rpp: R.rpp, lit: R.lit, litwb: R.litwb, doc: R.doc, library: R.library, song: R.song, access: R.access, sswb: R.sswb, ssdeck: R.ssdeck, fx: R.fx, meet: R.meet, tutur: R.tutur, ende: R.ende, stories: R.stories, voyage: R.voyage, live: R.live, grief: R.grief, care: R.care, search: R.search, prayer: R.prayer, checkin: R.checkin, checkinqr: R.checkinqr, chat: R.chat, tata: R.tata, home: R.home, groups: R.groups, g: R.group, serve: R.serve, s: R.section, calendar: R.calendar, bread: R.bread, elders: R.elders, berita: R.berita, people: R.people, more: R.more, appstatus: R.appstatus, o: R.office, warta: R.warta };
+    try { usageTick(r); } catch (e) {}
     const html = (map[r] || R.notFound)(arg);
     if (typeof html === "string") view().innerHTML = html;
     draftRestore(view()); wAutoBase();
@@ -1072,6 +1061,445 @@ window.addEventListener("hashchange", () => { window.scrollTo(0, 0); render(); }
 // ---------- actions ----------
 const A = {};
 const F = {};
+// ---------- No paid AI (YB 2026-10-30): every helper below runs free, on the phone or from the church's own texts ----------
+// RPP: a topic engine built on the rulings in the Juklak RPP HKBP; it quotes the matching Juklak lines live from Dokumen Gereja.
+const RPP_TOPICS = [
+  { id: "occult", kw: ["dukun", "jimat", "sesajen", "sesaji", "roh nenek", "nenek moyang", "berhala", "ilmu hitam", "guna-guna", "santet", "pelet", "ramal", "nujum", "keramat", "pusaka", "kebal", "begu", "datu", "parbegu", "sombaon", "mansaem", "marsanti", "mangalahat", "pohung", "parsili", "shaman", "occult", "amulet", "idol", "witch"],
+    v: "ya", sec: /BINDU III/, bt: ["begu", "tondi", "aji", "pelean", "pohung", "parsili", "mansaem", "marsanti", "partahanan", "sombaon"], ref: "Bindu III · Patik 1 & 2",
+    t: ["Juklak RPP (Bindu III, Hukum Pertama dan Kedua) menyebut praktik hasipelebeguon sebagai pelanggaran: persembahan kepada roh (butti), pusaka keramat (piso/hujur ni begu), jimat kebal (partahanan ni daging), mandabu aji, sesajen marsanti, mansaem, mangalahat horbo, pohung dan parsili.", "The Juklak RPP (Bindu III, First and Second Commandments) names occult and ancestor-worship practices as breaches: offerings to spirits (butti), sacred heirlooms (piso/hujur ni begu), invulnerability charms, poisoning by magic, marsanti offerings, mansaem, mangalahat horbo, pohung and parsili."],
+    s: [["Kunjungi dan nasihati secara pastoral.", "Visit and counsel pastorally."], ["Bila tetap dilakukan, bawa ke rapat Parhalado untuk tahap RPP menurut buku RPP.", "If it continues, bring it to the Parhalado meeting for the RPP stages in the RPP book."], ["Dampingi dalam pertobatan; pulihkan setelah ada pengakuan.", "Walk with them in repentance; restore them after confession."]] },
+  { id: "absence", kw: ["tidak ibadah", "tidak beribadah", "tidak ke gereja", "tidak pernah ibadah", "tidak pernah ke gereja", "tidak hadir", "jarang ibadah", "tidak datang", "absen", "menghilang", "marminggu", "not attend", "absent", "stopped coming"],
+    v: "years", sec: /Patik Paopathon/, bt: ["marminggu", "taon", "sumurut"], ref: "Bindu III · 3. Patik Paopathon",
+    t: ["Juklak RPP (Hukum Keempat): anggota atau parhalado yang tidak beribadah Minggu berturut-turut selama 2 (dua) tahun dianggap telah keluar dari keanggotaan atau jabatannya, dan diumumkan di warta setelah dipastikan dan dinasihati lebih dulu.", "Juklak RPP (Fourth Commandment): a member or office-bearer who has not attended Sunday worship for 2 (two) consecutive years is considered to have left membership or office, announced in the warta after it has been confirmed and they have been counselled."],
+    s: [["Pastikan faktanya: sudah berapa lama tidak beribadah, dan apakah ada alasan (sakit, kerja di kapal, pindah).", "Confirm the facts: how long, and whether there is a reason (illness, work at sea, moving)."], ["Kunjungi dan nasihati lebih dulu.", "Visit and counsel first."], ["Bila genap 2 tahun, umumkan di warta sesuai Juklak.", "After 2 full years, announce it in the warta as the Juklak says."]] },
+  { id: "insult", kw: ["menghina", "mencaci", "memaki", "memukul", "melawan sintua", "menyerang", "mempermalukan", "mengancam", "insult", "hit the", "attack"], need: ["sintua", "pendeta", "pelayan", "parhalado", "guru huria", "elder", "pastor", "majelis"],
+    v: "ya", sec: /Patik Paopathon/, bt: ["mangaleai", "tohonan", "tangan"], ref: "Bindu III · 3. Patik Paopathon",
+    t: ["Juklak RPP: anggota atau parhalado yang menghina pelayan tahbisan (dengan kata-kata, perbuatan, atau sampai memukul) karena pelayanan gereja dikenai RPP (dibalihon). Bila terjadi dalam urusan adat atau sehari-hari, cukup ditegur dengan kata-kata.", "Juklak RPP: a member or office-bearer who insults an ordained servant (by words, conduct, or by striking them) because of church service falls under RPP. If it happens in adat or daily matters, a spoken rebuke is enough."],
+    s: [["Pastikan apakah kejadiannya terkait pelayanan gereja atau urusan adat/sehari-hari.", "Establish whether it was about church service or adat/daily matters."], ["Bila terkait pelayanan gereja: proses RPP lewat rapat Parhalado.", "If it was about church service: RPP through the Parhalado meeting."], ["Bila urusan lain: tegur dengan kata-kata dan damaikan.", "Otherwise: a spoken rebuke and reconciliation."]] },
+  { id: "office", kw: ["mabuk", "berjudi", "judi", "mencuri", "korupsi", "menggelapkan"], need: ["sintua", "pendeta", "pelayan", "parhalado", "guru huria", "majelis", "elder"],
+    v: "ya", sec: /Patik Paopathon/, bt: ["partohonan", "mabuk", "marjuji", "manangko"], ref: "Bindu III · 3. Patik Paopathon",
+    t: ["Juklak RPP: pelayan tahbisan yang merusak jabatannya sendiri, misalnya mabuk, berjudi atau mencuri, dikenai paminsangon (disiplin).", "Juklak RPP: an ordained servant who disgraces their own office, for example by drunkenness, gambling or stealing, is disciplined (paminsangon)."],
+    s: [["Pastikan faktanya secara tertutup.", "Confirm the facts privately."], ["Bawa ke rapat Parhalado untuk paminsangon menurut buku RPP.", "Bring it to the Parhalado meeting for discipline according to the RPP book."]] },
+  { id: "adultery", kw: ["selingkuh", "zina", "berzina", "berzinah", "perselingkuhan", "hubungan gelap", "simpanan", "wanita lain", "pria lain", "affair", "cheating", "adultery", "marmainan"],
+    v: "ya", sec: /Patik Papituhon/, bt: ["marmainan", "dongan saripe", "tingting", "pengadilan"], ref: "Bindu III · 6. Patik Papituhon",
+    t: ["Juklak RPP (Hukum Ketujuh): laki-laki atau perempuan yang berzinah dengan orang yang bukan pasangannya dikenai RPP (dibalihon) melalui warta, setelah dipastikan oleh parhalado dan diakui. Bila tidak diakui di hadapan parhalado tetapi diputuskan benar oleh pengadilan, gereja menjalankan RPP.", "Juklak RPP (Seventh Commandment): a man or woman who commits adultery is put under RPP through the warta, after the Parhalado has confirmed it and it has been admitted. If not admitted but a court rules it true, the church applies RPP."],
+    s: [["Parhalado memastikan kabar itu lebih dulu.", "The Parhalado first confirms the report."], ["Bila diakui (atau diputuskan pengadilan): RPP lewat warta.", "If admitted (or ruled by a court): RPP through the warta."], ["Dampingi keluarga dan buka jalan pemulihan.", "Care for the family and open the way to restoration."]] },
+  { id: "marriage", kw: ["menikah", "nikah", "kawin", "pernikahan", "pemberkatan", "catatan sipil", "beda agama", "agama lain", "pindah agama", "kawin lari", "gereja lain", "pentakosta", "karismatik", "kharismatik", "sekte", "katolik", "muslim", "islam", "married", "wedding", "marriage", "parbagason", "marbagas"],
+    v: "marriage", sec: /BINDU IV/, bt: ["parbagason", "Katolik", "sekte", "pentakostal", "kharismatik", "surat hatorangan"], ref: "Bindu IV · 1. Parbagason",
+    t: ["Juklak RPP (Bindu IV, Parbagason): anggota yang pindah ke gereja/sekte yang tidak sepaham dengan HKBP tentang sakramen (misalnya pentakostal dan karismatik) dikenai RPP, dan gereja tidak memberi surat keterangan ke gereja seperti itu. Pernikahan di Gereja Katolik berbeda: karena Joint Declaration 1999, HKBP memberi surat keterangan, dan anggota yang menikah di Gereja Katolik dianggap telah masuk Gereja Katolik tanpa warta RPP. Hal lain tentang pernikahan (termasuk beda agama) disebut ‘Nunga tangkas’, artinya diatur di buku RPP.", "Juklak RPP (Bindu IV, Marriage): members who join a church or sect that does not share HKBP's teaching on the sacraments (e.g. Pentecostal and charismatic) fall under RPP, and the church gives no letter to such churches. Marriage in the Catholic Church is different: because of the 1999 Joint Declaration, HKBP gives a letter, and the member is considered to have joined the Catholic Church, without an RPP announcement. Other marriage matters (including interfaith) are ‘Nunga tangkas’: governed by the RPP book."],
+    s: [["Tanyakan di gereja mana dan bagaimana pemberkatannya.", "Ask in which church and how the marriage was blessed."], ["Katolik: beri surat keterangan, tanpa warta RPP.", "Catholic: give a letter, no RPP announcement."], ["Sekte pentakostal/karismatik: RPP sesuai Juklak.", "Pentecostal/charismatic sect: RPP as the Juklak says."], ["Kasus lain: lihat buku RPP dan bahas di rapat Parhalado.", "Other cases: see the RPP book and discuss in the Parhalado meeting."]] },
+  { id: "divorce", kw: ["cerai", "bercerai", "perceraian", "menggugat cerai", "gugatan cerai", "pisah ranjang", "divorce", "sirang"],
+    v: "ya", sec: /BINDU IV/, bt: ["sirang", "parsirangon", "manuntut"], ref: "Bindu IV · 1.i Parbagason",
+    t: ["Juklak RPP: bila suami-istri bercerai di pengadilan, hanya pihak yang menuntut perceraian yang dikenai RPP; keanggotaan atau jabatan pasangan yang tidak setuju tetap. Perceraian dianggap sah bagi gereja bila salah satu terbukti berzinah (diakui atau diputuskan pengadilan). Bila mereka mau berdamai dan saling mengampuni, mereka tidak harus bercerai, tetapi RPP tetap dijalankan.", "Juklak RPP: when a couple divorces in court, only the one who sued is put under RPP; the other spouse keeps their membership or office. The church accepts a divorce when one has been proven to commit adultery. If they reconcile and forgive, they need not divorce, but RPP still applies."],
+    s: [["Pastikan siapa yang menggugat cerai.", "Establish who filed for divorce."], ["RPP hanya untuk pihak penggugat.", "RPP applies only to the one who filed."], ["Utamakan pendamaian dan pengampunan.", "Put reconciliation and forgiveness first."]] },
+  { id: "funeral", kw: ["juhut tata", "jambar juhut", "purpur sapata", "sira", "garam", "saur matua", "kematian", "pemakaman", "adat kematian", "funeral"],
+    v: "ya", sec: /BINDU IV|^HKBP\.?$/, bt: ["juhut tata", "purpur sapata", "Sira tu batang"], ref: "Bindu IV · 4. Di tingki na matean",
+    t: ["Juklak RPP (Bindu IV, saat kematian) melarang tiga hal: membagi jambar juhut tata, juhut purpur sapata, dan menabur garam (sira) pada peti jenazah, karena berasal dari kepercayaan lama.", "Juklak RPP (Bindu IV, at a death) forbids three things: sharing jambar juhut tata, juhut purpur sapata, and putting salt (sira) on the coffin, because they come from the old beliefs."],
+    s: [["Ingatkan keluarga sebelum acara adat.", "Remind the family before the adat ceremony."], ["Bila tetap dilakukan: nasihati, lalu bawa ke rapat Parhalado.", "If it still happens: counsel, then bring it to the Parhalado meeting."]] },
+  { id: "ongkal", kw: ["ongkal holi", "mangongkal", "tulang belulang", "gondang", "tortor", "manortor"],
+    v: "tergantung", sec: /Mangongkal Holi|Gondang/, bt: ["Mangongkal", "Gondang"], ref: "Bindu IV · 5–6",
+    t: ["Juklak RPP mencatat Mangongkal Holi dan Gondang sebagai ‘Nunga tangkas’: aturannya ada di buku RPP HKBP. Penilaian tergantung bentuk acaranya (unsur pemujaan roh atau tidak).", "The Juklak RPP marks Mangongkal Holi and Gondang as ‘Nunga tangkas’: the rules are in the RPP book. It depends on the form of the ceremony (whether it involves spirit worship)."],
+    s: [["Periksa susunan acaranya.", "Check the order of the ceremony."], ["Rujuk buku RPP dan bahas di rapat Parhalado.", "Consult the RPP book and discuss in the Parhalado meeting."]] },
+  { id: "vice", kw: ["judi", "berjudi", "togel", "kasino", "membunuh", "pembunuhan", "mabuk", "narkoba", "ganja", "sabu", "drugs", "gambling", "drunk", "murder"],
+    v: "ya", sec: /BINDU V\b|Juji|Pamunu|Parmabuk/, bt: ["Juji", "Pamunu", "Parmabuk", "Parganja"], ref: "Bindu V",
+    t: ["Juklak RPP (Bindu V) menggolongkan judi (juji), pembunuhan (pamunu), mabuk dan narkoba (parmabuk, parganja) sebagai perbuatan yang harus dijauhi; penanganannya mengikuti buku RPP (‘Nunga tangkas’).", "The Juklak RPP (Bindu V) lists gambling (juji), murder (pamunu), drunkenness and drugs (parmabuk, parganja) as conduct to be avoided; they are handled by the RPP book (‘Nunga tangkas’)."],
+    s: [["Kunjungi dan nasihati; tawarkan pendampingan (konseling, rehabilitasi).", "Visit and counsel; offer support (counselling, rehabilitation)."], ["Bila berlanjut: tahap RPP menurut buku RPP.", "If it continues: the RPP stages in the RPP book."]] },
+  { id: "baptism", kw: ["baptis", "pembaptisan", "tardidi", "pandidion", "anak dari", "wali", "sisolhot"], need: ["rpp", "dikenai", "sedang", "bali", "wali", "tidak ada orang tua", "yatim"],
+    v: "tergantung", sec: /BINDU IV/, bt: ["pandidion", "sisolhot", "bali"], ref: "Bindu IV · 1.o",
+    t: ["Juklak RPP: anak dari orang tua yang sedang dikenai RPP boleh dibaptis bila dibawa oleh ayah atau ibu yang tidak dikenai RPP. Anak yatim piatu boleh dibawa oleh kerabatnya. Bila kedua orang tua masih hidup, kerabat tidak boleh membawanya; bila keduanya dikenai RPP, anak itu kelak dibaptis dewasa atas kehendaknya sendiri.", "Juklak RPP: a child of parents under RPP may be baptised if brought by the parent who is not under RPP. Orphans may be brought by relatives. If both parents are alive, relatives may not bring the child; if both are under RPP, the child is baptised later as an adult."],
+    s: [["Periksa status RPP kedua orang tua.", "Check both parents' RPP status."], ["Ikuti ketentuan o.1–o.3 Juklak.", "Follow points o.1–o.3 of the Juklak."]] },
+];
+async function freeRpp(q) {
+  const qn = " " + norm(q) + " "; const has = (k) => qn.includes(norm(k));
+  const scored = RPP_TOPICS.map((tp) => ({ tp, n: tp.kw.filter(has).length * 2 + (tp.need ? (tp.need.some(has) ? 1 : -9) : 0) })).filter((x) => x.n > 0).sort((a, b) => b.n - a.n);
+  const tx = (a) => (lang === "en" ? a[1] : a[0]);
+  if (!scored.length) return { verdict: "tergantung", headline: L3("Juklak RPP tidak menyebut kasus ini secara jelas.", "Ndang tangkas di Juklak RPP.", "The Juklak RPP does not clearly cover this case."), explanation: [L3("Tidak ada aturan di Juklak yang cocok dengan kata-kata dalam pertanyaan. Coba sebutkan perbuatannya dengan jelas (misalnya: tidak ibadah 2 tahun, menikah di gereja lain, berzinah, dukun, judi), atau bawa ke rapat Parhalado dan rujuk buku RPP HKBP.", "Bawa tu rapat Parhalado.", "No Juklak ruling matches the words in the question. Try naming the act plainly (e.g. not attending for 2 years, marrying in another church, adultery, shamans, gambling), or take it to the Parhalado meeting and consult the RPP book.")], rules: [], steps: [], note: "" };
+  const top = scored[0].tp; let v = top.v;
+  if (v === "years") { const m = norm(q).match(/(\d+|satu|dua|tiga|empat|lima|setahun)\s*(tahun|thn|taon|year)/); const n = m ? ({ satu: 1, setahun: 1, dua: 2, tiga: 3, empat: 4, lima: 5 }[m[1]] || +m[1]) : 0; v = n >= 2 ? "ya" : "tergantung"; }
+  if (v === "marriage") v = has("katolik") || has("catholic") ? "tidak" : (["pentakosta", "karismatik", "kharismatik", "sekte"].some(has) ? "ya" : "tergantung");
+  const rules = [];
+  try { const doc = await docLoad("juklak-rpp", false);
+    for (const x of scored.slice(0, 2)) { const tp = x.tp; const secs = (doc.sections || []).filter((s) => tp.sec.test(s.title));
+      const qw = norm(q).split(" ").filter((w) => w.length >= 5);
+      const score = (l) => tp.bt.filter((b) => norm(l).includes(norm(b))).length * 100 + qw.filter((w) => norm(l).includes(w)).length * 150 + Math.min(l.length, 99);
+      const lines = secs.flatMap((s) => s.lines.filter((l) => l && l.length > 25 && tp.bt.some((b) => norm(l).includes(norm(b))))).sort((a, b) => score(b) - score(a));
+      lines.slice(0, 2).forEach((l) => { const w = l.split(/\s+/); rules.push({ ref: tp.ref, quote: w.slice(0, 32).join(" ") + (w.length > 32 ? " …" : ""), meaning: "" }); });
+      if (!lines.length) rules.push({ ref: tp.ref, quote: "Nunga tangkas", meaning: L3("Juklak menyatakan aturan ini sudah jelas di buku RPP HKBP.", "", "The Juklak says this is already set out in the RPP book.") }); } } catch (e) {}
+  const second = scored[1] && scored[1].n >= scored[0].n - 1 ? scored[1].tp : null;
+  return { verdict: v, headline: v === "ya" ? L3("Menurut Juklak RPP, ini termasuk pelanggaran.", "Pangalaosion RPP do on.", "By the Juklak RPP, this is a breach.") : v === "tidak" ? L3("Menurut Juklak RPP, ini tidak dikenai RPP.", "Ndada pangalaosion RPP.", "By the Juklak RPP, this is not put under RPP.") : L3("Tergantung faktanya; lihat ketentuan di bawah.", "Tergantung.", "It depends on the facts; see the rules below."),
+    explanation: [tx(top.t), ...(second ? [tx(second.t)] : [])], rules, steps: top.s.map(tx),
+    note: L3("Jawaban dari pencarian aturan di teks Juklak RPP (tanpa AI, gratis). Keputusan tetap pada rapat Parhalado.", "Sian Juklak RPP. Keputusan di rapat Parhalado.", "Answered by matching the rules in the Juklak RPP text (no AI, free). The Parhalado meeting decides.") };
+}
+// Fair roster, by rule: everyone gets a turn, fewest recent duties first, nobody twice on one Sunday, nobody who is away.
+function localRoster(i) {
+  const load = { ...(i.load || {}) }; const rows = []; let prev = new Set();
+  const h = (s) => [...s].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7);
+  for (const day of i.sundays) {
+    const away = new Set((i.busy || {})[day] || []); const used = new Set(); const assign = {};
+    for (const j of i.jobs) { const kept = ((i.keep || {})[day] || {})[j]; if (kept) { assign[j] = kept; used.add(kept); load[kept] = (load[kept] || 0) + 1; } }
+    for (const j of i.jobs) {
+      if (assign[j]) continue;
+      const pick = i.people.filter((p) => !away.has(p) && !used.has(p)).sort((a, b) => (load[a] || 0) - (load[b] || 0) || (prev.has(a) ? 1 : 0) - (prev.has(b) ? 1 : 0) || h(a + day + j) - h(b + day + j))[0];
+      if (pick) { assign[j] = pick; used.add(pick); load[pick] = (load[pick] || 0) + 1; } else assign[j] = "";
+    }
+    rows.push({ day, assign }); prev = used;
+  }
+  return { rows, note: L3("Disusun merata: yang paling jarang bertugas dalam 3 bulan terakhir didahulukan, tidak ada yang dua kali di Minggu yang sama, dan yang sedang berlayar atau berduka tidak dijadwalkan.", "Dibagi rata.", "Spread evenly: those who served least in the last 3 months go first, nobody twice on one Sunday, and those at sea or grieving are left out.") };
+}
+// Discussion material from Sunday's Tata Ibadah: theme, readings and questions from templates.
+function localQuestions(i) {
+  const tx = i.text || ""; const grab = (re) => { const m = tx.match(re); return m ? m[1].replace(/\s+/g, " ").trim().slice(0, 90) : ""; };
+  const theme = grab(/(?:Tema|Topik|Thema|Topic)\s*:?\s*[“"]?([^"\n”]{4,})/i); const ep = grab(/Epistel\s*:?\s*([1-3]?\s?[A-Za-z][A-Za-z ]+\d+\s*:\s*[\d\-–, ]+)/i); const kh = grab(/(?:Khotbah|Kotbah|Jamita|Evangelium)\s*:?\s*([1-3]?\s?[A-Za-z][A-Za-z ]+\d+\s*:\s*[\d\-–, ]+)/i);
+  const kids = /children/.test(i.hint || ""); const bt = i.lang === "bt", en = i.lang === "en";
+  const T = (a, b, c) => (bt ? b : en ? c : a);
+  const qs = kids ? [T("Siapa saja yang ada dalam cerita Alkitab hari ini?", "Ise do angka na adong di turiturian sian Bibel sadarion?", "Who is in today's Bible story?"), T("Apa yang Tuhan Yesus lakukan atau katakan?", "Aha do na binahen manang na nidok ni Tuhan Jesus?", "What did Jesus do or say?"), T("Bagian mana yang paling kamu sukai? Mengapa?", "Dia na umpos di rohami? Boasa?", "Which part do you like best? Why?"), T("Bagaimana kamu bisa menolong teman minggu ini?", "Songon dia ho boi mangurupi dongan minggu on?", "How can you help a friend this week?"), T("Apa yang ingin kamu ucapkan kepada Tuhan dalam doa?", "Aha na naeng dohononmu tu Tuhan di tangiang?", "What would you like to tell God in prayer?")]
+    : [T(`Apa pesan utama ${kh || ep || "nas Minggu ini"} bagi Anda?`, `Aha do sipaingot na ummarga sian ${kh || ep || "turpuk Minggu on"} di ho?`, `What is the main message of ${kh || ep || "this Sunday's text"} for you?`),
+       theme ? T(`Tema minggu ini “${theme}”. Di mana tema ini paling terasa dalam hidup Anda saat ini?`, `Topik “${theme}”. Di dia do na tarida i di ngolum saonari?`, `This week's theme is “${theme}”. Where do you feel it most in your life now?`) : T("Ayat mana yang paling menyentuh Anda? Mengapa?", "Ayat dia do na umpos di rohamu? Boasa?", "Which verse touches you most? Why?"),
+       ep ? T(`Bagaimana ${ep} menolong kita memahami nas khotbah?`, `Songon dia ${ep} mangurupi hita mangantusi jamita?`, `How does ${ep} help us understand the sermon text?`) : T("Apa yang dikatakan nas ini tentang Allah?", "Aha do na nidok ni turpuk on taringot tu Debata?", "What does this passage say about God?"),
+       T("Apa yang sulit untuk dilakukan dari firman ini, dan mengapa?", "Aha na maol siulahonon sian hata on, jala boasa?", "What is hard to live out from this word, and why?"),
+       T("Bagaimana firman ini berbicara kepada kita sebagai perantau di Singapura?", "Songon dia hata on tu hita parserak di Singapura?", "How does this word speak to us living away from home in Singapore?"),
+       T("Satu langkah nyata apa yang akan Anda lakukan minggu ini?", "Aha langka na tongon siulahononmu minggu on?", "What one concrete step will you take this week?")];
+  return { title: theme || T("Bahan diskusi Minggu ini", "Bahan diskusi Minggu on", "This Sunday's discussion"), verse: [kh, ep].filter(Boolean).join(" · "),
+    opening: T("Bacalah nas bersama-sama dengan perlahan, lalu diam sejenak sebelum berbagi.", "Jaha ma rap turpuk i, dungi paima jolo saotik.", "Read the passage together slowly, then pause a moment before sharing."),
+    questions: qs, action: T("Pilih satu orang yang akan Anda doakan dan sapa minggu ini.", "Pillit ma sahalak na tangianghononmu jala na sapaonmu minggu on.", "Choose one person to pray for and reach out to this week."),
+    prayer: T("Tuhan, terima kasih untuk firman-Mu. Tolonglah kami melakukannya minggu ini. Amin.", "Ale Tuhan, mauliate di hata-Mu. Urupi ma hami mangulahon i minggu on. Amen.", "Lord, thank you for your word. Help us to live it this week. Amen.") };
+}
+// Offering receipts, read on the phone (Tesseract, free): SGD amounts matched to the church's offering names.
+let TESS = null;
+async function ocrReceipt(dataUrl, names) {
+  if (!window.Tesseract) await new Promise((res, rej) => { const s = document.createElement("script"); s.src = "https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"; s.onload = res; s.onerror = () => rej(new Error(L3("Pembaca struk tidak bisa dimuat. Periksa koneksi internet.", "", "The receipt reader could not load. Check the internet connection."))); document.head.appendChild(s); });
+  const { data } = await window.Tesseract.recognize(dataUrl, "eng"); const lines = String(data.text || "").split("\n").map((l) => l.trim()).filter(Boolean);
+  const amt = (l) => { const m = l.replace(/,(?=\d{3}\b)/g, "").match(/(?:S\$|SGD|\$)?\s*(\d{1,6}(?:\.\d{2}))\b(?!.*\d\.\d{2})/); return m ? +m[1] : null; };
+  const syn = [[/kolekte|umum|ibadah|offering|general/i, names[0]], [/\bSM\b|sekolah\s*minggu|sunday\s*school/i, "Sekolah Minggu"]];
+  const key = (v) => norm(v).replace(/\s+/g, ""); const items = []; let total = null;
+  for (const l of lines) { const a = amt(l); if (a == null || a <= 0) continue; if (/total|jumlah|grand/i.test(l)) { total = a; continue; }
+    if (/(IDR|RP\.?|MYR|RM|USD|US\$)/i.test(l)) continue;
+    const label = l.replace(/(?:S\$|SGD|\$)?\s*\d[\d,.]*\s*$/, "").trim(); let name = names.find((n) => key(label) && (key(label).includes(key(n)) || key(n).includes(key(label))));
+    if (!name) { const s2 = syn.find(([re]) => re.test(label)); if (s2 && names.includes(s2[1])) name = s2[1]; }
+    if (name || label.length > 2) items.push({ name: name || label.slice(0, 40), sgd: a }); }
+  if (!items.length && total) items.push({ name: names[0], sgd: total });
+  return { items, total_sgd: total };
+}
+// Read aloud (free, the phone's own voice): Indonesian voice for Indonesian and Batak, English for English.
+function speakText(text) {
+  const ss = window.speechSynthesis; if (!ss) { toast(L3("HP ini tidak mendukung bacakan.", "", "This phone cannot read aloud."), true); return; }
+  if (ss.speaking) { ss.cancel(); return; }
+  const parts = String(text).replace(/\s+/g, " ").match(/[^.!?;:]+[.!?;:]*/g) || [text]; const chunks = []; let cur = "";
+  parts.forEach((p) => { if ((cur + p).length > 220 && cur) { chunks.push(cur); cur = ""; } cur += p; }); if (cur) chunks.push(cur);
+  const vl = lang === "en" ? "en" : "id"; const voice = ss.getVoices().find((v) => v.lang && v.lang.toLowerCase().startsWith(vl));
+  chunks.forEach((c) => { const u = new SpeechSynthesisUtterance(c.trim()); u.lang = vl === "en" ? "en-US" : "id-ID"; if (voice) u.voice = voice; u.rate = 0.92; ss.speak(u); });
+}
+A.speak = (d) => { const el = document.querySelector(d.sel); if (el) speakText(el.innerText); };
+const speakBtn = (sel, label) => `<button class="btn" data-act="speak" data-sel="${esc(sel)}">🔊 ${esc(label || L3("Bacakan", "Jahahon", "Read aloud"))}</button>`;
+// Text size for the whole app, saved on this phone.
+const TXZ = [1, 1.12, 1.25, 1.4]; const applyTz = () => { try { document.documentElement.style.setProperty("--tz", String(LS.get("tz", 1))); } catch (e) {} }; applyTz();
+A.textSize = () => sheet("🔠 " + L3("Ukuran teks", "Balga ni surat", "Text size"), `<p class="small muted">${esc(L3("Berlaku untuk seluruh Sada di HP ini.", "Tu sude Sada di HP on.", "Applies to all of Sada on this phone."))}</p>
+  <div class="tz-row">${TXZ.map((z, i) => `<button class="btn${+LS.get("tz", 1) === z ? " primary" : ""}" data-act="tzSet" data-z="${z}" style="font-size:${14 + i * 3}px">A</button>`).join("")}</div>`);
+A.tzSet = (d) => { LS.set("tz", +d.z); applyTz(); closeSheet(); render(); };
+// Usage review: page views per day on this phone, sent once a day; the admin sees the totals (Lainnya → Pemakaian fitur).
+function usageTick(r) {
+  if (!D || isGuest() || (VIEWAS && VIEWAS.on) || !r) return; const d0 = today(); const u = LS.get("usage", {}) || {};
+  u[d0] = u[d0] || {}; u[d0][r] = (u[d0][r] || 0) + 1; Object.keys(u).forEach((k) => { if (k < addDays(d0, -10)) delete u[k]; }); LS.set("usage", u);
+  if (LS.get("usageSent", "") !== d0) { LS.set("usageSent", d0); api.save("usage_log", { days: u }).catch(() => {}); }
+  prepOffline();
+}
+const ROUTE_NAMES = { home: "Beranda", groups: "Kategorial", g: "Halaman kategori", calendar: "Warnasari", serve: "Roster", meet: "Rapat", lit: "Liturgi", litwb: "Workbench liturgi", chat: "Chat", library: "Alkitab & nyanyian", song: "Lagu", doc: "Dokumen Gereja", more: "Lainnya", bread: "Renungan harian", tata: "Tata Ibadah", live: "Ikuti live", sunday: "Minggu Ini", rpp: "RPP", tarombo: "Tarombo", tutur: "Partuturan", ende: "Arti Buku Ende", care: "Kunjungan", prayer: "Pokok doa", fx: "Kurs", search: "Cari", o: "Seksi", sswb: "Workbench SM", stories: "Turi-turian", grief: "Dukacita", sea: "Pelaut", access: "Akses", appstatus: "Status aplikasi", usage: "Pemakaian fitur" };
+R.usage = () => {
+  if (!D.me.is_admin) { location.replace("#/more"); return ""; }
+  const days = +(new URLSearchParams(location.hash.split("?")[1] || "").get("d") || 90);
+  setTimeout(async () => { const box = document.getElementById("usageBox"); if (!box) return;
+    try { const r = await api.save("usage_report", { days }); const max = Math.max(1, ...r.routes.map((x) => x.views));
+      box.innerHTML = `<div class="row two"><div class="card center"><b class="big-n">${r.active}</b><small>${esc(L3("anggota aktif", "ruas aktif", "active members"))} / ${r.members}</small></div><div class="card center"><b class="big-n">${r.routes.length}</b><small>${esc(L3("fitur dipakai", "fitur", "features used"))}</small></div></div>
+        <div class="card">${r.routes.map((x) => `<div class="use-r"><span>${esc(ROUTE_NAMES[x.route] || x.route)}</span><i style="width:${Math.round((x.views / max) * 100)}%"></i><small>${x.views} · ${x.people} ${esc(L3("org", "halak", "people"))}</small></div>`).join("") || empty(L3("Belum ada data.", "Ndang adong data.", "No data yet."), "chart")}</div>
+        <p class="small muted">${esc(L3("Fitur yang jarang dipakai bisa disederhanakan atau dihapus dari tampilan sederhana.", "", "Rarely used features can be simplified or dropped from the simple views."))}</p>`; } catch (e) { box.innerHTML = `<p class="warn">${esc(errMsg(e))}</p>`; } }, 0);
+  return shell("#/more", `<h2 class="page-h">📊 ${esc(L3("Pemakaian fitur", "Pamakean fitur", "Feature usage"))}</h2>
+    <div class="seg" role="tablist" style="--gc:var(--brand)">${[30, 90, 365].map((n) => `<a role="tab" aria-selected="${days === n}" href="#/usage?d=${n}">${n} ${esc(L3("hari", "ari", "days"))}</a>`).join("")}</div><div id="usageBox">${skel(4)}</div>`, { back: "#/more", title: L3("Pemakaian fitur", "Pamakean fitur", "Feature usage") });
+};
+// Offline-first for the Parhalado: from Friday, this week's liturgy, readings, songs and Tata Ibadah are saved on the phone.
+let PREP_DONE = false;
+function prepOffline() {
+  if (PREP_DONE || !isLit() || !navigator.onLine) return; const wd = new Date().getDay(); if (![5, 6, 0].includes(wd)) return;
+  const sun = nextSunday(); if (LS.get("prepFor", "") === sun) { PREP_DONE = true; return; } PREP_DONE = true;
+  setTimeout(async () => { try { await songsLoad(true); const l = await litList(true); const x = l.find((y) => y.day >= today());
+    if (x) { const full = await litGet(x.id); for (const it of full.items || []) if (it.t === "reading" && it.ref) { try { await litPassage(it.ref, it.ver); } catch (e) {} } }
+    const sv = upcomingService(); if (sv) { try { await tataHtml(sv.id); } catch (e) {} } LS.set("prepFor", sun); } catch (e) {} }, 5000);
+}
+// "Minggu Ini": everything for this Sunday in one place, for everyone.
+const SONG_REF = /\b(KJ|BE|BN|B\.\s?E\.?|PKJ|NKB)\.?\s*(?:No\.?\s*)?(\d{1,3})\s*:\s*([\d\s,\-–+]+(?:dst)?)/gi;
+R.sunday = () => {
+  const sv = upcomingService();
+  setTimeout(async () => { const box = document.getElementById("sunBox"); if (!box) return;
+    if (!sv) { box.innerHTML = empty(L3("Tata Ibadah Minggu ini belum terbit.", "Tata Ibadah dang tarbit dope.", "This Sunday's Tata Ibadah is not published yet."), "book"); return; }
+    let text = ""; try { const doc = new DOMParser().parseFromString(await tataHtml(sv.id), "text/html"); text = [...doc.querySelectorAll("section.pg")].map((x) => x.textContent).join("\n") || doc.body.textContent; } catch (e) {}
+    await songsLoad(false);
+    const songs = []; const seen = new Set(); let m; SONG_REF.lastIndex = 0;
+    while ((m = SONG_REF.exec(text))) { const book = m[1].toUpperCase().replace(/[\s.]/g, "") === "BE" ? "BE" : m[1].toUpperCase().replace(/[\s.]/g, ""); const k = book + ":" + m[2]; if (seen.has(k)) continue; seen.add(k);
+      const vs = []; m[3].replace(/dst/g, "").split(/[,+]/).forEach((p) => { const r = p.split(/[-–]/).map((x) => parseInt(x, 10)).filter((x) => x > 0); if (r.length === 2 && r[1] >= r[0] && r[1] - r[0] < 20) for (let q = r[0]; q <= r[1]; q++) vs.push(q); else if (r.length === 1) vs.push(r[0]); });
+      songs.push({ book, num: +m[2], verses: vs }); }
+    const refs = []; const rre = /(Epistel|Ev(?:angelium)?|Khotbah|Kotbah|Jamita)\s*:?\s*([1-3]?\s?[A-Z][A-Za-z]+(?:\s[A-Z][a-z]+)?\s+\d+\s*:\s*\d+(?:\s*[-–]\s*\d+)?)/g; let r2;
+    while ((r2 = rre.exec(text))) if (!refs.some((x) => x.ref === r2[2])) refs.push({ kind: /Epistel/i.test(r2[1]) ? "Epistel" : L3("Nas Khotbah", "Turpuk Jamita", "Sermon text"), ref: r2[2].replace(/\s+/g, " ") });
+    box.innerHTML = `${songs.length ? `<h3 class="sec-h">🎵 ${esc(L3("Nyanyian", "Ende", "Songs"))}</h3>${songs.map((s, i) => { const g = litSong(s); return `<details class="card sun-song"><summary><b>${esc(s.book)} ${s.num}${s.verses.length ? ": " + s.verses.join(", ") : ""}</b>${g.title ? ` <small>${esc(g.title)}</small>` : ""}</summary>
+        <div id="sunSong${i}">${g.verses.length ? g.verses.map((v) => `<div class="lit-v"><b>${esc(v.n)}</b><div>${v.lines.map((l) => `<p>${esc(l)}</p>`).join("")}</div></div>`).join("") : `<p class="muted small">${esc(L3("Lirik belum ada di Sada.", "Lirik ndang adong dope.", "Lyrics not in Sada yet."))}</p>`}</div>${g.verses.length ? speakBtn("#sunSong" + i) : ""}</details>`; }).join("")}` : ""}
+      ${refs.length ? `<h3 class="sec-h">📖 ${esc(L3("Nas Alkitab", "Turpuk Bibel", "Bible readings"))}</h3>${refs.map((x, i) => `<article class="card"><h4>${esc(x.kind)} · ${esc(x.ref)}</h4><div class="lit-bible" id="sunRd${i}">${skel(2)}</div>${speakBtn("#sunRd" + i)}</article>`).join("")}` : ""}`;
+    refs.forEach(async (x, i) => { const el = document.getElementById("sunRd" + i); try { const vs = await litPassage(x.ref, lang === "bt" ? "toba" : "tb"); el.innerHTML = vs.map((v) => `<p><sup>${v.v}</sup>${esc(v.t)}</p>`).join(""); } catch (e) { el.innerHTML = `<p class="muted small">${esc(L3("Nas tidak dapat dimuat. Periksa koneksi internet.", "Ndang boi.", "Couldn't load the passage. Check the internet connection."))}</p>`; } }); }, 0);
+  return shell("#/home", `<div class="s-week"><p class="s-kick">${esc(L3("Minggu Ini", "Minggu On", "This Sunday"))} · ${esc(fmt(sv ? sv.service_date : nextSunday(), { weekday: "long", day: "numeric", month: "long" }))}</p><div class="s-duty"><b>${esc(sv ? sv.title || "" : "")}</b></div></div>
+    <div class="row two">${sv ? `<a class="btn primary" href="#/tata/${sv.id}">📖 Tata Ibadah</a>` : ""}<a class="btn" href="#/live">🔴 ${esc(L3("Ikuti live", "Ihuthon live", "Follow live"))}</a></div>
+    <div id="sunBox">${skel(4)}</div>`, { back: "#/home", title: L3("Minggu Ini", "Minggu On", "This Sunday") });
+};
+// Pastoral visit notes (Parhalado): one line after each visit; the history shows under each name.
+A.visitAdd = (d) => sheet("📝 " + L3("Catat kunjungan", "Catat kunjungan", "Record a visit"), `<form class="form" data-form="visitSave" data-id="${esc(d.id)}"><p><b>${esc((D.people.find((p) => p.id === d.id) || {}).name || "")}</b></p>
+  <label>${esc(L3("Tanggal", "Tanggal", "Date"))}<input type="date" name="day" value="${today()}"></label><label>${esc(L3("Catatan singkat", "Catatan", "Short note"))}<textarea name="note" rows="3" required placeholder="${esc(L3("mis. Sehat, kerja shift malam, minta didoakan.", "", "e.g. Well, on night shifts, asked for prayer."))}"></textarea></label>
+  <button class="btn primary block">${esc(t("save"))}</button></form>`);
+F.visitSave = async (f) => { await api.save("visit_save", { member_id: f.dataset.id, day: f.day.value, note: f.note.value }); closeSheet(); toast(t("saved")); render(); throw Object.assign(new Error("noRender"), { silent: true }); };
+async function visitsPaint() { try { const vs = await api.save("visit_list", {}); document.querySelectorAll("[data-mid]").forEach((li) => { const mine = vs.filter((v) => v.member_id === li.dataset.mid).slice(0, 3); const box = li.querySelector(".visit-h"); if (box) box.innerHTML = mine.map((v) => `<small>📝 ${esc(fmt(v.day, { day: "numeric", month: "short" }))} · ${esc(v.note)} <i>– ${esc(v.by || "")}</i></small>`).join(""); }); } catch (e) {} }
+// Buku Ende meanings without AI: each verse opens in Google Translate (it knows Batak Toba).
+try { window.__sadaFree = { freeRpp, localRoster, localQuestions }; } catch (e) {}
+const gtr = (text, to) => `https://translate.google.com/?sl=bbc&tl=${to}&text=${encodeURIComponent(text)}&op=translate`;
+try { document.head.insertAdjacentHTML("beforeend", `<style>
+  #view main, #view > .page, #view .wrap { zoom: var(--tz, 1); } .tz-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .use-r { display: grid; grid-template-columns: 9em 1fr auto; gap: 8px; align-items: center; padding: 6px 0; border-top: 1px solid var(--line); font-size: 14px; } .use-r i { display: block; height: 10px; border-radius: 99px; background: var(--brand); min-width: 4px; } .big-n { font-size: 30px; display: block; }
+  .sun-song summary { cursor: pointer; } .sun-song summary small { color: var(--muted); } .visit-h { display: grid; gap: 2px; margin-top: 4px; } .visit-h small { color: var(--muted); }
+  .ende-v { margin: 0 0 12px; } .ende-v p { margin: 0; } .ende-v .row { margin-top: 6px; }
+</style>`); } catch (e) {}
+try { document.head.insertAdjacentHTML("beforeend", `<style>
+  .month-h { position: sticky; top: calc(64px + env(safe-area-inset-top)); z-index: 3; margin: 22px 0 10px; } .month-h span { display: inline-block; background: var(--brand); color: #fff; font-size: 17px; font-weight: 800; letter-spacing: .02em; padding: 8px 16px; border-radius: 999px; box-shadow: 0 6px 16px rgba(0,0,0,.12); }
+  .cal-part { border-left: 5px solid var(--pc, var(--brand)); } .cal-part .card-h h3 { color: var(--pc, var(--ink)); font-size: 16px; } .cal-part .card-h .badge { background: var(--pc, var(--brand)); color: #fff; }
+  .cal-part.du { --pc: #1f8a4c; } .cal-part.mt { --pc: #6d3fc0; } .cal-part.ev { --pc: #1f5fa8; } .cal-part.bd { --pc: #c94f8a; } .cal-part.an { --pc: #b7791f; }
+  .chips:has(> .chip.on), .chips.office-tabs, .chips.bib-vers, .chips.fx-chips { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 4px; gap: 4px; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .chips:has(> .chip.on) > .chip, .chips.office-tabs > .chip, .chips.bib-vers > .chip, .chips.fx-chips > .chip { border: 0; background: transparent; border-radius: 10px; padding: 8px 12px; font-size: 14px; font-weight: 700; color: var(--muted); white-space: nowrap; flex: 1 0 auto; text-align: center; }
+  .chips:has(> .chip.on) > .chip.on, .chips.office-tabs > .chip.on, .chips.bib-vers > .chip.on, .chips.fx-chips > .chip.on { background: var(--gc, var(--brand)); color: #fff; }
+  .seg { scrollbar-width: none; } .seg::-webkit-scrollbar, .chips::-webkit-scrollbar { display: none; } .seg a { min-width: max-content; }
+  .s-hello h1 { font-size: 30px; margin: 10px 0 2px; } .s-hello p { font-size: 17px; color: var(--muted); margin: 0 0 12px; }
+  .s-week { background: linear-gradient(135deg, var(--brand), #1b1f5c); color: #fff; border-radius: 22px; padding: 18px; margin: 6px 0 16px; box-shadow: var(--shadow); }
+  .s-kick { font-size: 14px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; opacity: .85; margin: 0 0 8px; } .s-duty { font-size: 19px; margin: 6px 0; } .s-duty span { display: block; font-size: 15px; opacity: .85; } .s-none { font-size: 17px; margin: 0; opacity: .9; }
+  .s-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; } .s-grid.pastor { grid-template-columns: 1fr; }
+  .s-tile { display: grid; gap: 4px; align-content: start; background: var(--surface); border-radius: 20px; padding: 18px 16px; text-decoration: none; color: var(--ink); box-shadow: var(--shadow); min-height: 120px; border: 1px solid var(--line); }
+  .s-tile .s-ic { font-size: 34px; line-height: 1; } .s-tile b { font-size: 19px; line-height: 1.2; } .s-tile small { font-size: 14px; color: var(--muted); }
+  .s-grid.pastor .s-tile { grid-template-columns: auto 1fr; align-items: center; min-height: 0; column-gap: 16px; } .s-grid.pastor .s-tile .s-ic { grid-row: span 2; font-size: 40px; } .s-grid.pastor .s-tile.big b { font-size: 22px; }
+  .s-switch { margin-top: 18px; }
+  .rpp-ans { border-left: 5px solid #8a8f99; } .rpp-ans.yes { border-left-color: #c2410c; } .rpp-ans.no { border-left-color: #1f8a4c; } .rpp-ans.maybe { border-left-color: #b7791f; }
+  .rpp-v { font-size: 19px; margin-bottom: 8px; } .rpp-h { font-weight: 700; } .rpp-ans h4 { margin: 14px 0 6px; } .rpp-rule { background: var(--surface-2); border-radius: 12px; padding: 10px 12px; margin: 6px 0; } .rpp-rule blockquote { margin: 6px 0; font-style: italic; color: var(--brand); }
+  .badge.warn { background: #fde7d9; color: #9a3412; }
+  .taro-tree { list-style: none; margin: 0; padding-left: 14px; border-left: 2px solid var(--line); } .taro-tree.root { padding-left: 0; border-left: 0; }
+  .taro-n > details { margin: 6px 0; } .taro-n summary { cursor: pointer; list-style: none; display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 8px; padding: 8px 12px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); }
+  .taro-n summary::-webkit-details-marker { display: none; } .taro-n summary::before { content: "▸"; color: var(--brand); font-weight: 900; } .taro-n details[open] > summary::before { content: "▾"; }
+  .taro-n summary small { flex-basis: 100%; color: var(--muted); font-size: 12.5px; } .taro-count { margin-left: auto; font-size: 11px; font-weight: 800; background: var(--brand-soft); color: var(--brand); border-radius: 999px; padding: 2px 8px; }
+  .taro-margas { list-style: none; display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 0 4px 14px; margin: 0; } .taro-chip { display: inline-block; padding: 5px 10px; border-radius: 999px; background: color-mix(in srgb, var(--brand) 9%, var(--surface)); font-size: 13px; font-weight: 700; }
+  .taro-m.hit .taro-chip { background: var(--gold, #d8b25e); color: #111; box-shadow: 0 0 0 3px rgba(216,178,94,.4); }
+  .taro-box { margin-top: 10px; padding: 10px 12px; border-radius: 12px; background: var(--surface-2); } .taro-path { font-size: 12.5px; color: var(--muted); margin: 4px 0 0; } .taro-path b { color: var(--ink); }
+  .tutur-ref summary { cursor: pointer; } .tref-r { display: grid; grid-template-columns: 9.5em 1fr; gap: 8px; padding: 8px 0; border-top: 1px solid var(--line); font-size: 14px; } .tref-r b { color: var(--brand); }
+</style>`); } catch (e) {}
+// ---------- Simple views for the elders and the pastor (YB 2026-10-30) ----------
+// Elders who are not makers (Parhalado members) and the pastor see a large, calm home with only what they use, and fewer tabs.
+// The full app is one tap away ("Tampilan lengkap"), and back again. Elders who are makers keep the normal view.
+const isPastor = () => !!D && !isGuest() && /^Pdt\b\.?/i.test(D.me.name || "");
+const isPlainElder = () => !!D && !isGuest() && ((D.me.groups || {}).parhalado === "member") && !D.me.is_admin;
+const simpleKind = () => (VIEWAS && VIEWAS.on ? (isPastor() ? "pastor" : isPlainElder() ? "elder" : "") : LS.get("fullView", false) ? "" : isPastor() ? "pastor" : isPlainElder() ? "elder" : "");
+function navTabs() {
+  const k = simpleKind();
+  if (k === "pastor") return TABS.filter(([, h]) => ["#/home", "#/calendar", "#/library", "#/more"].includes(h));
+  if (k === "elder") return TABS.filter(([, h]) => ["#/home", "#/calendar", "#/chat", "#/library", "#/more"].includes(h));
+  return TABS;
+}
+function upcomingService() { const td = today(); return (D.services || []).filter((s) => s.service_date >= td).sort((a, b) => a.service_date.localeCompare(b.service_date))[0] || null; }
+function simpleHome() {
+  const k = simpleKind(); const first = (D.me.name || "").replace(/^(Pdt|St|Cst)\.?\s+/i, "").split(" ")[0];
+  const sun = nextSunday(); const sv = upcomingService(); const mine = duties().filter((d) => d.date >= today()).sort((a, b) => a.date.localeCompare(b.date));
+  const soon = mine.filter((d) => d.date <= addDays(today(), 7));
+  setTimeout(async () => { const el = document.getElementById("simpleLit"); if (!el) return; const l = await litList(false); const x = l.find((y) => y.day >= today());
+    if (x) { el.href = "#/lit/" + x.id; el.querySelector("small").textContent = `${fmt(x.day, { day: "numeric", month: "long" })} · ${x.name}`; } }, 0);
+  const tile = (href, icon, title, sub, big) => `<a class="s-tile${big ? " big" : ""}" href="${href}"${href.startsWith("#/lit") ? ' id="simpleLit"' : ""}><span class="s-ic">${icon}</span><b>${esc(title)}</b>${sub != null ? `<small>${esc(sub)}</small>` : ""}</a>`;
+  const week = `<div class="s-week"><p class="s-kick">${esc(L3("Minggu ini", "Minggu on", "This Sunday"))} · ${esc(fmt(sun, { weekday: "long", day: "numeric", month: "long" }))}</p>
+    ${soon.length ? soon.map((d) => `<div class="s-duty">🙌 <b>${esc(d.roles.join(", "))}</b> <span>${esc(gname(d.group))} · ${esc(fmt(d.date, { weekday: "short", day: "numeric", month: "short" }))}</span></div>`).join("") : `<p class="s-none">${esc(L3("Tidak ada tugas pelayanan minggu ini.", "Ndang adong ulaon minggu on.", "No duties this week."))}</p>`}</div>`;
+  const tiles = k === "pastor"
+    ? [tile("#/lit", "📜", L3("Naskah Liturgi", "Naskah Paragenda", "Liturgy script"), L3("Word & slide", "Word & slide", "Word & slides"), true),
+       tile(sv ? `#/tata/${sv.id}` : "#/calendar", "📖", "Tata Ibadah", sv ? fmt(sv.service_date, { day: "numeric", month: "long" }) : "", true),
+       tile("#/calendar", "📅", L3("Jadwal Pelayanan", "Jadwal", "Service roster"), "", true),
+       tile("#/rpp", "⚖️", "RPP", L3("Daftar & tanya Juklak", "Daftar & sungkun", "List & ask the Juklak")), tile("#/care", "🫶", L3("Kunjungan", "Kunjungan", "Visits"), "")]
+    : [tile("#/calendar", "📅", L3("Jadwal Pelayanan", "Jadwal", "My duties"), mine.length ? `${mine.length} ${L3("tugas", "ulaon", "duties")}` : ""),
+       tile("#/lit", "📜", L3("Naskah Liturgi", "Naskah Paragenda", "Liturgy script"), ""),
+       tile("#/sunday", "📖", L3("Minggu Ini", "Minggu On", "This Sunday"), sv ? fmt(sv.service_date, { day: "numeric", month: "long" }) : ""),
+       tile("#/library?s=BE", "🎵", L3("Buku Ende & KJ", "Buku Ende & KJ", "Hymn books"), ""),
+       tile("#/prayer", "🙏", L3("Pokok Doa", "Tangiang", "Prayer requests"), ""), tile("#/care", "🫶", L3("Kunjungan", "Kunjungan", "Visits"), ""),
+       tile("#/rpp", "⚖️", "RPP", ""), tile("#/chat/all", "💬", L3("Chat Jemaat", "Chat Ruas", "Church chat"), "")];
+  return shell("#/home", `<div class="s-hello"><h1>Horas, ${esc(first)}!</h1><p>${esc(k === "pastor" ? L3("Selamat melayani, Inang Pendeta.", "Selamat marhobas, Inang Pandita.", "Blessings on your service, Pastor.") : L3("Selamat melayani, Amang/Inang Sintua.", "Selamat marhobas, Amang/Inang Sintua.", "Blessings on your service."))}</p></div>
+    ${week}<div class="s-grid${k === "pastor" ? " pastor" : ""}">${tiles.join("")}</div>
+    <button class="btn ghost block s-switch" data-act="viewFull">${esc(L3("Buka tampilan lengkap Sada", "Bukka tampilan lengkap", "Open the full Sada view"))}</button>`, {});
+}
+A.viewFull = () => { LS.set("fullView", true); location.hash = "#/home"; render(); toast(L3("Tampilan lengkap aktif. Untuk kembali ke tampilan sederhana, buka Lainnya.", "Tampilan lengkap. Asa mulak tu na sederhana, bukka Lainnya.", "Full view. Switch back from More.")); };
+A.viewSimple = () => { LS.set("fullView", false); location.hash = "#/home"; render(); };
+
+// ---------- RPP (YB 2026-10-30): the list, and questions answered from the Juklak RPP · Parhalado only ----------
+const RPP = { list: null, tab: "list", q: "", busy: false };
+R.rpp = () => {
+  if (!isParhalado()) { location.replace("#/more"); return ""; }
+  const qs = new URLSearchParams(location.hash.split("?")[1] || ""); RPP.tab = qs.get("t") || RPP.tab;
+  const seg = (k, label) => `<a role="tab" aria-selected="${RPP.tab === k}" href="#/rpp?t=${k}">${label}</a>`;
+  const head = `<h2 class="page-h">⚖️ RPP</h2><p class="lead">${esc(L3("Ruhut Parmahanion dohot Paminsangon · hanya untuk Parhalado.", "Ruhut Parmahanion dohot Paminsangon · holan tu Parhalado.", "Pastoral care and church discipline · Parhalado only."))}</p>
+    <div class="seg" role="tablist" style="--gc:var(--brand)">${seg("list", "📋 " + esc(L3("Daftar", "Daftar", "List")))}${seg("ask", "💬 " + esc(L3("Tanya RPP", "Sungkun RPP", "Ask the RPP")))}</div>`;
+  if (RPP.tab === "ask") {
+    const hist = LS.get("rppHist", []) || [];
+    return shell("#/more", `${head}
+      <form class="form" data-form="rppAsk"><label>${esc(L3("Ceritakan kasusnya selengkap mungkin (tanpa batas panjang). Sebutkan fakta, bukan nama.", "Paboa ma kasusna.", "Describe the case as fully as you can (no length limit). Give facts, not names."))}
+        <textarea name="q" rows="7" placeholder="${esc(L3("Contoh: Seorang anggota sidi menikah di catatan sipil tanpa pemberkatan gereja…", "Songon: …", "Example: A confirmed member married at the civil registry without a church blessing…"))}">${esc(RPP.q)}</textarea></label>
+        <button class="btn primary block">⚖️ ${esc(L3("Periksa menurut Juklak RPP", "Ida sian Juklak RPP", "Check against the Juklak RPP"))}</button></form>
+      <div id="rppAns">${RPP.last ? rppAnswer(RPP.last) : ""}</div>
+      ${hist.length ? `<h3 class="sec-h">${esc(L3("Pertanyaan sebelumnya (di HP ini)", "Na salpu", "Earlier questions (on this phone)"))}</h3><div class="card">${hist.map((h, i) => `<button class="li" data-act="rppHist" data-i="${i}"><span class="grow"><b>${esc(h.q.slice(0, 80))}${h.q.length > 80 ? "…" : ""}</b><small>${esc(rppVerdict(h.a.verdict)[1])} · ${esc(fmt(h.at, { day: "numeric", month: "short" }))}</small></span>${ic("chev", "chev")}</button>`).join("")}</div>` : ""}
+      <p class="small muted">${esc(L3("Jawaban dicari dari aturan di teks Juklak RPP HKBP (Dokumen Gereja), tanpa AI dan gratis. Ini bahan pertimbangan; keputusan tetap pada rapat Parhalado.", "Sian Juklak RPP HKBP. Keputusan di rapat Parhalado.", "Answers are matched from the rulings in the Juklak RPP HKBP text (Church Documents), free and without AI. They are guidance; the Parhalado meeting decides."))}</p>`, { back: "#/more", title: "RPP" });
+  }
+  setTimeout(async () => { const box = document.getElementById("rppList"); if (!box) return; try { RPP.list = await api.save("rpp_list", {}); } catch (e) { RPP.list = RPP.list || []; } rppPaint(); }, 0);
+  return shell("#/more", `${head}
+    <div class="row" style="gap:8px;margin:8px 0"><input type="search" id="rppFind" placeholder="${esc(L3("Cari nama…", "Lului goar…", "Search a name…"))}" autocomplete="off" style="flex:1"><button class="btn primary" data-act="rppEdit">${ic("plus")}</button></div>
+    <div id="rppList">${skel(3)}</div>`, { back: "#/more", title: "RPP" });
+};
+function rppPaint() {
+  const box = document.getElementById("rppList"); if (!box) return; const q = norm((document.getElementById("rppFind") || {}).value || "");
+  const l = (RPP.list || []).filter((x) => !q || norm(x.name + " " + (x.reason || "") + " " + (x.stage || "")).includes(q));
+  box.innerHTML = l.length ? `<div class="card">${l.map((x) => `<button class="li rpp-row" data-act="rppEdit" data-id="${x.id}"><span class="grow"><b>${esc(x.name)}</b><small>${esc([x.stage, x.reason].filter(Boolean).join(" · "))}${x.since ? " · " + esc(L3("sejak", "sian", "since")) + " " + esc(fmt(x.since, { day: "numeric", month: "short", year: "numeric" })) : ""}</small></span><span class="badge${x.status === "aktif" ? " warn" : ""}">${esc(x.status === "aktif" ? L3("Aktif", "Aktif", "Active") : L3("Selesai", "Nunga sae", "Ended"))}</span></button>`).join("")}</div>`
+    : empty(q ? L3("Tidak ditemukan.", "Ndang dapot.", "Nothing found.") : L3("Belum ada nama dalam daftar RPP.", "Ndang adong goar.", "No names on the RPP list."), "lock");
+}
+document.addEventListener("input", (e) => { if (e.target && e.target.id === "rppFind") rppPaint(); });
+A.rppEdit = (d) => {
+  const x = d.id ? (RPP.list || []).find((y) => y.id === d.id) : {};
+  sheet("⚖️ " + (d.id ? L3("Ubah", "Ubah", "Edit") : L3("Tambah nama", "Tambah goar", "Add a name")), `<form class="form" data-form="rppSave" data-id="${esc(d.id || "")}">
+    <label>${esc(L3("Nama", "Goar", "Name"))}<input name="name" list="rppPeople" required value="${esc(x.name || "")}"></label><datalist id="rppPeople">${(D.people || []).map((p) => `<option value="${esc(p.name)}">`).join("")}</datalist>
+    <label>${esc(L3("Tahap / sanksi", "Tingkatan", "Stage / sanction"))}<input name="stage" value="${esc(x.stage || "")}" placeholder="${esc(L3("mis. tahap pertama (menurut Juklak)", "", "e.g. first stage (per the Juklak)"))}"></label>
+    <label>${esc(L3("Perkara", "Perkara", "Matter"))}<textarea name="reason" rows="3">${esc(x.reason || "")}</textarea></label>
+    <div class="row two"><label>${esc(L3("Sejak", "Sian", "Since"))}<input type="date" name="since" value="${esc(x.since || "")}"></label><label>${esc(L3("Sampai", "Sahat tu", "Until"))}<input type="date" name="until" value="${esc(x.until || "")}"></label></div>
+    <label>${esc(L3("Status", "Status", "Status"))}<select name="status"><option value="aktif"${x.status !== "selesai" ? " selected" : ""}>${esc(L3("Aktif", "Aktif", "Active"))}</option><option value="selesai"${x.status === "selesai" ? " selected" : ""}>${esc(L3("Selesai / dipulihkan", "Nunga sae", "Ended / restored"))}</option></select></label>
+    <label>${esc(L3("Catatan pastoral", "Catatan", "Pastoral notes"))}<textarea name="notes" rows="3">${esc(x.notes || "")}</textarea></label>
+    <button class="btn primary block">${esc(t("save"))}</button>${d.id ? `<button type="button" class="btn danger block" data-act="rppDel" data-id="${esc(d.id)}">${ic("trash")} ${esc(t("delete"))}</button>` : ""}</form>`);
+};
+F.rppSave = async (f) => { const p = (D.people || []).find((y) => y.name === f.name.value.trim());
+  await api.save("rpp_save", { id: f.dataset.id || null, name: f.name.value.trim(), member_id: p ? p.id : null, stage: f.stage.value, reason: f.reason.value, since: f.since.value, until: f.until.value, status: f.status.value, notes: f.notes.value });
+  closeSheet(); RPP.list = await api.save("rpp_list", {}); rppPaint(); toast(t("saved")); throw Object.assign(new Error("noRender"), { silent: true }); };
+A.rppDel = async (d) => { await api.save("rpp_delete", { id: d.id }); closeSheet(); RPP.list = await api.save("rpp_list", {}); rppPaint(); };
+const rppVerdict = (v) => (v === "info" ? ["ℹ️", L3("Informasi aturan", "Informasi", "About the rules"), "maybe"] : v === "ya" ? ["⚠️", L3("Ya, ini pelanggaran RPP", "Olo, on do pangalaosion RPP", "Yes, this breaches the RPP"), "yes"] : v === "tidak" ? ["✅", L3("Tidak, ini bukan pelanggaran RPP", "Ndang, ndada pangalaosion RPP", "No, this is not a breach of the RPP"), "no"] : ["❔", L3("Tergantung · perlu pertimbangan", "Tergantung", "It depends"), "maybe"]);
+function rppAnswer(a) {
+  const [ic2, label, cls] = rppVerdict(a.verdict);
+  return `<article class="card rpp-ans ${cls}"><div class="rpp-v">${ic2} <b>${esc(label)}</b></div>${a.headline ? `<p class="rpp-h">${esc(a.headline)}</p>` : ""}
+    ${(a.explanation || []).map((p) => `<p>${esc(p)}</p>`).join("")}
+    ${(a.rules || []).length ? `<h4>📖 ${esc(L3("Dasar dari Juklak RPP", "Dasar sian Juklak", "Basis in the Juklak RPP"))}</h4>${a.rules.map((r) => `<div class="rpp-rule"><b>${esc(r.ref || "")}</b>${r.quote ? `<blockquote>“${esc(r.quote)}”</blockquote>` : ""}${r.meaning ? `<p>${esc(r.meaning)}</p>` : ""}</div>`).join("")}` : ""}
+    ${(a.steps || []).length ? `<h4>🧭 ${esc(L3("Langkah Parhalado", "Langka ni Parhalado", "Steps for the Parhalado"))}</h4><ol>${a.steps.map((s) => `<li>${esc(s)}</li>`).join("")}</ol>` : ""}
+    ${a.note ? `<p class="small muted">ℹ️ ${esc(a.note)}</p>` : ""}</article>`;
+}
+F.rppAsk = async (f) => {
+  const q = f.q.value.trim(); if (q.length < 10) throw new Error(L3("Tuliskan kasusnya lebih lengkap.", "Paboa ma kasusna lengkap.", "Please describe the case more fully."));
+  RPP.q = q; const box = document.getElementById("rppAns"); box.innerHTML = `<div class="card center pad">⏳ ${esc(L3("Mencari di Juklak RPP…", "Manglului di Juklak RPP…", "Searching the Juklak RPP…"))}</div>`;
+  try { const a = await freeRpp(q); RPP.last = a; box.innerHTML = rppAnswer(a);
+    const h = (LS.get("rppHist", []) || []).slice(0, 9); h.unshift({ q, a, at: new Date().toISOString() }); LS.set("rppHist", h); }
+  catch (e) { box.innerHTML = `<p class="warn">${esc(/claude|key|api/i.test(e.message || "") ? L3("Kunci Claude gereja tidak berlaku. Admin perlu memperbaruinya di Lainnya → Renungan Harian.", "Kunci Claude ni huria ndang tama.", "The church's Claude key isn't valid. The admin needs to update it in More → Settings.") : errMsg(e))}</p>`; }
+  throw Object.assign(new Error("noRender"), { silent: true });
+};
+A.rppHist = (d) => { const h = (LS.get("rppHist", []) || [])[+d.i]; if (!h) return; RPP.q = h.q; RPP.last = h.a; render(); };
+
+// ---------- Tarombo: the family tree of the Batak margas, expandable (YB 2026-10-30) ----------
+// Tarombo from the church's "Silsilah dan Tarombo Batak dari Si Raja Batak" (after W. Hutagalung and M.A. Marbun & I.M.T. Hutapea).
+// [name, note, children]; a plain string is a marga.
+const TAROMBO = ["Si Raja Batak", "Leluhur orang Batak, di Pusuk Buhit", [
+  ["Guru Tatea Bulan", "Golongan Bulan · hula-hula · marga Lontung", [
+    ["Raja Uti", "Si Raja Biak-biak / Raja Sigumeleng-geleng · tanpa keturunan", []],
+    ["Tuan Sariburaja", "keturunannya: Pasaribu", [
+      ["Si Raja Lontung", "Lontung Si Sia Marina · 7 putra, 2 putri (boru Sihombing & Simamora)", [
+        ["Tuan Situmorang", "", ["Situmorang", "Lumban Pande", "Lumban Nahor", "Suhutnihuta", "Siringoringo", "Sitohang", "Rumapea", "Padang", "Solin"]],
+        ["Sinaga Raja", "", ["Sinaga", "Simanjorang", "Simandalahi", "Barutu"]],
+        ["Pandiangan", "", ["Pandiangan", "Samosir", "Pakpahan", "Gultom", "Sidari", "Sitinjak", "Harianja"]],
+        ["Toga Nainggolan", "", ["Nainggolan", "Rumahombar", "Parhusip", "Lumban Tungkup", "Lumban Siantar", "Hutabalian", "Lumban Raja", "Pusuk", "Buaton", "Nahulae"]],
+        ["Simatupang", "", ["Simatupang", "Togatorop", "Sianturi", "Siburian"]],
+        ["Aritonang", "", ["Aritonang", "Ompu Sunggu", "Rajagukguk", "Simaremare"]],
+        ["Siregar", "", ["Siregar", "Silo", "Dongaran", "Silali", "Siagian", "Ritonga", "Sormin"]]]],
+      ["Si Raja Borbor", "dari Nai Margiring Laut · marga Borbor", [
+        ["Datu Taladibabana", "generasi keenam, 6 putra", [
+          ["Datu Dalu (Sahangmaima)", "", ["Pasaribu", "Batubara", "Habeahan", "Bondar", "Gorat", "Tinendang", "Tangkar", "Matondang", "Saruksuk", "Tarihoran", "Parapat", "Rangkuti"]],
+          ["Sipahutar", "", ["Sipahutar"]], ["Harahap", "", ["Harahap"]], ["Tanjung", "", ["Tanjung"]],
+          ["Datu Pulungan", "", ["Pulungan", "Lubis", "Hutasuhut"]], ["Simargolang", "", ["Imargolang"]]]]]],
+      ["Si Raja Babiat", "di Mandailing", ["Bayoangin"]]]],
+    ["Limbong Mulana", "", [["Limbong", "putra: Palu Onggang, Langgat Limbong", ["Limbong", "Sihole", "Habeahan"]]]],
+    ["Sagala Raja", "", ["Sagala"]],
+    ["Silau Raja", "", ["Malau", "Manik", ["Ambarita", "Lumban Pea · Lumban Pining", []], "Gurning"]]]],
+  ["Raja Isombaon", "Golongan Matahari · boru · marga Sumba", [
+    ["Tuan Sorimangaraja", "tinggal di Pusuk Buhit · 3 istri", [
+      ["Nai Ambaton", "Tuan Sorba Djulu / Ompu Raja Nabolon · Parna · Ruhut Bongbong: keturunannya tidak saling menikah", [
+        ["Simbolon Tua", "", ["Simbolon", "Tinambunan", "Tumanggor", "Maharaja", "Turutan", "Nahampun", "Pinayungan", "Berampu", "Pasi"]],
+        ["Tamba Tua", "", ["Tamba", "Siallagan", "Tomok", "Sidabutar", "Sijabat", "Gusar", "Siadari", "Sidabolak", "Rumahorbo", "Napitu"]],
+        ["Saragi Tua", "", ["Saragi", "Simalango", "Saing", "Simarmata", "Nadeak", "Sidabungke"]],
+        ["Munte Tua", "", ["Munte", "Dalimunte", "Sitanggang", "Manihuruk", "Sidauruk", "Turnip", "Sitio", "Sigalingging"]]]],
+      ["Nai Rasaon", "Tuan Sorba Jae / Raja Mangarerak", [
+        ["Raja Mardopang", "", ["Sitorus", "Pane", "Sirait", "Butar-butar"]],
+        ["Raja Mangatur", "Toga Manurung", ["Manurung"]]]],
+      ["Nai Suanon", "Tuan Sorbadibanua · 8 putra · lebih dari 100 marga", [
+        ["Si Bagot Ni Pohan", "", ["Pohan", "Tampubolon", "Barimbing", "Silaen", "Siahaan", "Simanjuntak", "Hutagaol", "Nasution", "Panjaitan", "Siagian", "Silitonga", "Sianipar", "Pardosi", "Simangunsong", "Marpaung", "Napitupulu", "Pardede"]],
+        ["Si Paet Tua", "", ["Hutahaean", "Hutajulu", "Aruan", "Sibarani", "Sibuea", "Sarumpaet", "Pangaribuan", "Hutapea"]],
+        ["Si Lahi Sabungan", "marga Silalahi", ["Silalahi", "Sihaloho", "Situngkir", "Sipangkar", "Sipayung", "Sirumasondi", "Rumasingap", "Depari", "Sidabutar", "Sidabariba", "Solia", "Sidebang", "Boliala", "Pintubatu", "Sigiro", "Tambunan", "Doloksaribu", "Sinurat", "Naiborhu", "Nadapdap", "Pagaraji", "Sunge", "Baruara", "Lumban Pea", "Lumban Gaol"]],
+        ["Si Raja Oloan", "", ["Naibaho", "Ujung", "Bintang", "Manik", "Angkat", "Hutadiri", "Sinamo", "Capa", "Sihotang", "Hasugian", "Mataniari", "Lingga", "Bangkara", "Sinambela", "Dairi", "Sihite", "Sileang", "Simanullang"]],
+        ["Si Raja Huta Lima", "", ["Maha", "Sambo", "Pardosi", "Sembiring Meliala"]],
+        ["Si Raja Sumba", "dari Boru Sibasopaet", ["Simamora", "Rambe", "Purba", "Manalu", "Debataraja", "Girsang", "Tambak", "Siboro", "Sihombing", "Silaban", "Lumban Toruan", "Nababan", "Hutasoit", "Sitindaon", "Binjori"]],
+        ["Si Raja Sobu", "dari Boru Sibasopaet", ["Sitompul", "Hasibuan", "Hutabarat", "Panggabean", "Hutagalung", "Hutatoruan", "Simorangkir", "Hutapea", "Lumban Tobing", "Mismis"]],
+        ["Toga Naipospos", "dari Boru Sibasopaet", ["Marbun", "Lumban Batu", "Banjarnahor", "Lumban Gaol", "Meha", "Mungkur", "Saraan", "Sibagariang", "Hutauruk", "Simanungkalit", "Situmeang"]]]]]]]],
+  ["Ompu Bada", "Sienemkodin · di tanah Dairi, bukan keturunan Si Raja Batak (menurut keturunannya)", ["Tendang", "Bunurea", "Manik", "Beringin", "Gajah", "Barasa"]]]];
+// Dongan sapadan: margas bound by a pact (padan) treat each other as dongan sabutuha and do not intermarry.
+const PADAN = [["Marbun", "Sihotang"], ["Panjaitan", "Simanullang"], ["Tampubolon", "Sitompul"], ["Sitorus", "Hutajulu"], ["Sitorus", "Hutahaean"], ["Sitorus", "Aruan"], ["Nahampun", "Situmorang"],
+  ["Banjarnahor", "Manalu"], ["Lumban Batu", "Purba"], ["Lumban Gaol", "Debataraja"]];
+const mnorm = (s) => norm(String(s || "").replace(/^(br\.?|boru)\s+/i, "")).replace(/\s+/g, "");
+const TARO_INDEX = (() => { const idx = {}; const walk = (n, path) => { if (typeof n === "string") { (idx[mnorm(n)] = idx[mnorm(n)] || []).push(path); return; } const p = [...path, n[0]]; n[2].forEach((c) => walk(c, p)); }; walk(TAROMBO, []); return idx; })();
+function taroFind(m) { const k = mnorm(m); if (!k) return null; if (TARO_INDEX[k]) return TARO_INDEX[k][0]; const hit = Object.keys(TARO_INDEX).find((x) => x === k.replace(/^lumban/, "") || "lumban" + x === k || x.endsWith(k) && k.length >= 4); return hit ? TARO_INDEX[hit][0] : null; }
+function taroRel(a, b) {
+  const pa = taroFind(a), pb = taroFind(b); if (!pa || !pb) return null;
+  if (mnorm(a) === mnorm(b)) return { kind: "same", text: L3("Satu marga: dongan tubu (semarga). Saling menganggap saudara kandung dan tidak boleh saling menikah.", "Sada marga: dongan tubu. Ndang boi marsiolian.", "The same marga: dongan tubu. Treated as siblings; they do not marry each other."), pa, pb };
+  const pad = PADAN.find(([x, y]) => [mnorm(x), mnorm(y)].includes(mnorm(a)) && [mnorm(x), mnorm(y)].includes(mnorm(b)));
+  if (pad) return { kind: "padan", text: L3(`Marpadan (dongan sapadan): ${pad[0]} dan ${pad[1]} terikat janji leluhur, saling menganggap dongan sabutuha dan tidak saling menikah.`, `Marpadan: ${pad[0]} dohot ${pad[1]}.`, `Marpadan: ${pad[0]} and ${pad[1]} are bound by an ancestral pact; they count as dongan sabutuha and do not intermarry.`), pa, pb };
+  let i = 0; while (i < pa.length && i < pb.length && pa[i] === pb[i]) i++; const lca = pa[i - 1];
+  if (/Nai Ambaton/.test(lca)) return { kind: "parna", text: L3(`Sama-sama keturunan ${lca} (Parna). Menurut Ruhut Bongbong, sesama keturunan Nai Ambaton tidak saling menikah dan saling menganggap dongan tubu.`, `Pomparan ni ${lca}.`, `Both descend from ${lca} (Parna). By the Ruhut Bongbong they do not intermarry and count as dongan tubu.`), pa, pb, lca };
+  if (i >= 4) return { kind: "close", text: L3(`Satu rumpun: sama-sama keturunan ${lca}. Biasanya disebut marhaha-maranggi (bersaudara). Untuk perkawinan, tanyakan tetua marga masing-masing.`, `Sada rumpun: pomparan ni ${lca}.`, `One family line: both descend from ${lca}, usually counted as marhaha-maranggi (brothers). Ask the marga elders about marriage.`), pa, pb, lca };
+  return { kind: "far", text: L3(`Berbeda rumpun (leluhur bersama: ${lca}). Panggilan ditentukan oleh hubungan lewat ibu dan pernikahan (Dalihan Na Tolu).`, `Asing rumpun (${lca}).`, `Different family lines (common ancestor: ${lca}). How you address each other follows the mother's side and marriages (Dalihan Na Tolu).`), pa, pb, lca };
+}
+const taroPath = (p, m) => `<p class="taro-path">${p.map((x) => `<span>${esc(x)}</span>`).join(" › ")} › <b>${esc(m)}</b></p>`;
+R.tarombo = () => {
+  const node = (n, depth) => { if (typeof n === "string") return `<li class="taro-m" data-n="${esc(mnorm(n))}"><span class="taro-chip">${esc(n)}</span></li>`;
+    const kids = n[2]; const margas = kids.filter((k) => typeof k === "string"), subs = kids.filter((k) => typeof k !== "string");
+    return `<li class="taro-n"><details${depth < 2 ? " open" : ""}><summary><b>${esc(n[0])}</b>${n[1] ? `<small>${esc(n[1])}</small>` : ""}${kids.length ? `<span class="taro-count">${countM(n)}</span>` : ""}</summary>
+      ${subs.length ? `<ul class="taro-tree">${subs.map((c) => node(c, depth + 1)).join("")}</ul>` : ""}${margas.length ? `<ul class="taro-margas">${margas.map((c) => node(c, depth + 1)).join("")}</ul>` : ""}</details></li>`; };
+  const countM = (n) => (typeof n === "string" ? 1 : n[2].reduce((s, c) => s + countM(c), 0));
+  return shell("#/more", `<h2 class="page-h">🌳 Tarombo</h2><p class="lead">${esc(L3("Silsilah marga Batak dari Si Raja Batak. Ketuk untuk membuka dan menutup cabang.", "Tarombo sian Si Raja Batak. Ketuk asa terbuka manang tertutup.", "The Batak margas from Si Raja Batak. Tap to open and close each branch."))}</p>
+    <div class="row" style="gap:8px;margin:8px 0"><input type="search" id="taroFind" list="taroMargas" placeholder="${esc(L3("Cari marga…", "Lului marga…", "Find a marga…"))}" autocomplete="off" style="flex:1"><button class="btn" data-act="taroAll" data-o="1">⊕</button><button class="btn" data-act="taroAll" data-o="0">⊖</button></div>
+    <datalist id="taroMargas">${(() => { const s = new Set(); const w = (n) => (typeof n === "string" ? s.add(n) : n[2].forEach(w)); w(TAROMBO); return [...s].sort().map((m) => `<option value="${esc(m)}">`).join(""); })()}</datalist>
+    <div id="taroHit"></div>
+    <ul class="taro-tree root">${node(TAROMBO, 0)}</ul>
+    <h3 class="sec-h">🤝 ${esc(L3("Dongan sapadan (marga yang terikat janji)", "Dongan sapadan", "Dongan sapadan (margas bound by a pact)"))}</h3>
+    <div class="card"><p class="small">${esc(L3("“Togu urat ni bulu, toguan urat ni padang; togu nidok ni uhum, toguan nidok ni padan.” Marga yang marpadan saling menganggap dongan sabutuha dan tidak saling menikah:", "Togu urat ni bulu, toguan urat ni padang; togu nidok ni uhum, toguan nidok ni padan.", "“Strong are the roots of bamboo, stronger the roots of grass; strong is the word of law, stronger the word of a pact.” Margas bound by a pact count as dongan sabutuha and do not intermarry:"))}</p>
+      <div class="chips">${PADAN.map(([a, b]) => `<span class="chip">${esc(a)} ⇄ ${esc(b)}</span>`).join("")}</div></div>
+    <p class="small muted">${esc(L3("Sumber: “Silsilah dan Tarombo Batak dari Si Raja Batak” (menurut W. Hutagalung; M.A. Marbun & I.M.T. Hutapea). Tarombo dapat berbeda menurut keluarga; tanyakan tetua marga Anda.", "Sian buku tarombo.", "Source: “Silsilah dan Tarombo Batak dari Si Raja Batak” (after W. Hutagalung; M.A. Marbun & I.M.T. Hutapea). Family records may differ; ask your marga elders."))}</p>`,
+    { back: "#/more", title: "Tarombo" });
+};
+document.addEventListener("input", (e) => { if (!e.target || e.target.id !== "taroFind") return; const k = mnorm(e.target.value); const hit = document.getElementById("taroHit");
+  document.querySelectorAll(".taro-m").forEach((li) => li.classList.toggle("hit", !!k && li.dataset.n === k));
+  const p = k.length >= 3 ? taroFind(e.target.value) : null;
+  if (p) { const target = [...document.querySelectorAll(".taro-m")].find((li) => li.dataset.n === mnorm(e.target.value)) || [...document.querySelectorAll(".taro-m")].find((li) => li.dataset.n.endsWith(k));
+    if (target) { let el = target.parentElement; while (el) { if (el.tagName === "DETAILS") el.open = true; el = el.parentElement; } target.classList.add("hit"); setTimeout(() => target.scrollIntoView({ block: "center", behavior: "smooth" }), 50); }
+    if (hit) hit.innerHTML = `<div class="card">${taroPath(p, e.target.value)}</div>`; } else if (hit) hit.innerHTML = ""; });
+A.taroAll = (d) => document.querySelectorAll(".taro-tree details").forEach((x) => (x.open = d.o === "1"));
+// Partuturan reference: who calls whom, including in-laws (from published guides to Batak Toba kinship terms).
+const TUTUR_REF = [
+  ["Amang / Inang", "Ayah / ibu; sapaan hormat untuk laki-laki / perempuan yang lebih tua.", "Father / mother; a respectful address for older men / women."],
+  ["Ompung", "Kakek atau nenek.", "Grandfather or grandmother."],
+  ["Amangtua / Inangtua", "Abang ayah dan istrinya; kakak perempuan ibu dan suaminya.", "Father's elder brother and his wife; mother's elder sister and her husband."],
+  ["Amanguda / Inanguda", "Adik laki-laki ayah dan istrinya; adik perempuan ibu dan suaminya.", "Father's younger brother and his wife; mother's younger sister and her husband."],
+  ["Namboru / Amangboru", "Saudari ayah (atau perempuan semarga ayah) dan suaminya.", "Father's sister (or a woman of father's marga) and her husband."],
+  ["Tulang / Nantulang", "Saudara laki-laki ibu (atau laki-laki semarga ibu) dan istrinya.", "Mother's brother (or a man of mother's marga) and his wife."],
+  ["Haha / Anggi", "Kakak / adik yang sejenis kelamin.", "Elder / younger sibling of the same sex."],
+  ["Ito (iboto)", "Saudara lawan jenis; juga sapaan sopan kepada lawan jenis.", "A sibling of the opposite sex; also a polite address to the opposite sex."],
+  ["Pariban", "Bagi laki-laki: putri tulang. Bagi perempuan: putra namboru.", "For a man: his tulang's daughter. For a woman: her namboru's son."],
+  ["Lae", "Laki-laki kepada ipar laki-laki, putra namboru, atau putra tulang.", "A man to his brother-in-law, his namboru's son or his tulang's son."],
+  ["Tunggane", "Laki-laki kepada saudara laki-laki istrinya.", "A man to his wife's brother."],
+  ["Eda", "Perempuan kepada ipar perempuan.", "A woman to her sister-in-law."],
+  ["Amangbao / Inangbao", "Perempuan kepada ipar laki-laki / laki-laki kepada ipar perempuan.", "A woman to her brother-in-law / a man to his sister-in-law."],
+  ["Simatua", "Mertua (simatua doli = bapak mertua, simatua boru = ibu mertua).", "Parents-in-law (simatua doli = father-in-law, simatua boru = mother-in-law)."],
+  ["Hela", "Menantu laki-laki.", "Son-in-law."],
+  ["Parumaen (maen)", "Menantu perempuan; juga putri ito (bagi perempuan) atau putri tunggane (bagi laki-laki).", "Daughter-in-law; also a sister's-brother's daughter."],
+  ["Bere / Ibebere", "Anak saudari kita (laki-laki / perempuan); semua yang ber-tulang kepada kita.", "Our sister's children (male / female); all who call us tulang."],
+  ["Pahompu", "Cucu.", "Grandchild."]];
+function tuturRefHtml() { return `<details class="card tutur-ref"><summary><b>📚 ${esc(L3("Kamus partuturan: siapa memanggil siapa", "Kamus partuturan", "Guide: who calls whom"))}</b></summary>
+  <div class="tref">${TUTUR_REF.map(([t1, idt, ent]) => `<div class="tref-r"><b>${esc(t1)}</b><span>${esc(lang === "en" ? ent : idt)}</span></div>`).join("")}</div></details>`; }
 // ---------- Liturgi: the liturgist's script, by week (YB 2026-10-30) ----------
 // In Jadwal for Parhalado (the pastor and the elders). Each service: welcome, songs (KJ / BN / BE, lyrics from the songbook library),
 // the Agenda texts, readings (fetched from SABDA: TB / Toba), and "berdiri / duduk" cues (the congregation stands for the last verse of
@@ -1088,7 +1516,7 @@ R.lit = (arg) => {
     setTimeout(async () => { const box = document.getElementById("litBox"); if (!box) return; const l = await litList(true); const td = today();
       const row = (x) => `<a class="li${x.day < td ? " past" : ""}" href="#/lit/${x.id}"><span class="date-chip"><b>${esc(fmt(x.day, { day: "numeric" }))}</b><small>${esc(fmt(x.day, { month: "short" }))}</small></span><span class="grow"><b>${esc(x.name)}</b><small>📜 ${esc(x.liturgist || "–")} · ${esc(x.lang === "bt" ? "Batak" : "Indonesia")} · ${x.songs} ${esc(L3("lagu", "ende", "songs"))}${x.draft ? " · " + esc(L3("draf", "draf", "draft")) : ""}</small></span>${ic("chev", "chev")}</a>`;
       const up = l.filter((x) => x.day >= td), past = l.filter((x) => x.day < td).reverse().slice(0, 6);
-      box.innerHTML = `${up.length ? `<div class="card">${up.map(row).join("")}</div>` : empty(L3("Belum ada naskah liturgi.", "Dang adong.", "No liturgy scripts yet."), "book")}${past.length ? `<h3 class="sec-h">${esc(L3("Sebelumnya", "Na salpu", "Earlier"))}</h3><div class="card">${past.map(row).join("")}</div>` : ""}`; }, 0);
+      box.innerHTML = `${up.length ? `<div class="card">${up.map(row).join("")}</div>` : empty(L3("Belum ada naskah liturgi.", "Ndang adong.", "No liturgy scripts yet."), "book")}${past.length ? `<h3 class="sec-h">${esc(L3("Sebelumnya", "Na salpu", "Earlier"))}</h3><div class="card">${past.map(row).join("")}</div>` : ""}`; }, 0);
     return shell("#/calendar", `${schedHead("lit")}<div id="litBox">${skel(4)}</div>`, {});
   }
   setTimeout(async () => { const box = document.getElementById("litBox"); if (!box) return;
@@ -1117,10 +1545,10 @@ function litScript(x) {
     n++;
     if (it.t === "song") { if (it.offering) offerNo++; const g = litSong(it); const vs = it.verses && it.verses.length ? ": " + it.verses.join(", ") : "";
       s.push(`<section class="card lit-it song"><p class="say"><b>${esc(lang === "bt" ? "Paragenda" : "Liturgis")}:</b> “${esc(litInvite(x, it, offerNo))}”</p>${litOfferNotes(x, it, offerNo) ? `<p class="muted small"><i>${esc(litOfferNotes(x, it, offerNo))}</i></p>` : ""}<h3><span class="lit-n">${n}</span> 🎵 ${esc(lang === "bt" ? "Marende" : "Bernyanyi")} ${esc(it.book)} ${it.num}${esc(vs)}${g.title ? ` · <i>${esc(g.title)}</i>` : ""}${it.offering ? ` <span class="badge">${esc(L3("persembahan", "pelean", "offering"))}</span>` : ""}</h3>
-        ${g.verses.length ? g.verses.map((v, k) => `${it.standLast && k === g.verses.length - 1 - (g.verses[g.verses.length - 1].n === "Reff" ? 1 : 0) ? `<div class="lit-cue stand">🧍 ${esc(lang === "bt" ? "Jongjong ma hita sude" : "Jemaat dimohon berdiri")}</div>` : ""}<div class="lit-v"><b>${esc(v.n)}</b><div>${v.lines.map((l) => `<p>${esc(l)}</p>`).join("")}</div></div>`).join("")
-          : `<p class="muted small">${esc(L3("Lirik belum ada di Sada.", "Lirik dang adong.", "Lyrics not in Sada yet."))}</p>${it.standLast ? `<div class="lit-cue stand">🧍 ${esc(lang === "bt" ? "Jongjong ma hita sude (ayat terakhir)" : "Jemaat dimohon berdiri (ayat terakhir)")}</div>` : ""}`}</section>`); return; }
+        ${g.verses.length ? g.verses.map((v, k) => `${it.standLast && k === g.verses.length - 1 - (g.verses[g.verses.length - 1].n === "Reff" ? 1 : 0) ? `<div class="lit-cue stand">🧍 ${esc(lang === "bt" ? "Jongjong ma hamu saluhutna." : "Jemaat dipersilakan berdiri.")}</div>` : ""}<div class="lit-v"><b>${esc(v.n)}</b><div>${v.lines.map((l) => `<p>${esc(l)}</p>`).join("")}</div></div>`).join("")
+          : `<p class="muted small">${esc(L3("Lirik belum ada di Sada.", "Lirik ndang adong dope.", "Lyrics not in Sada yet."))}</p>${it.standLast ? `<div class="lit-cue stand">🧍 ${esc(lang === "bt" ? "Jongjong ma hamu saluhutna (ayat parpudi)" : "Jemaat dipersilakan berdiri (ayat terakhir)")}</div>` : ""}`}</section>`); return; }
     if (it.t === "part") { s.push(`<section class="card lit-it"><h3><span class="lit-n">${n}</span> ${esc(it.title)}</h3>${it.lines.map((l) => litLine(l)).join("")}${it.after ? `<p class="muted small"><i>${esc(it.after)}</i></p>` : ""}</section>`); return; }
-    if (it.t === "reading") { s.push(`<section class="card lit-it reading"><h3><span class="lit-n">${n}</span> 📖 ${esc(it.title)}${it.ref ? ": " + esc(it.ref) : ""}</h3>${(it.intro || []).map(litLine).join("")}<div class="lit-bible" data-i="${i}">${it.ref ? skel(2) : `<p class="muted small">${esc(L3("Nas belum diisi.", "Dang diisi.", "Passage not set yet."))}</p>`}</div>${(it.close || []).map(litLine).join("")}</section>`); return; }
+    if (it.t === "reading") { s.push(`<section class="card lit-it reading"><h3><span class="lit-n">${n}</span> 📖 ${esc(it.title)}${it.ref ? ": " + esc(it.ref) : ""}</h3>${(it.intro || []).map(litLine).join("")}<div class="lit-bible" data-i="${i}">${it.ref ? skel(2) : `<p class="muted small">${esc(L3("Nas belum diisi.", "Ndang diisi dope.", "Passage not set yet."))}</p>`}</div>${(it.close || []).map(litLine).join("")}</section>`); return; }
     if (it.t === "note") { s.push(`<section class="card lit-it note"><h3><span class="lit-n">${n}</span> ${esc(it.title)}</h3>${it.say ? `<p class="say"><b>${esc(lang === "bt" ? "Paragenda" : "Liturgis")}:</b> ${esc(it.say)}</p>` : ""}${it.text ? `<p class="muted">${esc(it.text)}</p>` : ""}</section>`); }
   });
   return s.join("");
@@ -1132,7 +1560,7 @@ async function litPassage(ref, ver) {
   catch (e) { const c = cache && await cache.match(url); if (c) return (await c.json()).verses; throw e; }
 }
 function litReadings(x) { document.querySelectorAll(".lit-bible[data-i]").forEach(async (el) => { const it = x.items[+el.dataset.i]; if (!it.ref) return;
-  try { const vs = await litPassage(it.ref, it.ver); el.innerHTML = vs.map((v) => `<p><sup>${v.v}</sup>${esc(v.t)}</p>`).join(""); it._verses = vs; } catch (e) { el.innerHTML = `<p class="muted small">${esc(L3("Nas tidak bisa dimuat (internet?).", "", "Couldn't load the passage (internet?)."))}</p>`; } }); }
+  try { const vs = await litPassage(it.ref, it.ver); el.innerHTML = vs.map((v) => `<p><sup>${v.v}</sup>${esc(v.t)}</p>`).join(""); it._verses = vs; } catch (e) { el.innerHTML = `<p class="muted small">${esc(L3("Nas tidak dapat dimuat. Periksa koneksi internet.", "", "Couldn't load the passage (internet?)."))}</p>`; } }); }
 // Slides: the liturgist's teleprompter for the projector or a tablet.
 async function litDeck(x) {
   await songsLoad(false);
@@ -1152,8 +1580,8 @@ async function litDeck(x) {
     if (it.t === "song") { if (it.offering) offerNo++; const g = litSong(it); const vs = it.verses && it.verses.length ? ": " + it.verses.join(", ") : "";
       slide("song-t", `<p class="kick">${e(x.lang === "bt" ? "Marende" : "Bernyanyi")}${it.offering ? " · " + e(x.lang === "bt" ? "pelean" : "persembahan") : ""}</p><h1>${e(it.book)} ${it.num}${e(vs)}</h1>${g.title ? `<p class="sub">${e(g.title)}</p>` : ""}<p class="say1">“${e(litInvite(x, it, offerNo))}”</p>${litOfferNotes(x, it, offerNo) && offerNo === 1 ? `<p class="meta">${e(litOfferNotes(x, it, offerNo))}</p>` : ""}`);
       const lastIdx = g.verses.length - 1 - (g.verses.length && g.verses[g.verses.length - 1].n === "Reff" ? 1 : 0);
-      if (it.standLast && !g.verses.length) cue("stand", x.lang === "bt" ? "Jongjong ma hita sude" : "Jemaat dimohon berdiri");
-      g.verses.forEach((v, k) => { if (it.standLast && k === lastIdx) cue("stand", x.lang === "bt" ? "Jongjong ma hita sude" : "Jemaat dimohon berdiri");
+      if (it.standLast && !g.verses.length) cue("stand", x.lang === "bt" ? "Jongjong ma hamu saluhutna." : "Jemaat dipersilakan berdiri.");
+      g.verses.forEach((v, k) => { if (it.standLast && k === lastIdx) cue("stand", x.lang === "bt" ? "Jongjong ma hamu saluhutna." : "Jemaat dipersilakan berdiri.");
         slide("lyric", `<p class="vn">${e(v.n)}</p><div class="ly">${v.lines.map((l) => `<p>${e(l)}</p>`).join("")}</div>`); }); return; }
     if (it.t === "part") { pack(it.lines, it.title); if (it.after) slide("title sub", `<p class="meta">${e(it.after)}</p>`); return; }
     if (it.t === "reading") { slide("title sub", `<p class="kick">${e(it.title)}</p><h1>${e(it.ref || "")}</h1>`); pack([...(it.intro || []), ...((it._verses || []).map((v) => v.v + ". " + v.t)), ...(it.close || [])], it.title + (it.ref ? " · " + it.ref : "")); return; }
@@ -1175,7 +1603,7 @@ async function litDeck(x) {
   document.querySelector('.deck').addEventListener('click',function(e){var r=this.getBoundingClientRect();go(i+(e.clientX-r.left>r.width/3?1:-1))});var x0=null;document.addEventListener('touchstart',function(e){x0=e.touches[0].clientX},{passive:true});document.addEventListener('touchend',function(e){if(x0==null)return;var d=e.changedTouches[0].clientX-x0;if(Math.abs(d)>50)go(i+(d<0?1:-1));x0=null},{passive:true});
   document.getElementById('prev').onclick=function(e){e.stopPropagation();go(i-1)};document.getElementById('next').onclick=function(e){e.stopPropagation();go(i+1)};document.getElementById('fs').onclick=function(e){e.stopPropagation();var d=document.documentElement;(d.requestFullscreen||d.webkitRequestFullscreen||function(){}).call(d)};
   var t;function wake(){document.body.classList.remove('idle');clearTimeout(t);t=setTimeout(function(){document.body.classList.add('idle')},2500)}['mousemove','touchstart','keydown'].forEach(function(n){document.addEventListener(n,wake,{passive:true})});wake()})();`;
-  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${e(x.name)}</title><style>${css}</style></head><body><div class="stage"><div class="deck">${S.join("")}</div></div><div class="bar"><button id="prev">‹</button><span id="cnt"></span><button id="next">›</button><button id="fs">⛶</button></div><script>${js}<\/script></body></html>`;
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${e(x.name)}</title><style>${css}.xclose{position:fixed;top:max(10px,env(safe-area-inset-top));right:12px;z-index:20;border:0;border-radius:999px;background:rgba(180,35,24,.92);color:#fff;font:800 15px Arial;padding:9px 16px;box-shadow:0 4px 14px rgba(0,0,0,.35)}</style></head><body><button class="xclose" onclick="window.close()">✕ ${e(L3("Tutup", "Tutup", "Close"))}</button><div class="stage"><div class="deck">${S.join("")}</div></div><div class="bar"><button id="prev">‹</button><span id="cnt"></span><button id="next">›</button><button id="fs">⛶</button></div><script>${js}<\/script></body></html>`;
 }
 A.litSlides = async (d, btn) => { const x = LIT.cur; if (!x) return; const w = litOpenWin(L3("Menyiapkan slide", "Mamparade slide", "Preparing the slides"));
   if (!w) { toast(L3("Izinkan pop-up untuk Sada agar slide bisa dibuka di jendela baru.", "Izinkan pop-up.", "Allow pop-ups for Sada so the slides can open in a new window."), true); return; }
@@ -1195,9 +1623,9 @@ function litVerses(vs, lang) {
 function litInvite(x, it, offerNo) {
   const bt = x.lang === "bt"; const where = `${litBookName(it.book)} ${bt ? "nomor" : "nomor"} ${it.num}${it.verses && it.verses.length ? ", " + litVerses(it.verses, x.lang) : ""}`;
   const last = it.verses && it.verses.length ? it.verses[it.verses.length - 1] : null;
-  if (it.offering && offerNo === 1) return bt ? `Marende ma hita sian ${where}, huhut pasahathon pelean parjolo di inganta be.` : `Marilah kita bernyanyi dari ${where}, sambil kita menyampaikan persembahan pertama di tempat.`;
-  if (it.offering) return bt ? `Marende ma hita sian ${where}, huhut mamboan pelean paduahon tu jolo.` : `Marilah kita bernyanyi dari ${where}, sambil kita menyampaikan persembahan 2a dan 2b ke depan.`;
-  const stand = it.standLast && last ? (bt ? ` Di ayat ${last}, jongjong ma hita sude.` : ` Di ayat yang ke-${last} jemaat kami undang untuk berdiri.`) : "";
+  if (it.offering && offerNo === 1) return bt ? `Marende ma hita sian ${where}, huhut pasahathon pelean parjolo sian inganta be.` : `Mari kita bernyanyi dari ${where}, sambil menyampaikan persembahan pertama dari tempat duduk kita.`;
+  if (it.offering) return bt ? `Marende ma hita sian ${where}, huhut mamboan pelean paduahon tu jolo.` : `Mari kita bernyanyi dari ${where}, sambil membawa persembahan 2a dan 2b ke depan.`;
+  const stand = it.standLast && last ? (bt ? ` Di ayat ${last}, jongjong ma hamu saluhutna.` : ` Pada ayat ke-${last}, jemaat kami undang untuk berdiri.`) : "";
   return (bt ? `Marende ma hita sian ${where}.` : `Mari kita memuji Tuhan dari ${where}.`) + stand;
 }
 function litOfferNotes(x, it, offerNo) {
@@ -1237,7 +1665,7 @@ function litDocHtml(x) {
   h2{font-size:11.5pt;margin:16px 0 4px;font-weight:700}h2 .no{display:inline-block;min-width:22px}h2.u{text-decoration:underline}u{text-decoration:underline}
   p{margin:0 0 6px}.ind,.say,.sel,.dir,.cue,.resp,.body{margin-left:28px}.ind .say,.ind .sel,.ind .dir,.ind .resp,.ind .body,.ind .cue{margin-left:0}.say{color:#111}.say.b{font-weight:700}.sel{color:#2f5f9e;text-align:justify}
   .dir{color:#444;font-style:italic}.cue{font-weight:700;margin-top:6px}.hl{background:#00ffff}.music{margin:10px 0 10px 28px}.resp{margin-top:4px}
-  .bar{position:sticky;top:0;background:#f3f4f8;border-bottom:1px solid #ddd;padding:10px;display:flex;gap:8px;justify-content:flex-end;margin:-24px -24px 16px}.bar button{border:0;border-radius:10px;padding:8px 14px;font-weight:700;background:#2d2f7f;color:#fff;cursor:pointer}.bar button.alt{background:#fff;color:#2d2f7f;border:1px solid #2d2f7f}
+  .bar{position:sticky;top:0;background:#f3f4f8;border-bottom:1px solid #ddd;padding:10px;display:flex;gap:8px;justify-content:flex-end;margin:-24px -24px 16px;z-index:5}.bar button.x{background:#b42318}.bar button{border:0;border-radius:10px;padding:8px 14px;font-weight:700;background:#2d2f7f;color:#fff;cursor:pointer}.bar button.alt{background:#fff;color:#2d2f7f;border:1px solid #2d2f7f}
   @media print{.bar{display:none}body{padding:0}}`;
   return { body: out.join(""), css, title: `Liturgi ${x.day} ${x.name}` };
 }
@@ -1249,7 +1677,7 @@ A.litDoc = async (d, btn) => {
   const doc = litDocHtml(x); const fname = `Liturgi ${x.day} ${x.name}`.replace(/[^\w\- .]+/g, "").slice(0, 80);
   const wordHtml = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><title>${doc.title}</title><style>${doc.css.replace(/\.bar[^}]*}/g, "")}</style></head><body>${doc.body}</body></html>`;
   w.document.open(); w.document.write(`<!doctype html><html lang="${x.lang === "bt" ? "bbc" : "id"}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${doc.title}</title><style>${doc.css}</style></head><body>
-    <div class="bar"><button class="alt" onclick="window.print()">🖨 ${L3("Cetak / PDF", "Cetak", "Print / PDF")}</button><button id="dl">⬇ ${L3("Unduh Word", "Unduh Word", "Download Word")}</button></div>${doc.body}
+    <div class="bar"><button class="alt" onclick="window.print()">🖨 ${L3("Cetak / PDF", "Cetak", "Print / PDF")}</button><button id="dl">⬇ ${L3("Unduh Word", "Unduh Word", "Download Word")}</button><button class="x" onclick="window.close()" aria-label="Close">✕ ${L3("Tutup", "Tutup", "Close")}</button></div>${doc.body}
     <script>document.getElementById('dl').onclick=function(){var b=new Blob(['\\ufeff',${JSON.stringify(wordHtml).replace(/<\/script/gi, "<\\/script")}],{type:'application/msword'});var a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=${JSON.stringify(fname + ".doc")};document.body.appendChild(a);a.click();setTimeout(function(){URL.revokeObjectURL(a.href);a.remove()},1500)};<\/script></body></html>`);
   w.document.close();
 };
@@ -1298,7 +1726,7 @@ const lwbRe = () => { const y = window.scrollY; const box = document.getElementB
 A.lwbMove = (d) => { const a = LWB.x.items, i = +d.i, j = i + +d.d; if (j < 0 || j >= a.length) return; [a[i], a[j]] = [a[j], a[i]]; lwbRe(); };
 A.lwbDel = (d) => { LWB.x.items.splice(+d.i, 1); lwbRe(); };
 A.lwbAdd = () => { const k = (document.getElementById("lwbAdd") || {}).value || "song"; const lang = LWB.x.lang;
-  LWB.x.items.push(k === "song" ? { t: "song", book: lang === "bt" ? "BE" : "KJ", num: "", verses: [] } : k === "cue" ? { t: "cue", kind: "stand", text: lang === "bt" ? "Jongjong ma hita sude" : "Jemaat dimohon berdiri" } : k === "reading" ? { t: "reading", title: "Epistel", ref: "", ver: lang === "bt" ? "toba" : "tb", intro: [], close: [] } : { t: k, title: LWB_T[k][1], lines: [], text: "" }); lwbRe(); };
+  LWB.x.items.push(k === "song" ? { t: "song", book: lang === "bt" ? "BE" : "KJ", num: "", verses: [] } : k === "cue" ? { t: "cue", kind: "stand", text: lang === "bt" ? "Jongjong ma hamu saluhutna." : "Jemaat dipersilakan berdiri." } : k === "reading" ? { t: "reading", title: "Epistel", ref: "", ver: lang === "bt" ? "toba" : "tb", intro: [], close: [] } : { t: k, title: LWB_T[k][1], lines: [], text: "" }); lwbRe(); };
 A.lwbSave = async (d, btn) => { const x = LWB.x; x.items.forEach((it) => { if (it.t === "reading") it.ver = x.lang === "bt" ? "toba" : "tb"; delete it._verses; });
   try { const r = await busy(btn, () => api.save("lit_save", { ...x, draft: false })); x.id = r.id; LS.set("lit:" + r.id, null); toast(t("saved")); location.hash = "#/lit/" + r.id; } catch (e) { toast(errMsg(e), true); } };
 A.lwbCopy = async (d, btn) => { const x = JSON.parse(JSON.stringify(LWB.x)); delete x.id; const nd = new Date(x.day + "T12:00:00Z"); nd.setUTCDate(nd.getUTCDate() + 7); x.day = nd.toISOString().slice(0, 10); x.name = x.name + " (" + L3("salinan", "salinan", "copy") + ")";
@@ -1380,7 +1808,7 @@ function docTiles() {
   return Object.entries(DOC_META).filter(([slug, m]) => !m.restricted || isParhalado()).map(([slug, m]) => { const h = have[slug];
     const extra = `${m.restricted ? `<span class="doc-lock">🔒 Parhalado</span>` : ""}${D.me.is_admin ? `<button class="icon-btn doc-imp" data-act="docImport" data-slug="${slug}" aria-label="${esc(L3("Impor", "Impor", "Import"))}">📥</button>` : ""}`;
     return h ? tile("#/doc/" + slug, m.icon, m.title, L3(...m.sub) + ` · ${h.sections} ${L3("bagian", "bagian", "sections")}`, extra)
-      : `<div class="doc-tile off"><span class="doc-ic">${m.icon}</span><b>${esc(m.title)}</b><small>${esc(L3(...m.sub))} · ${esc(L3("belum diimpor", "dang diimpor dope", "not imported yet"))}</small>${extra}</div>`; }).join("");
+      : `<div class="doc-tile off"><span class="doc-ic">${m.icon}</span><b>${esc(m.title)}</b><small>${esc(L3(...m.sub))} · ${esc(L3("belum diimpor", "ndang diimpor dope", "not imported yet"))}</small>${extra}</div>`; }).join("");
 }
 R.doc = (arg) => {
   const slug = String(arg || "").split("?")[0]; const idx = new URLSearchParams(location.hash.split("?")[1] || "").get("i");
@@ -1388,12 +1816,12 @@ R.doc = (arg) => {
   if (m.restricted && !isParhalado()) { location.replace("#/library"); return ""; }
   setTimeout(async () => { const box = document.getElementById("docBox"); if (!box) return;
     try { const doc = await docLoad(slug, false); box.innerHTML = idx == null ? docToc(doc, slug) : docSection(doc, slug, +idx); }
-    catch (e) { box.innerHTML = empty(L3("Belum ada isi. Admin perlu mengimpornya dulu.", "Dang adong isi.", "No content yet. The admin needs to import it first."), "book"); } }, 0);
+    catch (e) { box.innerHTML = empty(L3("Belum ada isi. Admin perlu mengimpornya dulu.", "Ndang adong isi.", "No content yet. The admin needs to import it first."), "book"); } }, 0);
   return shell("#/library", `<div id="docBox">${skel(4)}</div>`, { back: idx == null ? "#/library" : "#/doc/" + slug, title: m.title, sub: L3(...m.sub) });
 };
 function docToc(doc, slug) {
   const secs = doc.sections || [];
-  return `<input type="search" id="docFind" data-slug="${slug}" placeholder="${esc(L3("Cari di buku ini…", "Bilang di buku on…", "Search this book…"))}" autocomplete="off"><div id="docHits"></div>
+  return `<input type="search" id="docFind" data-slug="${slug}" placeholder="${esc(L3("Cari di buku ini…", "Lului di buku on…", "Search this book…"))}" autocomplete="off"><div id="docHits"></div>
     <div class="card doc-toc">${secs.map((x, i) => `<a class="li lv${x.level}" href="#/doc/${slug}?i=${i}"><span class="grow"><b>${esc(x.title || L3("(tanpa judul)", "", "(untitled)"))}</b></span>${ic("chev", "chev")}</a>`).join("")}</div>`;
 }
 document.addEventListener("input", (e) => { const el = e.target; if (!el || el.id !== "docFind") return; const doc = DOCS.cache[el.dataset.slug]; const box = document.getElementById("docHits"); if (!doc || !box) return;
@@ -1407,7 +1835,7 @@ function docSection(doc, slug, i) {
   const parent = x.level === 2 ? secs.slice(0, i).reverse().find((y) => y.level === 1) : null;
   return `<div class="doc-head">${parent ? `<small class="muted">${esc(parent.title)}</small>` : ""}<h2>${esc(x.title)}</h2></div>
     <div class="doc-text" style="font-size:${fs}px">${x.lines.map((l) => (l ? docLine(l) : `<p class="gap"></p>`)).join("")}</div>
-    <div class="row two" style="margin-top:14px"><button class="btn" data-act="docFs" data-d="-1">A−</button><button class="btn" data-act="docFs" data-d="1">A+</button></div>
+    <div class="row" style="margin-top:14px;gap:8px"><button class="btn" data-act="docFs" data-d="-1">A−</button><button class="btn" data-act="docFs" data-d="1">A+</button>${speakBtn(".doc-text")}</div>
     ${m.slides ? `<button class="btn primary block" data-act="docSlides" data-slug="${slug}" data-i="${i}">📽 ${esc(L3("Tampilkan sebagai slide", "Patuduhon slide", "Show as slides"))}</button>` : ""}
     <div class="row two"><a class="btn${i > 0 ? "" : " off"}" href="#/doc/${slug}?i=${Math.max(0, i - 1)}">‹ ${esc(L3("Sebelumnya", "Na parjolo", "Previous"))}</a><a class="btn${i < secs.length - 1 ? "" : " off"}" href="#/doc/${slug}?i=${Math.min(secs.length - 1, i + 1)}">${esc(L3("Berikutnya", "Na mangihut", "Next"))} ›</a></div>`;
 }
@@ -1449,7 +1877,7 @@ A.docImport = (d) => {
   inp.onchange = async () => { const file = inp.files && inp.files[0]; if (!file) return;
     sheet("📥 " + m.title, `<p class="small muted">${esc(file.name)}</p><div class="rec-bar"><i id="impBar"></i></div><p class="small" id="impPct"></p>`);
     try { const text = /\.txt$/i.test(file.name) ? await file.text() : await pdfText(file, (p, n) => { const b = document.getElementById("impBar"); if (b) b.style.width = Math.round((p / n) * 100) + "%"; const e = document.getElementById("impPct"); if (e) e.textContent = `${p} / ${n}`; });
-      const secs = docFromText(text); if (!secs.length || secs.reduce((n, x) => n + x.lines.filter(Boolean).length, 0) < 20) throw new Error(L3("Teks tidak terbaca (berkas scan?)", "Ndang terbaca.", "No readable text (a scanned file?)"));
+      const secs = docFromText(text); if (!secs.length || secs.reduce((n, x) => n + x.lines.filter(Boolean).length, 0) < 20) throw new Error(L3("Teks tidak dapat dibaca (berkas hasil scan?)", "Ndang terbaca.", "No readable text (a scanned file?)"));
       const l1 = secs.filter((x) => x.level === 1);
       DOCS.pending = { slug: d.slug, secs };
       sheet("📥 " + m.title, `<p>${esc(L3(`${l1.length} bab, ${secs.length - l1.length} bagian, ${secs.reduce((n, x) => n + x.lines.filter(Boolean).length, 0)} baris teks.`, `${l1.length} bab.`, `${l1.length} chapters, ${secs.length - l1.length} sections, ${secs.reduce((n, x) => n + x.lines.filter(Boolean).length, 0)} lines of text.`))}</p>
@@ -1563,8 +1991,8 @@ async function bibLibPaint(ver) {
   const el = document.getElementById("bibLib"); if (!el) return;
   try { const r = await api.save("bible_stats", { version: ver }); BIB.lib = BIB.lib || {}; BIB.lib[ver] = r.chapters || [];
     const n = BIB.lib[ver].length;
-    el.innerHTML = `<div class="row between" style="margin:0;gap:10px"><span class="grow"><b>📚 ${n} ${esc(L3("pasal", "pasal", "chapters"))} ${esc(BIB_VERS[ver].short)} ${esc(L3("tersimpan di Sada", "di Sada", "kept in Sada"))}</b><small class="muted" style="display:block">${esc(L3("Bertambah setiap kali ada yang membaca atau mencari ayat.", "Tamba ganup marbaca.", "Grows every time someone reads or searches."))}</small></span>${n ? `<button class="btn sm" data-act="bibLibSave">📥 ${esc(L3("Simpan ke HP", "Simpan", "Save to phone"))}</button>` : ""}</div>`;
-  } catch (e) { el.innerHTML = `<small class="muted">${esc(L3("Perpustakaan Sada tidak bisa dibuka tanpa internet.", "", "Sada's library can't be reached without internet."))}</small>`; }
+    el.innerHTML = `<div class="row between" style="margin:0;gap:10px"><span class="grow"><b>📚 ${n} ${esc(L3("pasal", "pasal", "chapters"))} ${esc(BIB_VERS[ver].short)} ${esc(L3("tersimpan di Sada", "di Sada", "kept in Sada"))}</b><small class="muted" style="display:block">${esc(L3("Jumlahnya bertambah setiap kali ada yang membaca atau mencari ayat.", "Tamba ganup adong na manjaha manang manglului ayat.", "Grows every time someone reads or searches."))}</small></span>${n ? `<button class="btn sm" data-act="bibLibSave">📥 ${esc(L3("Simpan ke HP", "Simpan", "Save to phone"))}</button>` : ""}</div>`;
+  } catch (e) { el.innerHTML = `<small class="muted">${esc(L3("Perpustakaan Sada tidak dapat dibuka tanpa koneksi internet.", "", "Sada's library can't be reached without internet."))}</small>`; }
 }
 A.bibLibSave = async (d, btn) => {
   const ver = LS.get("bibVer", "tb"); const list = (BIB.lib && BIB.lib[ver]) || []; let ok = 0; btn.disabled = true;
@@ -1589,7 +2017,7 @@ F.bibSearch = async (f) => {
       <div class="row two"><button class="btn" data-act="bibCh" data-b="${j.book_id}" data-c="${verses[0].c}">📖 ${esc(L3("Buka pasal", "Bukka pasal", "Open the chapter"))}</button><a class="btn wa" href="${wa(`*${ref}* (${BIB_VERS[ver].short})\n${verses.map((v) => v.v + " " + v.t).join("\n")}`)}" target="_blank" rel="noopener">${ic("wa")} WhatsApp</a></div></div>`);
     if (!BIB_VERS[ver].kjv) bibLibPaint(ver);
   } catch (e) {
-    show(`<p class="warn small">${esc(e.code === "bad_ref" ? L3("Ayat tidak dikenali. Contoh: Yoh 3:16, Mazmur 23, Roma 8:28-39.", "Ndang tartanda. Songon: Joh 3:16.", "Not recognised. For example: John 3:16, Psalm 23, Romans 8:28-39.") : e.code === "not_found" ? L3("Ayat itu tidak ada.", "Ndang adong.", "That passage doesn't exist.") : e.code === "kjv" ? L3("Unduh KJV dulu (tombol di bawah).", "Unduh KJV.", "Download the KJV first (button below).") : L3("Tidak ada internet, dan ayat ini belum tersimpan.", "Ndang adong internet.", "No internet, and this passage isn't saved yet."))}</p>`);
+    show(`<p class="warn small">${esc(e.code === "bad_ref" ? L3("Ayat tidak dikenali. Contoh: Yoh 3:16, Mazmur 23, Roma 8:28-39.", "Ndang tartanda. Songon: Joh 3:16.", "Not recognised. For example: John 3:16, Psalm 23, Romans 8:28-39.") : e.code === "not_found" ? L3("Ayat tersebut tidak ditemukan.", "Ndang adong.", "That passage doesn't exist.") : e.code === "kjv" ? L3("Unduh KJV dulu (tombol di bawah).", "Unduh KJV.", "Download the KJV first (button below).") : L3("Tidak ada koneksi internet, dan ayat ini belum tersimpan.", "Ndang adong internet.", "No internet, and this passage isn't saved yet."))}</p>`);
   }
 };
 try { document.head.insertAdjacentHTML("beforeend", `<style>
@@ -1696,11 +2124,11 @@ function songListPaint(sec) {
   const qv = norm((document.getElementById("songFind") || {}).value || "");
   const list = (SONGS.list || []).filter((x) => x.b === sec).filter((x) => !qv || String(x.n) === qv || norm((x.t || "") + " " + Object.values(x.v || {}).flat().slice(0, 4).join(" ")).includes(qv));
   const numQ = /^\d{1,4}$/.test(qv) && !list.some((x) => String(x.n) === qv);
-  const ask = numQ ? `<div class="card song-miss"><b>${esc((SONG_BOOKS[sec] || [sec])[0])} ${qv} ${esc(L3("belum ada di Sada", "dang adong di Sada", "isn't in Sada yet"))}</b>
-    <div class="row two"><a class="btn" href="https://www.google.com/search?q=${encodeURIComponent((SONG_BOOKS[sec] || [sec])[0] + " " + qv)}" target="_blank" rel="noopener">🔎 ${esc(L3("Cari di internet", "Bilang di internet", "Search the internet"))}</a>${canSongs() ? `<button class="btn primary" data-act="songEdit" data-book="${sec}" data-num="${qv}">➕ ${esc(L3("Tambahkan ke Sada", "Tambahkon", "Add to Sada"))}</button>` : ""}</div></div>` : "";
+  const ask = numQ ? `<div class="card song-miss"><b>${esc((SONG_BOOKS[sec] || [sec])[0])} ${qv} ${esc(L3("belum ada di Sada", "ndang adong dope di Sada", "isn't in Sada yet"))}</b>
+    <div class="row two"><a class="btn" href="https://www.google.com/search?q=${encodeURIComponent((SONG_BOOKS[sec] || [sec])[0] + " " + qv)}" target="_blank" rel="noopener">🔎 ${esc(L3("Cari di internet", "Lului di internet", "Search the internet"))}</a>${canSongs() ? `<button class="btn primary" data-act="songEdit" data-book="${sec}" data-num="${qv}">➕ ${esc(L3("Tambahkan ke Sada", "Tambahkon", "Add to Sada"))}</button>` : ""}</div></div>` : "";
   box.innerHTML = ask + (list.length ? `<div class="card song-list">${list.map((x) => { const first = (Object.values(x.v || {})[0] || [])[0] || "";
     return `<a class="li" href="#/song/${encodeURIComponent(x.k)}"><span class="song-no">${x.n != null ? x.n : "♪"}</span><span class="grow"><b>${esc(x.t || first || x.k)}</b><small>${esc(first)}</small></span>${ic("chev", "chev")}</a>`; }).join("")}</div>`
-    : numQ ? "" : empty(qv ? L3("Tidak ditemukan.", "Ndang dapot.", "Nothing found.") : L3("Belum ada lagu di buku ini. Lagu muncul setelah dicetak di Tata Ibadah.", "Dang adong dope.", "No songs in this book yet. Songs appear once they are printed in a Tata Ibadah."), "book"));
+    : numQ ? "" : empty(qv ? L3("Tidak ditemukan.", "Ndang dapot.", "Nothing found.") : L3("Belum ada lagu di buku ini. Lagu muncul setelah dicetak di Tata Ibadah.", "Ndang adong dope.", "No songs in this book yet. Songs appear once they are printed in a Tata Ibadah."), "book"));
 }
 document.addEventListener("input", (e) => { if (e.target && e.target.id === "songFind") songListPaint(LS.get("libSec", "KJ")); });
 R.song = (key) => {
@@ -1744,11 +2172,11 @@ async function bibPaint() {
   const b = LS.get("bibB", 19), c = LS.get("bibC", 23), fs = LS.get("bibFs", 19);
   const kjvReady = !!(await bibCache() && await (await bibCache()).match(KJV_URL));
   box.innerHTML = `<div class="chips bib-vers">${Object.entries(BIB_VERS).map(([k, v]) => `<button class="chip${k === ver ? " on" : ""}" data-act="bibVer" data-v="${k}">${esc(v.short)}${v.kjv && !kjvReady ? " ⬇" : ""}</button>`).join("")}</div>
-    <form class="bib-search" data-form="bibSearch"><input name="q" type="search" placeholder="${esc(L3("Cari ayat: Yoh 3:16, Mazmur 23, Roma 8:28-39", "Bilang ayat: Joh 3:16", "Find a passage: John 3:16, Psalm 23, Romans 8:28-39"))}" autocomplete="off" enterkeyhint="search"><button class="btn primary" aria-label="${esc(t("search"))}">${ic("search")}</button></form>
+    <form class="bib-search" data-form="bibSearch"><input name="q" type="search" placeholder="${esc(L3("Cari ayat: Yoh 3:16, Mazmur 23, Roma 8:28-39", "Lului ayat: Joh 3:16", "Find a passage: John 3:16, Psalm 23, Romans 8:28-39"))}" autocomplete="off" enterkeyhint="search"><button class="btn primary" aria-label="${esc(t("search"))}">${ic("search")}</button></form>
     <div id="bibHit"></div>
     <div class="bib-nav"><button class="icon-btn" data-act="bibGo" data-d="-1" aria-label="${esc(L3("Pasal sebelumnya", "Na parjolo", "Previous chapter"))}">‹</button><button class="bib-ref" data-act="bibPick">${esc(bibName(ver, b))} ${c} ▾</button><button class="icon-btn" data-act="bibGo" data-d="1" aria-label="${esc(L3("Pasal berikutnya", "Na mangihut", "Next chapter"))}">›</button></div>
     <div id="bibText" class="bib-text" style="font-size:${fs}px">${skel(4)}</div>
-    <div class="row two" style="margin-top:12px"><button class="btn" data-act="bibFs" data-d="-1">A−</button><button class="btn" data-act="bibFs" data-d="1">A+</button></div>
+    <div class="row" style="margin-top:12px;gap:8px"><button class="btn" data-act="bibFs" data-d="-1">A−</button><button class="btn" data-act="bibFs" data-d="1">A+</button>${speakBtn("#bibText")}</div>
     ${BIB_VERS[ver].kjv ? "" : `<div class="card bib-lib" id="bibLib"><small class="muted">${esc(L3("Menghitung pasal di Sada…", "", "Counting chapters in Sada…"))}</small></div>`}
     ${BIB_VERS[ver].kjv ? "" : `<button class="btn ghost block" data-act="bibBook">📥 ${esc(L3(`Simpan seluruh ${bibName(ver, b)} untuk offline`, "Simpan offline", `Save all of ${bibName(ver, b)} for offline`))}</button>`}
     <p class="small muted">${esc(BIB_VERS[ver].name)} · ${esc(BIB_VERS[ver].kjv ? L3("domain publik, tersimpan di HP", "", "public domain, kept on your phone") : L3("dari alkitab.sabda.org; pasal yang dibaca tersimpan untuk offline", "", "from alkitab.sabda.org; chapters you read are kept for offline"))}</p>`;
@@ -1758,7 +2186,7 @@ async function bibPaint() {
   try { const r = await bibChapter(ver, b, c);
     if (r.need === "kjv") { tx.innerHTML = `<div class="card center pad"><p>${esc(L3("King James Version bisa diunduh sekali (± 4 MB) lalu dibaca tanpa internet.", "", "The King James Version downloads once (about 4 MB), then works without internet."))}</p><button class="btn primary" data-act="bibKjv">⬇ ${esc(L3("Unduh KJV", "Unduh KJV", "Download the KJV"))}</button></div>`; return; }
     tx.innerHTML = `<h2 class="bib-h">${esc(bibName(ver, b))} ${c}${r.offline ? ` <span class="badge">${esc(L3("offline", "offline", "offline"))}</span>` : ""}</h2>` + r.verses.map((v) => `<p><sup>${v.v}</sup>${esc(v.t)}</p>`).join("");
-  } catch (e) { tx.innerHTML = `<p class="warn">${esc(L3("Pasal ini belum tersimpan dan tidak ada internet.", "Dang tarsimpan.", "This chapter isn't saved yet and there's no internet."))}</p>`; }
+  } catch (e) { tx.innerHTML = `<p class="warn">${esc(L3("Pasal ini belum tersimpan dan tidak ada koneksi internet.", "Ndang tarsimpan dope.", "This chapter isn't saved yet and there's no internet."))}</p>`; }
 }
 A.bibVer = (d) => { LS.set("bibVer", d.v); bibPaint(); };
 A.bibFs = (d) => { const v = Math.max(14, Math.min(34, LS.get("bibFs", 19) + +d.d)); LS.set("bibFs", v); const el = document.getElementById("bibText"); if (el) el.style.fontSize = v + "px"; };
@@ -1769,7 +2197,7 @@ A.bibPick = () => { const ver = LS.get("bibVer", "tb");
 A.bibBk = (d) => { const b = +d.b, ver = LS.get("bibVer", "tb");
   sheet(bibName(ver, b), `<div class="bib-chs">${Array.from({ length: BIB_CH[b - 1] }, (_, i) => `<button class="bib-ch" data-act="bibCh" data-b="${b}" data-c="${i + 1}">${i + 1}</button>`).join("")}</div>`); };
 A.bibCh = (d) => { BIB.hit = null; LS.set("bibB", +d.b); LS.set("bibC", +d.c); closeSheet(); bibPaint(); window.scrollTo(0, 0); };
-A.bibKjv = async (d, btn) => { try { await busy(btn, () => kjvLoad(true)); toast(L3("KJV tersimpan untuk offline.", "Tarsimpan.", "The KJV is saved for offline use.")); bibPaint(); } catch (e) { toast(L3("Gagal mengunduh. Periksa internet.", "Gagal.", "Download failed. Check the internet."), true); } };
+A.bibKjv = async (d, btn) => { try { await busy(btn, () => kjvLoad(true)); toast(L3("KJV tersimpan untuk offline.", "Tarsimpan.", "The KJV is saved for offline use.")); bibPaint(); } catch (e) { toast(L3("Gagal mengunduh. Periksa koneksi internet.", "Gagal.", "Download failed. Check the internet."), true); } };
 A.bibBook = async (d, btn) => { const ver = LS.get("bibVer", "tb"), b = LS.get("bibB", 19), n = BIB_CH[b - 1]; let ok = 0; btn.disabled = true;
   for (let c = 1; c <= n; c++) { try { await bibChapter(ver, b, c); ok++; } catch (e) {} btn.textContent = `📥 ${ok} / ${n}`; }
   btn.disabled = false; toast(L3(`${bibName(ver, b)}: ${ok} dari ${n} pasal tersimpan untuk offline.`, `${ok}/${n} tarsimpan.`, `${bibName(ver, b)}: ${ok} of ${n} chapters saved for offline.`)); bibPaint(); };
@@ -1797,19 +2225,19 @@ R.access = () => {
   if (!isYB()) { location.replace("#/more"); return ""; }
   const people = (D.people || []).slice().sort((a, b) => a.name.localeCompare(b.name));
   const roleOrder = (r) => ["chair", "ychair", "maker", "tmaker", "ytreasurer", "ysecretary", "teacher", "member"].indexOf(r) + 1 || 9;
-  const row = (p, r) => `<div class="li acc-p" data-n="${esc(norm(p.name + " " + (p.alias || "")))}">${avatarOf(p)}<span class="grow"><b>${esc(p.name)}</b>${r ? `<small><span class="badge${r !== "member" ? " gold" : ""}">${esc(ROLE_NAMES[r] || r)}</span></small>` : ""}</span><button class="icon-btn" data-act="viewAs" data-id="${p.id}" aria-label="${esc(L3("Lihat sebagai", "Lihat sebagai", "View as"))} ${esc(p.name)}">👁</button></div>`;
+  const row = (p, r) => `<div class="li acc-p" data-n="${esc(norm(p.name + " " + (p.alias || "")))}">${avatarOf(p)}<span class="grow"><b>${esc(p.name)}</b>${r ? `<small><span class="badge${r !== "member" ? " gold" : ""}">${esc(ROLE_NAMES[r] || r)}</span></small>` : ""}</span><button class="icon-btn" data-act="viewAs" data-id="${p.id}" aria-label="${esc(L3("Lihat sebagai", "Ida songon", "View as"))} ${esc(p.name)}">👁</button></div>`;
   const kinds = ["sermon", "service", "office"].map((k) => {
     const gs = (D.groups || []).filter((g) => g.kind === k); if (!gs.length) return "";
     return `<h3 class="sec-h">${esc(L3(...KIND_NAMES[k]))}</h3><div class="acc-grid">${gs.map((g) => {
       const ms = people.filter((p) => g.id in (p.groups || {})).sort((a, b) => roleOrder(a.groups[g.id]) - roleOrder(b.groups[g.id]) || a.name.localeCompare(b.name));
       const lead = ms.filter((p) => p.groups[g.id] !== "member").length;
       return `<details class="card acc-g" style="--gc:${g.color || "var(--brand)"}"><summary><span class="gicon">${ic(g.icon || "people")}</span><span class="grow"><b>${esc(gname(g))}</b><small>${ms.length} ${esc(L3("anggota", "ruas", "members"))} · ${lead} ${esc(L3("pengurus/maker", "pengurus", "leaders/makers"))}</small></span></summary>
-        ${ms.length ? ms.map((p) => row(p, p.groups[g.id])).join("") : `<p class="muted small">${esc(L3("Belum ada anggota.", "Dang adong.", "No members yet."))}</p>`}</details>`; }).join("")}</div>`;
+        ${ms.length ? ms.map((p) => row(p, p.groups[g.id])).join("") : `<p class="muted small">${esc(L3("Belum ada anggota.", "Ndang adong.", "No members yet."))}</p>`}</details>`; }).join("")}</div>`;
   }).join("");
   const none = people.filter((p) => !Object.keys(p.groups || {}).length);
   return shell("#/more", `<h2 class="page-h">🔐 ${esc(L3("Akses & tampilan", "Akses", "Access & views"))}</h2>
-    <p class="lead">${esc(L3("Buka kategori atau seksi untuk melihat siapa anggotanya dan perannya. Ketuk 👁 untuk melihat Sada persis seperti yang dilihat anggota itu (data aslinya dari server). Selama melihat, tidak ada yang bisa disimpan.", "Lihat sebagai anggota.", "Open a category or section to see its members and roles. Tap 👁 to see Sada exactly as that member sees it (their real data from the server). While viewing, nothing can be saved."))}</p>
-    <input type="search" id="accFind" placeholder="${esc(L3("Cari anggota…", "Bilang…", "Find a member…"))}" autocomplete="off">
+    <p class="lead">${esc(L3("Buka kategori atau seksi untuk melihat siapa anggotanya dan perannya. Ketuk 👁 untuk melihat Sada persis seperti yang dilihat anggota itu (data aslinya dari server). Selama melihat, tidak ada yang bisa disimpan.", "Ida songon ruas.", "Open a category or section to see its members and roles. Tap 👁 to see Sada exactly as that member sees it (their real data from the server). While viewing, nothing can be saved."))}</p>
+    <input type="search" id="accFind" placeholder="${esc(L3("Cari anggota…", "Lului…", "Find a member…"))}" autocomplete="off">
     <div class="card acc-hits" id="accHits" hidden></div>
     ${kinds}
     ${none.length ? `<h3 class="sec-h">${esc(L3("Tanpa kategori", "Ndang adong", "In no group"))}</h3><div class="card">${none.map((p) => row(p, "")).join("")}</div>` : ""}`,
@@ -1830,8 +2258,8 @@ A.viewAs = async (d, btn) => {
     api = new Proxy(VIEWAS.api, { get(t, k) {
       if (k === "data") return () => Promise.resolve(VIEWAS.data);
       if (k === "ping") return () => Promise.resolve();
-      if (k === "save") return (kind, body) => (["chat_list", "ss_html", "ai_get"].includes(kind) ? t.save(kind, body) : Promise.reject(Object.assign(new Error(L3("Mode lihat saja: tidak bisa menyimpan.", "Lihat saja.", "View-only: nothing can be saved.")), { viewOnly: true })));
-      if (readOnly.has(k)) return () => Promise.reject(Object.assign(new Error(L3("Mode lihat saja: tidak bisa menyimpan.", "Lihat saja.", "View-only: nothing can be saved.")), { viewOnly: true }));
+      if (k === "save") return (kind, body) => (["chat_list", "ss_html", "ai_get"].includes(kind) ? t.save(kind, body) : Promise.reject(Object.assign(new Error(L3("Mode lihat saja: perubahan tidak dapat disimpan.", "Ida sambing.", "View-only: nothing can be saved.")), { viewOnly: true })));
+      if (readOnly.has(k)) return () => Promise.reject(Object.assign(new Error(L3("Mode lihat saja: perubahan tidak dapat disimpan.", "Ida sambing.", "View-only: nothing can be saved.")), { viewOnly: true }));
       const v = t[k]; return typeof v === "function" ? v.bind(t) : v; } });
     D = data; viewAsBar(); closeSheet(); location.hash = "#/home"; render();
   } catch (e) { toast(e.message || errMsg(e), true); }
@@ -1842,7 +2270,7 @@ function viewAsBar() {
   if (!VIEWAS.on) { if (el) el.remove(); document.body.classList.remove("viewing-as"); return; }
   if (!el) { el = document.createElement("div"); el.id = "viewAsBar"; document.body.appendChild(el); }
   document.body.classList.add("viewing-as");
-  el.innerHTML = `<span>👁 ${esc(L3("Melihat sebagai", "Lihat sebagai", "Viewing as"))} <b>${esc(VIEWAS.name)}</b></span><button data-act="viewAsExit">${esc(L3("Keluar", "Kaluar", "Exit"))}</button>`;
+  el.innerHTML = `<span>👁 ${esc(L3("Melihat sebagai", "Ida songon", "Viewing as"))} <b>${esc(VIEWAS.name)}</b></span><button data-act="viewAsExit">${esc(L3("Keluar", "Kaluar", "Exit"))}</button>`;
 }
 try { document.head.insertAdjacentHTML("beforeend", `<style>
   .acc-grid { display: grid; gap: 10px; } @media (min-width: 900px) { .acc-grid { grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); align-items: start; } }
@@ -1881,7 +2309,7 @@ function pushGate() {
   if (el.dataset.state !== (denied ? "denied" : "default") + lang) { el.dataset.state = (denied ? "denied" : "default") + lang; el.innerHTML = html; }
 }
 A.pushGateOn = async (d, btn) => { btn.disabled = true; try { await enableNotifications(btn); } finally { btn.disabled = false; } pushGate(); };
-A.pushGateCheck = () => { pushGate(); if (pushGateOn()) toast(L3("Notifikasi masih mati.", "Dang hidup dope.", "Notifications are still off."), true); };
+A.pushGateCheck = () => { pushGate(); if (pushGateOn()) toast(L3("Notifikasi masih mati.", "Ndang hidup dope.", "Notifications are still off."), true); };
 document.addEventListener("visibilitychange", () => { if (!document.hidden) pushGate(); });
 setInterval(pushGate, 3000); setTimeout(pushGate, 300);
 try { document.head.insertAdjacentHTML("beforeend", `<style>
@@ -1910,11 +2338,11 @@ function notifyNeeded() {
 function notifyPrompt() {
   const ios = /iP(hone|ad)/.test(navigator.userAgent);
   if (!("Notification" in window)) { LS.set("notifyAskedDay", today());
-    return sheet("🔔 " + L3("Pasang Sada di HP", "Pasang Sada", "Install Sada on your phone"), `<p>${esc(L3("Agar menerima notifikasi (jadwal pelayanan, renungan, ulang tahun, chat), pasang Sada di Layar Utama:", "Asa dapot notifikasi, pasang Sada:", "To get notifications (duties, devotions, birthdays, chat), add Sada to your Home Screen:"))}</p>
+    return sheet("🔔 " + L3("Pasang Sada di HP", "Pasang Sada", "Install Sada on your phone"), `<p>${esc(L3("Agar dapat menerima notifikasi (jadwal pelayanan, renungan, ulang tahun, chat), pasang Sada di Layar Utama:", "Asa dapot notifikasi, pasang Sada:", "To get notifications (duties, devotions, birthdays, chat), add Sada to your Home Screen:"))}</p>
       <ol class="small"><li>${esc(L3("Ketuk tombol Bagikan (kotak dengan panah) di Safari", "Ketuk Bagikan", "Tap the Share button (square with an arrow) in Safari"))}</li><li>${esc(L3("Pilih “Tambahkan ke Layar Utama”", "Pilih “Add to Home Screen”", "Choose “Add to Home Screen”"))}</li><li>${esc(L3("Buka Sada dari ikon baru itu dan izinkan notifikasi", "Bukka sian ikon", "Open Sada from the new icon and allow notifications"))}</li></ol>
       <button class="btn primary block" data-act="closeSheet">${esc(L3("Mengerti", "Olo", "Got it"))}</button>`); }
   if (Notification.permission === "denied") { LS.set("notifyDeniedAt", Date.now());
-    return sheet("🔕 " + L3("Notifikasi diblokir", "Notifikasi diblokir", "Notifications are blocked"), `<p>${esc(L3("Anda tidak akan menerima jadwal pelayanan, renungan dan pengumuman. Untuk menyalakannya lagi:", "Asa mangkalahon:", "You won't get duty reminders, devotions or announcements. To switch them back on:"))}</p>
+    return sheet("🔕 " + L3("Notifikasi diblokir", "Notifikasi diblokir", "Notifications are blocked"), `<p>${esc(L3("Anda tidak akan menerima jadwal pelayanan, renungan dan pengumuman. Untuk menyalakannya lagi:", "Asa dipasangkon muse:", "You won't get duty reminders, devotions or announcements. To switch them back on:"))}</p>
       <p class="small"><b>iPhone:</b> ${esc(L3("Pengaturan → Notifikasi → Sada HKBPS → Izinkan Notifikasi", "Pengaturan → Notifikasi → Sada HKBPS", "Settings → Notifications → Sada HKBPS → Allow Notifications"))}<br><b>Android / ${esc(L3("komputer", "komputer", "computer"))}:</b> ${esc(L3("ketuk ikon gembok di samping alamat situs → Notifikasi → Izinkan", "gembok → Notifikasi → Izinkan", "tap the lock icon next to the address → Notifications → Allow"))}</p>
       <button class="btn primary block" data-act="closeSheet">${esc(L3("Mengerti", "Olo", "Got it"))}</button>`); }
   LS.set("notifyAskedDay", today());
@@ -2086,7 +2514,7 @@ function ssList() {
   const list = D.ss_decks || []; const mk = !!D.ss_maker && manage();
   return `${mk ? `<a class="btn primary block" href="#/sswb">🎨 ${esc(L3("Buka workbench slide Sekolah Minggu", "Bukka workbench", "Open the Sunday School slide workbench"))}</a>` : ""}
     ${list.length ? `<div class="card">${list.map((x) => `<a class="li" href="#/ssdeck/${x.id}"><span class="date-chip"><b>${esc(fmt(x.day, { day: "numeric" }))}</b><small>${esc(fmt(x.day, { month: "short" }))}</small></span><span class="grow"><b>${esc(x.title || "Sunday School")}</b><small>${esc(SS_LANGS[x.lang] || x.lang)} · ${esc(x.by || "")}</small></span>${ic("chev", "chev")}</a>`).join("")}</div>`
-      : empty(L3("Belum ada slide Sekolah Minggu.", "Dang adong.", "No Sunday School slides yet."), "screen")}`;
+      : empty(L3("Belum ada slide Sekolah Minggu.", "Ndang adong.", "No Sunday School slides yet."), "screen")}`;
 }
 R.ssdeck = (id) => {
   if (isGuest()) return R.home();
@@ -2156,14 +2584,14 @@ document.addEventListener("change", (e) => { const el = e.target; if (el && el.c
 A.sswImport = async (d, btn) => {
   try {
     if (d.src === "sada") {
-      const prev = (D.ss_decks || []).find((x) => x.lang === SSW.lang); if (!prev) throw new Error(L3("Belum ada slide Sada dalam bahasa ini.", "Dang adong.", "No Sada deck in this language yet."));
+      const prev = (D.ss_decks || []).find((x) => x.lang === SSW.lang); if (!prev) throw new Error(L3("Belum ada slide Sada dalam bahasa ini.", "Ndang adong.", "No Sada deck in this language yet."));
       const r = await busy(btn, () => api.save("ss_html", { deck_id: prev.id })); if (!r || !r.sections) throw new Error("no_sections");
       SSW.secs = r.sections.map((x) => ({ ...x }));
     } else {
       const ls = await busy(btn, () => ssCall({ op: "list" }));
       const when = (n) => { const m = String(n).match(/(\d{1,2})\s*([A-Za-z]+)\s*(\d{4})/); if (!m) return ""; const mi = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"].indexOf(m[2].slice(0, 3).toLowerCase()); return mi < 0 ? "" : `${m[3]}-${String(mi + 1).padStart(2, "0")}-${String(m[1]).padStart(2, "0")}`; };
       const deck = (ls.decks || []).filter((x) => x.lang === SSW.lang && !/^copy of/i.test(x.name)).map((x) => ({ ...x, d: when(x.name) })).sort((a, b) => b.d.localeCompare(a.d))[0];
-      if (!deck) throw new Error(L3("Tidak ada deck bahasa ini di folder Drive.", "Dang adong.", "No deck in this language in the Drive folder."));
+      if (!deck) throw new Error(L3("Tidak ada deck bahasa ini di folder Drive.", "Ndang adong.", "No deck in this language in the Drive folder."));
       toast(L3("Membaca ", "Manjaha ", "Reading ") + deck.name);
       const r = await busy(btn, () => ssCall({ id: deck.id, google: deck.google }));
       SSW.secs = ssParse(r.slides || [], SSW.lang);
@@ -2208,7 +2636,7 @@ function fxPaint() {
   const set = (id, v) => { const x = document.getElementById(id); if (x) x.textContent = v; };
   set("fxOut", fxFmt(amt * rate, to));
   const fit = (id) => { const x = document.getElementById(id); if (!x) return; let fs = 34; x.style.fontSize = fs + "px"; while (fs > 16 && x.scrollWidth > x.clientWidth + 1) { fs -= 2; x.style.fontSize = fs + "px"; } };
-  fit("fxOut"); fit("fxAmt"); set("fxRate", isFinite(rate) ? `1 ${from} = ${fxFmt(rate, to)} ${to}` : L3("Kurs belum tersedia, periksa internet.", "Kurs dang adong.", "Rates not available yet, check the internet."));
+  fit("fxOut"); fit("fxAmt"); set("fxRate", isFinite(rate) ? `1 ${from} = ${fxFmt(rate, to)} ${to}` : L3("Kurs belum tersedia. Periksa koneksi internet.", "Kurs ndang adong dope.", "Rates not available yet, check the internet."));
   set("fxInv", isFinite(rate) ? `1 ${to} = ${fxFmt(1 / rate, from)} ${from}` : "");
   set("fxWhen", st ? L3("Kurs diperbarui ", "Diperbarui ", "Rates updated ") + fmt(new Date(st.updated || st.at).toISOString(), { day: "numeric", month: "short" }) + " " + fmtTime(new Date(st.updated || st.at).toISOString()) + " · open.er-api.com" : "");
   const list = document.getElementById("fxList");
@@ -2261,7 +2689,7 @@ try { document.head.insertAdjacentHTML("beforeend", `<style>
 const dmRoom = (otherId) => "dm:" + [D.me.id, otherId].sort().join(":");
 A.dmNew = () => {
   const people = (D.people || []).filter((p) => p.id !== D.me.id).sort((a, b) => a.name.localeCompare(b.name));
-  sheet("✏️ " + L3("Pesan baru", "Pesan baru", "New message"), `<input type="search" id="dmFind" placeholder="${esc(L3("Cari nama…", "Bilang goar…", "Search a name…"))}" autocomplete="off" style="margin-bottom:8px">
+  sheet("✏️ " + L3("Pesan baru", "Pesan baru", "New message"), `<input type="search" id="dmFind" placeholder="${esc(L3("Cari nama…", "Lului goar…", "Search a name…"))}" autocomplete="off" style="margin-bottom:8px">
     <div class="card dm-pick">${people.map((p) => `<a class="li" data-n="${esc(norm(p.name + " " + (p.alias || "")))}" href="#/chat/${esc(dmRoom(p.id))}">${avatarOf(p)}<span class="grow"><b>${esc(p.name)}</b><small>${esc(seenText(p.id))}</small></span>${ic("chev", "chev")}</a>`).join("")}</div>`);
   setTimeout(() => { const i = document.getElementById("dmFind"); if (i) i.focus(); }, 50);
 };
@@ -2303,7 +2731,7 @@ R.meet = () => {
   return shell("#/calendar", `${schedHead("meet")}
     ${canMeet() ? `<div class="row two"><button class="btn primary" data-act="meetNew" data-now="1">⚡ ${esc(L3("Mulai sekarang", "Mulai", "Start now"))}</button><button class="btn" data-act="meetNew">🗓 ${esc(L3("Jadwalkan", "Jadwalhon", "Schedule"))}</button></div>` : ""}
     ${live.length ? `<h3 class="sec-h">🔴 ${esc(L3("Sedang berlangsung", "Masa", "On now"))}</h3>${live.map((x) => row(x, "live")).join("")}` : ""}
-    <h3 class="sec-h">${esc(L3("Akan datang", "Naeng ro", "Upcoming"))}</h3>${next.length ? next.map((x) => row(x, "next")).join("") : `<p class="muted small">${esc(L3("Belum ada rapat terjadwal.", "Dang adong.", "No meetings scheduled."))}</p>`}
+    <h3 class="sec-h">${esc(L3("Akan datang", "Naeng ro", "Upcoming"))}</h3>${next.length ? next.map((x) => row(x, "next")).join("") : `<p class="muted small">${esc(L3("Belum ada rapat terjadwal.", "Ndang adong.", "No meetings scheduled."))}</p>`}
     ${past.length ? `<h3 class="sec-h">${esc(L3("Sebelumnya", "Na salpu", "Earlier"))}</h3>${past.map((x) => row(x, "past")).join("")}` : ""}
     <p class="small muted">${esc(L3("Rapat berjalan di Jitsi Meet (meet.jit.si) di browser atau aplikasi Jitsi. Orang pertama yang masuk menjadi moderator dan diminta masuk dengan Google/GitHub sekali; peserta lain tidak perlu akun.", "", "Meetings run on Jitsi Meet (meet.jit.si) in the browser or the Jitsi app. The first person in becomes the moderator and is asked to sign in with Google/GitHub once; others need no account."))}</p>`,
     {});
@@ -2349,8 +2777,8 @@ function nowCard() {
     <div class="nc-box"><span class="nc-big">${esc(big)}</span><span class="nc-sub">${esc(sub)}</span></div></a>`;
   const mt = meetNow()[0];
   if (mt) return card("#/meet", "Sada HKBPS · " + L3("Rapat", "Rapat", "Meeting"), mt.title, `<i class="live-dot"></i> ${esc(fmtTime(mt.starts_at))}`,
-    L3("Gabung", "Masuk", "Join"), L3(`Sedang berlangsung · ${mt.by}. Ketuk untuk bergabung.`, "Masa · ketuk asa masuk.", `On now · ${mt.by}. Tap to join.`), true);
-  if (D.live && D.live.service_id) return card("#/live", "Sada HKBPS", L3("Ibadah sedang berlangsung", "Partangiangan masa", "The service is on"), `<i class="live-dot"></i> LIVE`,
+    L3("Gabung", "Masuk", "Join"), L3(`Sedang berlangsung · ${mt.by}. Ketuk untuk bergabung.`, "Tengah masa · ketuk asa bongot.", `On now · ${mt.by}. Tap to join.`), true);
+  if (D.live && D.live.service_id) return card("#/live", "Sada HKBPS", L3("Ibadah sedang berlangsung", "Parmingguon tengah masa", "The service is on"), `<i class="live-dot"></i> LIVE`,
     L3("Ikuti", "Ihuthon", "Follow"), L3("Slide Tata Ibadah di HP Anda, huruf besar. Ketuk untuk membuka.", "Slide di HP mu.", "The Tata Ibadah slides on your phone, in large text. Tap to open."), true);
   const du = duties().filter((d) => d.date === td || d.date === tm).sort((a, b) => a.date.localeCompare(b.date));
   if (du.length) {
@@ -2669,7 +3097,7 @@ async function aiRun(task, input, onWait) {
   let r = await api.save("ai", { task, input });
   const until = Date.now() + 120e3;
   while (r && r.status === "queued" && Date.now() < until) { if (onWait) onWait(); await new Promise((ok) => setTimeout(ok, 2500)); r = await api.save("ai_get", { job_id: r.id }); }
-  if (!r || r.status !== "done") throw new Error(r && r.error === "no_claude_key" ? L3("Kunci Claude gereja belum disimpan (Admin: More → Renungan Harian → kunci Claude di server).", "Kunci Claude dang disimpan.", "The church's Claude key is not saved yet (admin: More → Daily Bread setup → Claude key on the server).") : L3("Claude belum bisa menjawab, coba lagi.", "Coba muse.", "Claude could not answer, please try again."));
+  if (!r || r.status !== "done") throw new Error(r && r.error === "no_claude_key" ? L3("Kunci Claude gereja belum disimpan (Admin: Lainnya → Renungan Harian → kunci Claude).", "Kunci Claude ni huria ndang disimpan dope.", "The church's Claude key is not saved yet (admin: More → Daily Bread setup → Claude key on the server).") : L3("Claude belum bisa menjawab, coba lagi.", "Coba muse.", "Claude could not answer, please try again."));
   return r.result || {};
 }
 const busySheet = (title, text) => sheet(title, `<div class="center pad">${skel(3)}<p class="muted small">${esc(text)}</p></div>`);
@@ -2679,10 +3107,16 @@ function communityMenu() {
   if (isGuest()) return "";
   const elder = "parhalado" in (D.me.groups || {});   // Time for a visit: Parhalado only (the pastor and the elders)
   const it = (href, icon, title, sub) => `<a class="li" href="${href}">${ic(icon)}<span class="grow"><b>${title}</b><small>${esc(sub)}</small></span>${ic("chev", "chev")}</a>`;
-  return (isYB() ? it("#/access", "lock", "🔐 " + esc(L3("Akses & tampilan", "Akses", "Access & views")), L3("Periksa setiap kategori dan seksi, dan lihat Sada sebagai anggota mana pun", "Lihat sebagai anggota", "Check every category and section, and see Sada as any member")) : "")
+  return (isYB() ? it("#/access", "lock", "🔐 " + esc(L3("Akses & tampilan", "Akses", "Access & views")), L3("Periksa setiap kategori dan seksi, dan lihat Sada sebagai anggota mana pun", "Ida songon ruas", "Check every category and section, and see Sada as any member")) : "")
     + it("#/fx", "coins", "💱 " + esc(L3("Kurs", "Kurs", "Exchange rates")), L3("Konversi mata uang, kurs terbaru", "Kurs hepeng", "Currency converter, latest rates"))
     + it("#/tutur", "people", "🤝 Partuturan", L3("Cara saling menyapa menurut Dalihan Na Tolu", "Partuturan Dalihan Na Tolu", "How to address each other (Dalihan Na Tolu)"))
+    + it("#/tarombo", "people", "🌳 Tarombo", L3("Silsilah marga Batak dari Si Raja Batak", "Tarombo sian Si Raja Batak", "The Batak marga tree from Si Raja Batak"))
+    + (isParhalado() ? it("#/rpp", "lock", "⚖️ RPP", L3("Daftar RPP dan tanya Juklak (Parhalado)", "Daftar RPP dohot sungkun Juklak", "RPP list and ask the Juklak (Parhalado)")) : "")
+    + ((isPastor() || isPlainElder()) && LS.get("fullView", false) ? `<button class="li" data-act="viewSimple"><span class="grow"><b>🪟 ${esc(L3("Kembali ke tampilan sederhana", "Mulak tu tampilan na sederhana", "Back to the simple view"))}</b></span>${ic("chev", "chev")}</button>` : "")
     + it("#/ende", "book", "🎵 Buku Ende", L3("Arti setiap baris lagu", "Lapatan ni ende", "The meaning of every hymn line"))
+    + it("#/sunday", "calendar", "📅 " + L3("Minggu Ini", "Minggu On", "This Sunday"), L3("Tata Ibadah, lagu, nas dan live", "Tata Ibadah, ende, turpuk, live", "Tata Ibadah, songs, readings and live"))
+    + `<button class="li" data-act="textSize"><span class="grow"><b>🔠 ${esc(L3("Ukuran teks", "Balga ni surat", "Text size"))}</b><small>${esc(L3("Perbesar huruf di seluruh Sada", "Pabalga surat", "Make the text larger everywhere"))}</small></span>${ic("chev", "chev")}</button>`
+    + (D.me.is_admin ? it("#/usage", "chart", "📊 " + L3("Pemakaian fitur", "Pamakean fitur", "Feature usage"), L3("Fitur mana yang benar-benar dipakai jemaat", "Fitur na dipake", "Which features members actually use")) : "")
     + it("#/stories", "mic", "🎙️ Turi-turian", L3("Cerita orang tua, direkam untuk generasi muda", "Turi-turian ni natua-tua", "Elders' stories, recorded for the young"))
     + (("pelaut" in (D.me.groups || {})) ? it("#/voyage", "globe", "🚢 Pelaut", L3("Mode berlayar dan paket offline", "Mode marlayar", "Voyage mode and offline pack")) : "")
     + it("#/grief", "heart", "🕊️ Dukacita", L3("Dukung keluarga yang berduka", "Apuli na marsak", "Support a grieving family"))
@@ -2696,17 +3130,17 @@ R.tutur = () => {
   const mg = (n, v) => `<input name="${n}" list="margaList" autocomplete="off" placeholder="Simanjuntak, Hutabarat…" value="${esc(v || "")}">`;
   const MARGA = ["Simanjuntak", "Hutabarat", "Sihombing", "Panjaitan", "Siburian", "Gultom", "Hutasoit", "Manik", "Tobing", "Lumbantobing", "Nainggolan", "Silitonga", "Sianturi", "Butarbutar", "Pasaribu", "Situmorang", "Lubis", "Purba", "Limbong", "Sirait", "Sitompul", "Siregar", "Simatupang", "Napitupulu", "Pardede", "Marpaung", "Silalahi", "Sinaga", "Simbolon", "Sitorus", "Tampubolon", "Hutagalung", "Hutapea", "Siahaan", "Manurung", "Panggabean", "Bangun", "Matondang"];
   const me = (D.me.name || "").split(" ").slice(-1)[0];
-  return shell("#/more", `<h2 class="page-h">🤝 Partuturan</h2><p class="lead">${esc(L3("Masukkan marga Anda dan marga orang itu (serta boru ibu kalian). Sada memberi panggilan yang lazim menurut Dalihan Na Tolu.", "Bahen marga mu dohot marga ni ibana.", "Enter your marga and theirs (and your mothers' boru). Sada suggests the usual term of address under Dalihan Na Tolu."))}</p>
+  return shell("#/more", `<h2 class="page-h">🤝 Partuturan</h2><p class="lead">${esc(L3("Masukkan marga Anda dan marga orang itu (serta boru ibu kalian). Sada memberi panggilan yang lazim menurut Dalihan Na Tolu.", "Bahen margam dohot marga ni ibana.", "Enter your marga and theirs (and your mothers' boru). Sada suggests the usual term of address under Dalihan Na Tolu."))}</p>
     <datalist id="margaList">${MARGA.map((x) => `<option value="${x}">`).join("")}</datalist>
     <form class="card form" data-form="tutur">
       <div class="row2"><label>${esc(L3("Saya", "Ahu", "Me"))}<select name="g1"><option value="m">${esc(L3("Laki-laki", "Baoa", "Male"))}</option><option value="f">${esc(L3("Perempuan", "Boru-boru", "Female"))}</option></select></label>
         <label>${esc(L3("Dia", "Ibana", "Them"))}<select name="g2"><option value="m">${esc(L3("Laki-laki", "Baoa", "Male"))}</option><option value="f">${esc(L3("Perempuan", "Boru-boru", "Female"))}</option></select></label></div>
-      <div class="row2"><label>${esc(L3("Marga saya", "Margangku", "My marga"))}${mg("m1", (D.me.name || "").trim().split(/\s+/).length > 1 ? me : "")}</label><label>${esc(L3("Marga dia / boru dia", "Marga / boru ni ibana", "Their marga / boru"))}${mg("m2")}</label></div>
+      <div class="row2"><label>${esc(L3("Marga saya", "Margangku", "My marga"))}${mg("m1", (D.me.name || "").trim().split(/\s+/).length > 1 ? me : "")}</label><label>${esc(L3("Marga atau boru dia", "Marga / boru ni ibana", "Their marga / boru"))}${mg("m2")}</label></div>
       <div class="row2"><label>${esc(L3("Boru ibu saya", "Boru ni inang", "My mother's boru"))}${mg("b1")}</label><label>${esc(L3("Boru ibu dia", "Boru ni inangna", "Their mother's boru"))}${mg("b2")}</label></div>
-      <label>${esc(L3("Generasi dia dibanding saya", "Generasi", "Their generation"))}<select name="gen"><option value="up">${esc(L3("Satu generasi di atas (seperti orang tua)", "Di ginjang", "One above (like a parent)"))}</option><option value="same" selected>${esc(L3("Sebaya", "Sapangkat", "Same generation"))}</option><option value="down">${esc(L3("Satu generasi di bawah (seperti anak)", "Di toru", "One below (like a child)"))}</option></select></label>
-      <label>${esc(L3("Lebih tua? (generasi di atas: dibanding ayah/ibu Anda di garis itu · sebaya: dibanding Anda)", "Umbalga? (di ginjang: sian ama/inang · sapangkat: sian ho)", "Older? (generation above: than your father/mother on that side · same generation: than you)"))}<select name="old"><option value="y">${esc(L3("Ya, lebih tua", "Olo", "Yes, older"))}</option><option value="n">${esc(L3("Tidak, lebih muda", "Ndang", "No, younger"))}</option><option value="u">${esc(L3("Tidak tahu", "Ndang huboto", "Not sure"))}</option></select></label>
+      <label>${esc(L3("Generasinya dibandingkan saya", "Generasi", "Their generation"))}<select name="gen"><option value="up">${esc(L3("Satu generasi di atas (seperti orang tua)", "Di ginjang", "One above (like a parent)"))}</option><option value="same" selected>${esc(L3("Sebaya", "Sapangkat", "Same generation"))}</option><option value="down">${esc(L3("Satu generasi di bawah (seperti anak)", "Di toru", "One below (like a child)"))}</option></select></label>
+      <label>${esc(L3("Lebih tua? (generasi di atas: dibandingkan ayah/ibu Anda dari pihak itu · sebaya: dibandingkan Anda)", "Umbalga? (di ginjang: sian ama/inangmu · sapangkat: sian ho)", "Older? (generation above: than your father/mother on that side · same generation: than you)"))}<select name="old"><option value="y">${esc(L3("Ya, lebih tua", "Olo", "Yes, older"))}</option><option value="n">${esc(L3("Tidak, lebih muda", "Ndang", "No, younger"))}</option><option value="u">${esc(L3("Tidak tahu", "Ndang huboto", "Not sure"))}</option></select></label>
       <button class="btn primary block">${esc(L3("Lihat panggilan", "Ida", "Show the term"))}</button></form>
-    <div id="tuturRes"></div>`, { back: "#/more", title: "Partuturan" });
+    <div id="tuturRes"></div>${tuturRefHtml()}`, { back: "#/more", title: "Partuturan" });
 };
 function tuturTerm(i) {
   // Dalihan Na Tolu, general rules (ego = "saya"). "old": y/n/u; for the generation above it compares with the parent on that side.
@@ -2753,7 +3187,10 @@ function tuturTerm(i) {
 F.tutur = async (f) => {
   const i = { g1: f.g1.value, g2: f.g2.value, m1: f.m1.value, m2: f.m2.value, b1: f.b1.value, b2: f.b2.value, gen: f.gen.value, old: f.old.value };
   const [term, why] = tuturTerm(i);
+  const tr = taroRel(i.m1, i.m2), tb = i.b1 && i.b2 ? taroRel(i.b1, i.b2) : null;
   document.getElementById("tuturRes").innerHTML = `<article class="card tutur-res"><p class="small muted">${esc(L3("Panggil dia", "Dok ma ibana", "Call them"))}</p><h2>${esc(term)}</h2><p>${esc(why)}</p>
+    ${tr ? `<div class="taro-box"><b>🌳 ${esc(L3("Menurut tarombo", "Sian tarombo", "By the tarombo"))}</b><p>${esc(tr.text)}</p>${taroPath(tr.pa, i.m1)}${taroPath(tr.pb, i.m2)}</div>` : ""}
+    ${tb && tb.kind !== "far" ? `<div class="taro-box"><b>🌳 ${esc(L3("Marga ibu kalian", "Marga ni inang", "Your mothers' margas"))}</b><p>${esc(tb.text)}</p></div>` : ""}
     <p class="small muted">${esc(L3("Panduan umum. Adat bisa berbeda per keluarga dan daerah; tanyakan orang tua atau sintua bila ragu.", "Tanya natua-tua.", "A general guide. Custom can differ by family and region; ask your parents or an elder if unsure."))}</p></article>`;
   throw Object.assign(new Error("noRender"), { silent: true });
 };
@@ -2808,12 +3245,11 @@ function endeSongs(doc) {
 }
 async function endeShow(title, text) {
   const el = document.getElementById("endeRes"); if (!el) return;
-  el.innerHTML = `<div class="card center pad">${skel(3)}<p class="small muted">${esc(L3("Claude sedang menuliskan artinya…", "Claude manurat…", "Claude is writing the meanings…"))}</p></div>`; el.scrollIntoView({ behavior: "smooth", block: "start" });
-  try {
-    const r = await aiRun("meaning", { title, text: HYMN.asText(title, text.trim()) });
-    el.innerHTML = `<article class="card ende-res"><h3>${esc(title || "Buku Ende")}</h3>${(r.lines || []).map((x) => x.sep ? `<hr>` : `<div class="ende-l${x.ref ? " ref" : ""}"><b>${esc(x.bt || "")}</b><span>🇮🇩 ${esc(x.id || "")}</span><span>🇬🇧 ${esc(x.en || "")}</span></div>`).join("")}
-      <p class="small muted">${esc(L3("Arti dibuat oleh Claude untuk membantu memahami; bukan terjemahan resmi.", "Sian Claude.", "Meanings written by Claude to help understanding; not an official translation."))}</p></article>`;
-  } catch (e) { el.innerHTML = `<p class="warn">${esc(e.message)}</p>`; }
+  const verses = HYMN.asText(title, text.trim()).split(/\n\s*\n/).map((v) => v.trim()).filter(Boolean);
+  el.innerHTML = `<article class="card ende-res"><h3>${esc(title || "Buku Ende")}</h3>${verses.map((v) => `<div class="ende-v">${v.split("\n").map((l) => `<p>${esc(l)}</p>`).join("")}
+      <div class="row" style="gap:6px"><a class="btn sm" href="${gtr(v, "id")}" target="_blank" rel="noopener">🇮🇩 ${esc(L3("Artinya", "Lapatanna", "Meaning"))}</a><a class="btn sm" href="${gtr(v, "en")}" target="_blank" rel="noopener">🇬🇧 English</a></div></div>`).join("")}
+    <p class="small muted">${esc(L3("Arti dibuka di Google Translate (gratis, mendukung Bahasa Batak Toba). Terjemahan mesin, bukan terjemahan resmi.", "Lapatan sian Google Translate.", "Meanings open in Google Translate (free, it supports Batak Toba). Machine translation, not an official one."))}</p></article>`;
+  el.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 A.endeOpen = (d) => { const x = ENDE.songs[+d.k]; if (x) endeShow(x.title, x.text); };
 F.ende = async (f) => { const text = f.text.value.trim(); if (!text) return; endeShow("", text); throw Object.assign(new Error("noRender"), { silent: true }); };
@@ -2827,7 +3263,7 @@ R.stories = () => {
       <div id="recPrev"></div>
       <form class="form" data-form="story" id="recForm" hidden><label>${esc(L3("Judul cerita", "Goar ni turi-turian", "Story title"))}<input name="title" required maxlength="120"></label><label>${esc(L3("Siapa yang bercerita", "Ise na marturi", "Who is telling it"))}<input name="speaker" maxlength="80" placeholder="Ompung, Amang, Inang…"></label><label>${esc(t("f_note"))}<input name="note" maxlength="200"></label><button class="btn primary block">${ic("upload")} ${esc(L3("Simpan cerita", "Simpan", "Save story"))}</button></form>
       <label class="btn sm ghost upl">${ic("upload")} ${esc(L3("atau pilih file audio", "manang file audio", "or choose an audio file"))}<input type="file" accept="audio/*" data-act-change="storyFile" hidden></label></article>
-    ${list.length ? `<div class="card">${list.map((x) => `<div class="li story"><button class="icon-btn" data-act="storyPlay" data-id="${x.id}" aria-label="Play">▶</button><span class="grow"><b>${esc(x.title)}</b><small>${esc([x.speaker, x.by, x.seconds ? Math.floor(x.seconds / 60) + ":" + String(x.seconds % 60).padStart(2, "0") : "", fmt(x.at, { day: "numeric", month: "short" })].filter(Boolean).join(" · "))}</small><span class="story-audio" id="sa${x.id}"></span></span>${x.mine || D.me.is_admin ? `<button class="icon-btn danger" data-act="del" data-kind="story" data-id="${x.id}" aria-label="${esc(t("delete"))}">${ic("trash")}</button>` : ""}</div>`).join("")}</div>` : empty(L3("Belum ada cerita. Jadilah yang pertama merekam!", "Dang adong.", "No stories yet. Be the first to record one!"), "mic")}`,
+    ${list.length ? `<div class="card">${list.map((x) => `<div class="li story"><button class="icon-btn" data-act="storyPlay" data-id="${x.id}" aria-label="Play">▶</button><span class="grow"><b>${esc(x.title)}</b><small>${esc([x.speaker, x.by, x.seconds ? Math.floor(x.seconds / 60) + ":" + String(x.seconds % 60).padStart(2, "0") : "", fmt(x.at, { day: "numeric", month: "short" })].filter(Boolean).join(" · "))}</small><span class="story-audio" id="sa${x.id}"></span></span>${x.mine || D.me.is_admin ? `<button class="icon-btn danger" data-act="del" data-kind="story" data-id="${x.id}" aria-label="${esc(t("delete"))}">${ic("trash")}</button>` : ""}</div>`).join("")}</div>` : empty(L3("Belum ada cerita. Jadilah yang pertama merekam!", "Ndang adong.", "No stories yet. Be the first to record one!"), "mic")}`,
     { back: "#/more", title: "Turi-turian" });
 };
 A.recToggle = async (d, btn) => {
@@ -2847,7 +3283,7 @@ function storyReady() {
   const prev = document.getElementById("recPrev"); const form = document.getElementById("recForm"); if (!prev || !REC.blob) return;
   REC.seconds = Math.max(1, Math.round((Date.now() - (REC.t0 || Date.now())) / 1000));
   prev.innerHTML = `<audio controls src="${URL.createObjectURL(REC.blob)}" style="width:100%"></audio>`; form.hidden = false;
-  const st = document.getElementById("recState"); if (st) st.textContent = L3("Dengarkan, lalu beri judul dan simpan.", "Begema.", "Listen back, then give it a title and save.");
+  const st = document.getElementById("recState"); if (st) st.textContent = L3("Dengarkan, lalu beri judul dan simpan.", "Tangihon ma, dungi bahen judulna jala simpan.", "Listen back, then give it a title and save.");
 }
 A.storyFile = (d, el) => { const f0 = el.files && el.files[0]; if (!f0) return; if (f0.size > 4.4 * 1048576) { toast(t("err_file_too_big") || "Max 4 MB", true); return; } REC.blob = f0; REC.mime = f0.type || "audio/mp4"; REC.t0 = 0; storyReady(); REC.seconds = null; };
 F.story = async (f) => {
@@ -2908,7 +3344,7 @@ A.liveToggle = async (d) => {
 };
 function liveBanner() {
   if (isGuest() || !D.live || !D.live.service_id || /^#\/live/.test(location.hash)) return "";
-  return `<a class="card live-banner" href="#/live"><span class="live-dot"></span><span class="grow"><b>${esc(L3("Ibadah sedang berlangsung", "Partangiangan masa", "The service is on now"))}</b><small>${esc(L3("Ikuti slide live di HP Anda, huruf besar", "Ihuthon live", "Follow the slides live on your phone, in large text"))}</small></span>${ic("chev", "chev")}</a>`;
+  return `<a class="card live-banner" href="#/live"><span class="live-dot"></span><span class="grow"><b>${esc(L3("Ibadah sedang berlangsung", "Parmingguon tengah masa", "The service is on now"))}</b><small>${esc(L3("Ikuti slide live di HP Anda, huruf besar", "Ihuthon live", "Follow the slides live on your phone, in large text"))}</small></span>${ic("chev", "chev")}</a>`;
 }
 R.live = () => {
   clearInterval(LIVE.timer);
@@ -2940,19 +3376,20 @@ R.grief = () => {
 F.grief = async (f) => { await api.save("grief", { member_id: f.member.value, deceased: f.deceased.value.trim(), note: f.note.value.trim(), notify: f.notify.checked }); await refresh(); toast(L3("Berita duka disampaikan.", "", "Shared.")); };
 A.griefHelp = (d) => {
   const k = d.k; const title = k === "msg" ? L3("Ucapan duka", "Ucapan", "Condolence message") : k === "visit" ? L3("Saya akan berkunjung", "Mangunjungi", "I'll visit") : L3("Saya akan membawa makanan", "Sipanganon", "I'll bring a meal");
-  sheet(title, `<form class="form" data-form="griefhelp" data-id="${esc(d.id)}" data-k="${k}">${k === "msg" ? `<label>${esc(L3("Pesan Anda untuk keluarga", "Pesan", "Your message to the family"))}<textarea name="body" rows="3" maxlength="500" required>${esc(L3("Turut berduka cita. Kiranya Tuhan menghibur dan menguatkan keluarga.", "Turut marsak ate.", "Our deepest sympathy. May the Lord comfort and strengthen your family."))}</textarea></label>` : `<label>${esc(t("f_date"))}<input type="date" name="day" value="${addDays(today(), 1)}" required></label><label>${esc(t("f_note"))}<input name="body" maxlength="200"></label>`}
+  sheet(title, `<form class="form" data-form="griefhelp" data-id="${esc(d.id)}" data-k="${k}">${k === "msg" ? `<label>${esc(L3("Pesan Anda untuk keluarga", "Pesan", "Your message to the family"))}<textarea name="body" rows="3" maxlength="500" required>${esc(L3("Turut berduka cita. Kiranya Tuhan menghibur dan menguatkan keluarga.", "Hami pe turut marsak roha. Sai diapuli Tuhan ma hamu.", "Our deepest sympathy. May the Lord comfort and strengthen your family."))}</textarea></label>` : `<label>${esc(t("f_date"))}<input type="date" name="day" value="${addDays(today(), 1)}" required></label><label>${esc(t("f_note"))}<input name="body" maxlength="200"></label>`}
     <button class="btn primary block">${esc(L3("Kirim", "Kirim", "Send"))}</button></form>`);
 };
 F.griefhelp = async (f) => { await api.save("grief_help", { grief_id: +f.dataset.id, kind: f.dataset.k, day: f.day ? f.day.value : null, body: f.body ? f.body.value.trim() : "" }); closeSheet(); await refresh(); toast(L3("Terkirim ke keluarga.", "", "Sent to the family.")); };
-A.griefCover = async (d) => { try { const r = await api.save("swap", { group_id: d.g, label: fmtDay(d.day), jobs: d.jobs, note: L3("Keluarga sedang berduka.", "Keluarga marsak.", "The family is grieving."), who: d.who, free: "", url: rosterHome(d.g, d.day.slice(0, 7)) }); toast(L3(`Makers diberi tahu (${r.told || 0}).`, "", `Makers told (${r.told || 0}).`)); } catch (e) { toast(errMsg(e), true); } };
+A.griefCover = async (d) => { try { const r = await api.save("swap", { group_id: d.g, label: fmtDay(d.day), jobs: d.jobs, note: L3("Keluarga sedang berduka.", "Keluarga on marsak roha.", "The family is grieving."), who: d.who, free: "", url: rosterHome(d.g, d.day.slice(0, 7)) }); toast(L3(`Para makers sudah diberi tahu (${r.told || 0}).`, "", `Makers told (${r.told || 0}).`)); } catch (e) { toast(errMsg(e), true); } };
 A.griefClose = async (d) => { try { await api.save("grief_close", { grief_id: +d.id }); await refresh(); render(); } catch (e) { toast(errMsg(e), true); } };
 
 // 7. Time for a visit (elders only): members who opted in and haven't been seen in church or the app for 3 weeks.
 R.care = () => {
   if (!("parhalado" in (D.me.groups || {}))) { location.replace("#/more"); return ""; }
   const list = D.care || [];
+  setTimeout(visitsPaint, 0);
   return shell("#/more", `<h2 class="page-h">🫶 ${esc(L3("Perlu dikunjungi", "Ingkon dikunjungi", "Time for a visit"))}</h2><p class="lead">${esc(L3("Jemaat yang memilih “Sintua boleh menghubungi saya” dan belum terlihat di gereja atau aplikasi selama 3 minggu. Hanya sintua yang melihat daftar ini.", "", "Members who chose “Elders may check on me” and haven't been seen at church or in the app for 3 weeks. Only elders see this list."))}</p>
-    ${list.length ? `<div class="card">${list.map((p) => `<div class="li">${avatarOf(p)}<span class="grow"><b>${esc(p.name)}</b><small>${esc(L3("Terakhir di aplikasi", "Aplikasi", "Last in the app"))}: ${esc(p.seen ? fmt(p.seen, { day: "numeric", month: "short" }) : "–")} · ${esc(L3("di gereja", "gareja", "at church"))}: ${esc(p.church ? fmt(p.church, { day: "numeric", month: "short" }) : "–")}</small></span>${p.phone ? `<a class="icon-btn wa" href="${wa(L3(`Syalom ${firstName(p.name)}, apa kabar? Kami merindukan Anda di ibadah. Tuhan memberkati.`, `Horas ${firstName(p.name)}!`, `Hello ${firstName(p.name)}, how are you? We miss you at church. God bless.`), p.phone)}" target="_blank" rel="noopener" aria-label="WhatsApp">${ic("wa")}</a><a class="icon-btn" href="tel:+65${esc(p.phone)}" aria-label="Call">📞</a>` : ""}</div>`).join("")}</div>` : empty(L3("Semua yang memilih untuk disapa masih aktif. Puji Tuhan!", "", "Everyone who opted in has been around recently. Praise God!"), "heart")}`,
+    ${list.length ? `<div class="card">${list.map((p) => `<div class="li" data-mid="${p.id}">${avatarOf(p)}<span class="grow"><b>${esc(p.name)}</b><span class="visit-h"></span><small>${esc(L3("Terakhir di aplikasi", "Aplikasi", "Last in the app"))}: ${esc(p.seen ? fmt(p.seen, { day: "numeric", month: "short" }) : "–")} · ${esc(L3("di gereja", "gareja", "at church"))}: ${esc(p.church ? fmt(p.church, { day: "numeric", month: "short" }) : "–")}</small></span>${p.phone ? `<a class="icon-btn wa" href="${wa(L3(`Syalom ${firstName(p.name)}, apa kabar? Kami merindukan Anda di ibadah. Tuhan memberkati.`, `Horas ${firstName(p.name)}!`, `Hello ${firstName(p.name)}, how are you? We miss you at church. God bless.`), p.phone)}" target="_blank" rel="noopener" aria-label="WhatsApp">${ic("wa")}</a><a class="icon-btn" href="tel:+65${esc(p.phone)}" aria-label="Call">📞</a>` : ""}<button class="icon-btn" data-act="visitAdd" data-id="${p.id}" aria-label="Catat">📝</button></div>`).join("")}</div>` : empty(L3("Semua yang memilih untuk disapa masih aktif. Puji Tuhan!", "", "Everyone who opted in has been around recently. Praise God!"), "heart")}`,
     { back: "#/more", title: L3("Perlu dikunjungi", "Ingkon dikunjungi", "Time for a visit") });
 };
 
@@ -2967,9 +3404,9 @@ A.rosterDraft = async (d) => {
   (D.rosters || []).filter((r) => r.group_id === gid).forEach((r) => (r.table_json || []).forEach((tb) => (tb.rows || []).slice(1).forEach((row) => { const iso = rowDate(row, r.month); if (!iso || iso < since) return; people.forEach((n) => { if (row.some((c, j) => j && hit(c, myNames({ name: n })))) load[n] = (load[n] || 0) + 1; }); })));
   const busyMap = {}; sundays.forEach((s0) => { const away = [...(D.voyages || []).filter((v) => v.start <= s0 && v.end >= s0).map((v) => v.name), ...(D.grief || []).map((x) => x.family)]; if (away.length) busyMap[s0] = away; });
   const keep = {}; if (old) { const head = old.table_json[0].rows[0]; old.table_json[0].rows.slice(1).forEach((row) => { const iso = rowDate(row, ym); if (!iso) return; head.forEach((h, j) => { if (j && row[j]) (keep[iso] = keep[iso] || {})[h] = row[j]; }); }); }
-  busySheet("✨ " + L3("Draf roster", "Draf roster", "Roster draft"), L3("Claude sedang menyusun roster yang adil…", "Claude manyusun…", "Claude is drafting a fair roster…"));
+  busySheet("✨ " + L3("Draf roster", "Draf roster", "Roster draft"), L3("Menyusun roster yang adil…", "Manyusun roster…", "Drafting a fair roster…"));
   try {
-    const r = await aiRun("roster", { group_id: gid, group: gname(g), month: ym, sundays, jobs, people, load, busy: busyMap, keep });
+    const r = localRoster({ sundays, jobs, people, load, busy: busyMap, keep });
     const head = [L3("Tanggal", "Tanggal", "Date"), ...jobs];
     const rows = sundays.map((s0) => { const a = ((r.rows || []).find((x) => x.day === s0) || {}).assign || {}; return [rDateCell(s0), ...jobs.map((j) => (keep[s0] && keep[s0][j]) || a[j] || "")]; });
     ROSTER_DRAFT.v = { gid, ym, old, head, rows };
@@ -2985,12 +3422,12 @@ const DISCUSS = { v: null };
 A.discuss = async (d) => {
   const g = G(d.g); const v = (D.services || []).find((x) => x.service_date === nextSunday()) || (D.services || [])[0];
   if (!v) { toast(L3("Belum ada Tata Ibadah.", "", "No Tata Ibadah yet."), true); return; }
-  busySheet("✨ " + gname(g), L3("Claude sedang menyiapkan bahan diskusi…", "Claude manyiapkon…", "Claude is preparing the discussion…"));
+  busySheet("✨ " + gname(g), L3("Menyiapkan bahan diskusi…", "Mamparade bahan diskusi…", "Preparing the discussion…"));
   try {
     const doc = new DOMParser().parseFromString(await tataHtml(v.id), "text/html");
     const text = [...doc.querySelectorAll("section.pg")].map((x) => x.textContent.replace(/\s+\n/g, "\n").trim()).join("\n\n").slice(0, 14000);
     const hint = { "sekolah-minggu": "children aged 4-12, very simple, playful", remaja: "teenagers 13-17", naposo: "young adults", ama: "fathers", ina: "mothers", pelaut: "sailors and workers far from home" }[d.g] || "adults";
-    const r = await aiRun("questions", { category: gname(g), text, lang, hint });
+    const r = localQuestions({ category: gname(g), text, lang, hint });
     const plain = `*${r.title || ""}*\n${r.verse || ""}\n\n${r.opening || ""}\n\n${(r.questions || []).map((q, i) => `${i + 1}. ${q}`).join("\n")}\n\n✅ ${r.action || ""}\n\n🙏 ${r.prayer || ""}`;
     DISCUSS.v = { gid: d.g, title: r.title || L3("Bahan diskusi", "Bahan diskusi", "Discussion"), plain };
     sheet("✨ " + (r.title || ""), `<p class="small muted">${esc(r.verse || "")}</p><p>${esc(r.opening || "")}</p><ol class="disc-q">${(r.questions || []).map((q) => `<li>${esc(q)}</li>`).join("")}</ol><p>✅ ${esc(r.action || "")}</p><p class="pre">🙏 ${esc(r.prayer || "")}</p>
@@ -3025,7 +3462,7 @@ try { document.head.insertAdjacentHTML("beforeend", `<style>
 // or when the finger starts on something that scrolls sideways (tables, chips, the Agenda/Roster switch).
 (() => {
   let sx = 0, sy = 0, t0 = 0, mode = null, main = null, dx = 0;
-  const order = () => TABS.map((x) => x[1]);
+  const order = () => navTabs().map((x) => x[1]);
   const scrollsSideways = (el) => { for (let n = el; n && n !== document.body; n = n.parentElement) { if (n.scrollWidth > n.clientWidth + 2) { const ox = getComputedStyle(n).overflowX; if (ox === "auto" || ox === "scroll") return true; } } return false; };
   const blocked = (e) => {
     if (!D || isGuest() || e.touches.length !== 1) return true;
@@ -3132,12 +3569,12 @@ function tabBadge(h) {
 // Search: members, groups, events, files and videos, posts, and roster lines.
 R.search = () => {
   setTimeout(() => { const i = document.getElementById("searchIn"); if (i) { i.focus(); searchRun(i.value); } }, 0);
-  return shell("#/home", `<div class="search-top">${ic("search")}<input id="searchIn" type="search" enterkeyhint="search" autocomplete="off" placeholder="${esc(L3("Cari anggota, acara, file, roster…", "Bilang…", "Search members, events, files, rosters…"))}" value="${esc(LS.get("lastQ", "") || "")}"></div><div id="searchRes"></div>`,
-    { back: "#/home", title: L3("Cari", "Bilang", "Search") });
+  return shell("#/home", `<div class="search-top">${ic("search")}<input id="searchIn" type="search" enterkeyhint="search" autocomplete="off" placeholder="${esc(L3("Cari anggota, acara, file, roster…", "Lului…", "Search members, events, files, rosters…"))}" value="${esc(LS.get("lastQ", "") || "")}"></div><div id="searchRes"></div>`,
+    { back: "#/home", title: L3("Cari", "Lului", "Search") });
 };
 function searchRun(q) {
   LS.set("lastQ", q); const el = document.getElementById("searchRes"); if (!el) return;
-  const n = norm(q); if (n.length < 2) { el.innerHTML = `<p class="muted small center pad">${esc(L3("Ketik minimal 2 huruf.", "Surat 2 huruf.", "Type at least 2 letters."))}</p>`; return; }
+  const n = norm(q); if (n.length < 2) { el.innerHTML = `<p class="muted small center pad">${esc(L3("Ketik minimal 2 huruf.", "Surathon ma 2 huruf manang lobi.", "Type at least 2 letters."))}</p>`; return; }
   const has = (x) => norm(x || "").includes(n); const digits = q.replace(/\D/g, "");
   const people = (D.people || []).filter((p) => has(p.name) || has(p.alias) || (digits.length >= 3 && (p.phone || "").includes(digits))).slice(0, 20);
   const groups = (D.groups || []).filter((g) => canSee(g) && has(gname(g)));
@@ -3194,13 +3631,13 @@ F.cantmake = async (f) => {
 const rsvpOf = (e) => (D.rsvps && D.rsvps[e.id]) || { going: 0, maybe: 0, no: 0, who: [] };
 function rsvpLine(e) {
   if (isGuest()) return ""; const r = rsvpOf(e);
-  return (r.going || r.maybe ? ` · ✓ ${r.going}${r.maybe ? " · ? " + r.maybe : ""}` : "") + (r.mine ? ` · ${r.mine === "going" ? L3("Anda hadir", "Ro ho", "You're going") : r.mine === "maybe" ? L3("Mungkin", "Boha", "Maybe") : L3("Tidak hadir", "Ndang ro", "Not going")}` : "");
+  return (r.going || r.maybe ? ` · ✓ ${r.going}${r.maybe ? " · ? " + r.maybe : ""}` : "") + (r.mine ? ` · ${r.mine === "going" ? L3("Anda hadir", "Ro ho", "You're going") : r.mine === "maybe" ? L3("Mungkin", "Ra", "Maybe") : L3("Tidak hadir", "Ndang ro", "Not going")}` : "");
 }
 function rsvpBlock(e) {
   if (isGuest() || new Date(e.starts_at) < Date.now()) return ""; const r = rsvpOf(e);
   const b = (st, icon, label) => `<button type="button" class="rsvp-btn${r.mine === st ? " on" : ""}" data-act="rsvp" data-id="${e.id}" data-s="${st}"><span>${icon} ${esc(label)}</span><b>${r[st] || 0}</b></button>`;
   const who = (r.who || []).filter((x) => x.s === "going").map((x) => x.n);
-  return `<div class="rsvp"><p class="small muted">${esc(L3("Apakah Anda hadir?", "Ro do ho?", "Are you coming?"))}</p><div class="rsvp-row">${b("going", "✓", L3("Hadir", "Ro", "Going"))}${b("maybe", "?", L3("Mungkin", "Boha", "Maybe"))}${b("no", "✕", L3("Tidak", "Ndang", "Can't"))}</div>${who.length ? `<p class="small muted">✓ ${esc(who.join(", "))}</p>` : ""}</div>`;
+  return `<div class="rsvp"><p class="small muted">${esc(L3("Apakah Anda hadir?", "Ro do ho?", "Are you coming?"))}</p><div class="rsvp-row">${b("going", "✓", L3("Hadir", "Ro", "Going"))}${b("maybe", "?", L3("Mungkin", "Ra", "Maybe"))}${b("no", "✕", L3("Tidak", "Ndang", "Can't"))}</div>${who.length ? `<p class="small muted">✓ ${esc(who.join(", "))}</p>` : ""}</div>`;
 }
 A.rsvp = async (d) => {
   const e = D.events.find((x) => x.id === d.id); if (!e) return; const r = { ...rsvpOf(e) }; const st = r.mine === d.s ? "" : d.s;
@@ -3216,15 +3653,15 @@ A.rsvp = async (d) => {
 R.prayer = () => {
   const list = D.prayers || []; const elder = D.me.is_admin || "parhalado" in (D.me.groups || {});
   return shell("#/more", `<h2 class="page-h">🙏 ${esc(L3("Pokok Doa", "Pokok Tangiang", "Prayer requests"))}</h2>
-    <p class="lead">${esc(L3("Bagikan permohonan doa. Jemaat dapat ikut mendoakan, dan para sintua melihat semua permohonan.", "Bagi pangidoan tangiang. Ruas boi mangidoan, jala sintua mamereng sude.", "Share a prayer request. Others can pray along, and the elders see every request."))}</p>
+    <p class="lead">${esc(L3("Bagikan permohonan doa. Jemaat dapat ikut mendoakan, dan para sintua melihat semua permohonan.", "Bagi pangidoan tangiang. Ruas boi rap martangiang, jala sintua mamereng sude.", "Share a prayer request. Others can pray along, and the elders see every request."))}</p>
     <form class="card form" data-form="prayer"><label>${esc(L3("Permohonan doa", "Pangidoan", "Your request"))}<textarea name="body" rows="3" maxlength="1000" required></textarea></label>
-      <label class="check"><input type="checkbox" name="anon"> ${esc(L3("Tanpa nama (sintua tetap melihat nama Anda)", "Ndang marhite goar (sintua mamereng)", "Without my name (the elders still see it)"))}</label>
+      <label class="check"><input type="checkbox" name="anon"> ${esc(L3("Tanpa nama (sintua tetap melihat nama Anda)", "Ndang marhite goar (alai sintua mamereng goarmu)", "Without my name (the elders still see it)"))}</label>
       <button class="btn primary block">${ic("plus")} ${esc(L3("Kirim", "Kirim", "Post"))}</button></form>
     ${list.length ? list.map((p) => `<article class="card prayer${p.answered ? " done" : ""}"><div class="meta">${esc(p.name || L3("Anonim", "Anonim", "Anonymous"))}${p.anon && p.name ? " · " + esc(L3("tanpa nama", "anonim", "anonymous")) : ""} · ${esc(fmt(p.at, { day: "numeric", month: "short" }))}${p.answered ? ` · <span class="badge chair">✓ ${esc(L3("Terjawab", "Dialusi", "Answered"))}</span>` : ""}</div>
       <p class="pre">${esc(p.body)}</p>
-      <div class="row between"><button class="btn sm${p.i_prayed ? " primary" : ""}" data-act="pray" data-id="${p.id}">🙏 ${esc(p.i_prayed ? L3("Sudah didoakan", "Nunga ditangianghon", "Prayed") : L3("Saya mendoakan", "Hu tangianghon", "I prayed"))} · ${p.prayed}</button>
+      <div class="row between"><button class="btn sm${p.i_prayed ? " primary" : ""}" data-act="pray" data-id="${p.id}">🙏 ${esc(p.i_prayed ? L3("Sudah didoakan", "Nunga ditangianghon", "Prayed") : L3("Saya mendoakan", "Hutangianghon", "I prayed"))} · ${p.prayed}</button>
         ${p.mine || elder ? `<span class="row" style="margin:0"><button class="btn sm ghost" data-act="prayerDone" data-id="${p.id}" aria-label="${esc(L3("Terjawab", "Dialusi", "Answered"))}">✓</button><button class="btn sm danger" data-act="del" data-kind="prayer" data-id="${p.id}" aria-label="${esc(t("delete"))}">${ic("trash")}</button></span>` : ""}</div></article>`).join("")
-      : empty(L3("Belum ada pokok doa.", "Dang adong.", "No prayer requests yet."), "heart")}`, { back: "#/more", title: L3("Pokok Doa", "Pokok Tangiang", "Prayer requests") });
+      : empty(L3("Belum ada pokok doa.", "Ndang adong.", "No prayer requests yet."), "heart")}`, { back: "#/more", title: L3("Pokok Doa", "Pokok Tangiang", "Prayer requests") });
 };
 F.prayer = async (f) => { const body = f.body.value.trim(); if (!body) return; await api.save("prayer", { body, anon: f.anon.checked }); await refresh(); toast(L3("Terkirim. Tuhan mendengar doa kita.", "Tarkirim. Tuhan manangihon.", "Posted. God hears our prayers.")); };
 A.pray = (d) => { const p = (D.prayers || []).find((x) => String(x.id) === String(d.id)); if (!p) return; p.i_prayed = !p.i_prayed; p.prayed += p.i_prayed ? 1 : -1; render(); api.save("pray", { prayer_id: +d.id }).catch((e) => toast(errMsg(e), true)); };
@@ -3249,7 +3686,7 @@ function wishesCard() {
 // QR check-in: the admin prints a QR for the church door; members scan it with the phone camera and are counted once a day.
 R.checkin = () => {
   const k = new URLSearchParams(location.hash.split("?")[1] || "").get("k") || "";
-  if (isGuest()) { LS.set("afterLogin", location.hash); return shell("#/home", `<div class="card center pad"><h2>👋 Check-in</h2><p class="muted">${esc(L3("Masuk dulu, lalu Anda tercatat hadir.", "Bongot jolo.", "Sign in first, then you're checked in."))}</p><button class="btn primary" data-act="signIn">${ic("lock")} ${esc(t("signIn"))}</button></div>`, { title: "Check-in" }); }
+  if (isGuest()) { LS.set("afterLogin", location.hash); return shell("#/home", `<div class="card center pad"><h2>👋 Check-in</h2><p class="muted">${esc(L3("Silakan masuk dulu agar kehadiran Anda tercatat.", "Bongot jolo.", "Sign in first, then you're checked in."))}</p><button class="btn primary" data-act="signIn">${ic("lock")} ${esc(t("signIn"))}</button></div>`, { title: "Check-in" }); }
   setTimeout(async () => {
     const el = document.getElementById("ciRes"); if (!el) return;
     try { const r = await api.save("checkin", { key: k }); D.checked_in = true;
@@ -3270,7 +3707,7 @@ R.checkinqr = () => {
   return shell("#/more", `<div class="card center qr-card"><h3>📷 QR Check-in</h3><p class="small muted">${esc(L3("Cetak dan tempel di pintu gereja. Jemaat memindai dengan kamera HP saat datang; jumlahnya masuk ke Warta Jemaat.", "Cetak jala tempel di pintu gareja.", "Print it for the church door. Members scan it with their phone camera; the counts go into the Warta Jemaat."))}</p>
       <div id="qrBox" class="qr-box">${skel(1)}</div><button class="btn" data-act="printPage">${ic("download")} ${esc(L3("Cetak", "Cetak", "Print"))}</button></div>
     <h3 class="sec-h">${esc(L3("Kehadiran", "Na ro", "Attendance"))}</h3>
-    ${days.length ? `<div class="tbl-wrap"><table class="tbl"><tr><th>${esc(t("f_date"))}</th>${CATS.map((c) => `<th>${esc(c)}</th>`).join("")}<th>Total</th></tr>${days.map((d) => { const c = att[d]; const tot = Object.values(c).reduce((a, b) => a + b, 0); return `<tr><td>${esc(fmt(d, { day: "numeric", month: "short" }))}</td>${CATS.map((k) => `<td>${c[k] || ""}</td>`).join("")}<td><b>${tot}</b></td></tr>`; }).join("")}</table></div>` : `<p class="muted small">${esc(L3("Belum ada check-in.", "Dang adong.", "No check-ins yet."))}</p>`}`,
+    ${days.length ? `<div class="tbl-wrap"><table class="tbl"><tr><th>${esc(t("f_date"))}</th>${CATS.map((c) => `<th>${esc(c)}</th>`).join("")}<th>Total</th></tr>${days.map((d) => { const c = att[d]; const tot = Object.values(c).reduce((a, b) => a + b, 0); return `<tr><td>${esc(fmt(d, { day: "numeric", month: "short" }))}</td>${CATS.map((k) => `<td>${c[k] || ""}</td>`).join("")}<td><b>${tot}</b></td></tr>`; }).join("")}</table></div>` : `<p class="muted small">${esc(L3("Belum ada check-in.", "Ndang adong.", "No check-ins yet."))}</p>`}`,
     { back: "#/more", title: "QR Check-in" });
 };
 A.printPage = () => window.print();
@@ -3379,7 +3816,7 @@ A.bdayTools = () => sheet(L3("Ulang tahun", "Ari tubu", "Birthdays"), `<div clas
 const CH_ONLINE = new Set();
 const seenAt = (id) => Math.max(CH_ONLINE.has(id) ? Date.now() : 0, D && D.seen && D.seen[id] ? Date.parse(D.seen[id]) : 0);
 const isLive = (id) => !!id && !!D && ((D.me && id === D.me.id && !isGuest()) || Date.now() - seenAt(id) < 3 * 60e3);
-const seenText = (id) => { if (isLive(id)) return L3("Sedang aktif", "Adong di aplikasi", "Live now"); const t0 = seenAt(id); if (!t0) return L3("Belum aktif", "Dang adong", "Not seen yet");
+const seenText = (id) => { if (isLive(id)) return L3("Sedang aktif", "Adong di aplikasi", "Live now"); const t0 = seenAt(id); if (!t0) return L3("Belum aktif", "Ndang adong", "Not seen yet");
   const m = Math.round((Date.now() - t0) / 60e3); const ago = m < 60 ? `${m} min` : m < 1440 ? `${Math.round(m / 60)} ${L3("jam", "jam", "h")}` : `${Math.round(m / 1440)} ${L3("hari", "ari", "d")}`; return L3(`Terakhir aktif ${ago} lalu`, `Parpudi ${ago} na salpu`, `Last seen ${ago} ago`); };
 const presDot = (id) => (id ? `<i class="pres ${isLive(id) ? "on" : "off"}" title="${esc(seenText(id))}" aria-label="${esc(seenText(id))}"></i>` : "");
 const avatarOf = (p, cls = "") => { const ph = p && p.id && D && D.photos && D.photos[p.id]; return `<span class="avatar${cls ? " " + cls : ""}">${ph ? `<img src="${esc(ph)}" alt="">` : esc(initials(p && p.name))}${presDot(p && p.id)}</span>`; };
@@ -3413,7 +3850,7 @@ function markChatSeen(room, id) { const s = chatSeen(); if (id && (s[room] || 0)
 const chatUnread = (room) => !!D && !isGuest() && (String(room).startsWith("dm:") ? ((D.dms || []).find((x) => x.room === room) || {}).unread > 0 : ((D.chat_last && D.chat_last[room]) || 0) > (chatSeen()[room] || 0));
 const dmUnread = () => (D && D.dms ? D.dms.reduce((n, x) => n + (x.unread || 0), 0) : 0);
 function chatHtml() {
-  if (!CH.msgs.length) return empty(L3("Belum ada pesan. Mulai percakapan!", "Dang adong pesan. Mulai ma!", "No messages yet. Start the conversation!"), "people");
+  if (!CH.msgs.length) return empty(L3("Belum ada pesan. Mulai percakapan!", "Ndang adong pesan. Mulai ma!", "No messages yet. Start the conversation!"), "people");
   let lastDay = ""; const me = D.me.name;
   return CH.msgs.map((m) => {
     const mine = m.member_id === D.me.id; const day = sgParts(m.at).date;
@@ -3454,12 +3891,12 @@ async function chatLoad(first) {
 R.chat = (room) => {
   if (isGuest()) return R.home();
   const rooms = chatRooms();
-  if (!room) return shell("#/chat", `<h2 class="page-h">💬 Chat</h2><p class="lead">${esc(L3("Percakapan dua arah. Ketuk sebuah ruang untuk membuka.", "Marsiboto dua arah. Ketuk ruang asa bukka.", "Two-way conversations. Tap a room to open it."))}</p>
+  if (!room) return shell("#/chat", `<h2 class="page-h">💬 Chat</h2><p class="lead">${esc(L3("Percakapan dua arah. Ketuk salah satu ruang untuk membukanya.", "Marhata dua arah. Ketuk sada ruang asa terbuka.", "Two-way conversations. Tap a room to open it."))}</p>
     <div class="glist">${rooms.map((r) => `<a class="gtile" href="#/chat/${r.id}" style="--gc:${r.id === "makers" ? "var(--gold)" : "var(--brand)"}"><span class="gicon">${ic(r.id === "makers" ? "gear" : "people")}</span><span class="gname"><b>${esc(r.name)}</b><small>${esc(r.sub)}</small></span>${newBadge(chatUnread(r.id))}${ic("chev", "chev")}</a>`).join("")}</div>
     <div class="row between" style="margin:18px 0 6px"><h3 class="sec-h" style="margin:0">${esc(L3("Pesan pribadi", "Pesan pribadi", "Private messages"))}</h3><button class="btn sm primary" data-act="dmNew">✏️ ${esc(L3("Pesan baru", "Pesan baru", "New message"))}</button></div>
     ${(D.dms || []).length ? `<div class="card dm-list">${D.dms.map((x) => { const p = (D.people || []).find((q) => q.id === x.other) || { id: x.other, name: x.name };
       return `<a class="li${x.unread ? " unread" : ""}" href="#/chat/${esc(x.room)}">${avatarOf(p)}<span class="grow"><b>${esc(x.name || "")}</b><small>${x.last_mine ? esc(L3("Anda: ", "Ho: ", "You: ")) : ""}${esc(x.last || "")}</small></span><span class="dm-meta"><small>${esc(sgParts(x.at).date === today() ? fmtTime(x.at) : fmt(x.at, { day: "numeric", month: "short" }))}</small>${x.unread ? `<b class="dm-n">${x.unread}</b>` : ""}</span></a>`; }).join("")}</div>`
-      : `<p class="muted small">${esc(L3("Belum ada pesan pribadi. Ketuk “Pesan baru” untuk mengirim pesan ke seorang anggota.", "Dang adong.", "No private messages yet. Tap “New message” to write to a member."))}</p>`}`);
+      : `<p class="muted small">${esc(L3("Belum ada pesan pribadi. Ketuk “Pesan baru” untuk mengirim pesan ke seorang anggota.", "Ndang adong.", "No private messages yet. Tap “New message” to write to a member."))}</p>`}`);
   let rm = rooms.find((r) => r.id === room);
   if (!rm && String(room).startsWith("dm:")) { const oid = room.slice(3).split(":").find((x) => x !== D.me.id); const op = (D.people || []).find((p) => p.id === oid);
     if (op && room === dmRoom(oid)) rm = { id: room, name: op.name, sub: seenText(oid), dm: oid }; }
@@ -3470,7 +3907,7 @@ R.chat = (room) => {
   setTimeout(() => { chatPending(); chatLoad(true).catch((e) => toast(errMsg(e), true)); }, 0);
   return shell("#/chat", `<p class="ch-online" id="chOnline"></p><div id="chatBox" class="chat">${CH.msgs.length ? chatHtml() : skel(4)}</div>
     <div class="ch-bar"><div class="ch-pend" id="chReply" hidden></div><div class="ch-row"><button class="icon-btn" data-act="chatPhoto" aria-label="${esc(L3("Kirim foto", "Kirim foto", "Send a photo"))}">${ic("camera")}</button>
-      <textarea id="chatIn" rows="1" maxlength="1000" placeholder="${esc(L3("Tulis pesan…", "Surat pesan…", "Write a message…"))}"></textarea><button class="btn primary" data-act="chatSend" aria-label="${esc(L3("Kirim", "Kirim", "Send"))}">➤</button></div></div>`,
+      <textarea id="chatIn" rows="1" maxlength="1000" placeholder="${esc(L3("Tulis pesan…", "Surathon pesan…", "Write a message…"))}"></textarea><button class="btn primary" data-act="chatSend" aria-label="${esc(L3("Kirim", "Kirim", "Send"))}">➤</button></div></div>`,
     { back: "#/chat", title: "💬 " + rm.name, sub: rm.sub });
 };
 A.chatMsg = (d) => { CH.sel = CH.sel === +d.id ? null : +d.id; chatPaint(false); };
@@ -3741,18 +4178,16 @@ F.publish = async (f) => {
 // ---------- daily bread setup (admin, first time and later) ----------
 A.breadSetup = () => {
   if (!$("#sheet").hidden && $("#sheet [data-form=breadsetup]")) return;
-  const st = D.settings || {}; const cur = st.bread_source || "claude_daily"; const hr = +(st.bread_hour ?? 6); const bl = st.bread_lang || lang;
+  const st = D.settings || {}; const cur = /^claude/.test(st.bread_source || "") || !st.bread_source ? "verse" : st.bread_source; const hr = +(st.bread_hour ?? 6); const bl = st.bread_lang || lang;
   const senders = Array.isArray(st.wa_senders) ? st.wa_senders : [me().id];
   const elders = D.people.filter((p) => p.is_admin || "parhalado" in (p.groups || {}) || p.id === me().id);
   sheet(t("bs_title"), `<form class="form" data-form="breadsetup">
     <p class="muted">${esc(t("bs_lead"))}</p>
     <fieldset class="opts"><legend>${esc(t("bs_source"))}</legend>
-      ${["claude_daily", "claude_week", "elders"].map((v) => `<label class="opt"><input type="radio" name="source" value="${v}" ${cur === v ? "checked" : ""}><span><b>${esc(t("src_" + v))}</b><small>${esc(t("src_" + v + "_sub"))}</small></span></label>`).join("")}
+      ${[["verse", L3("Ayat Harian otomatis (gratis)", "Ayat siganup ari (otomatis)", "Automatic verse of the day (free)"), L3("Bila belum ada renungan dari sintua, Sada mengirim ayat pilihan (TB / Toba) dengan doa singkat.", "Molo dang adong sian sintua, Sada mangirim ayat.", "If no elder has written one, Sada sends a chosen verse (TB / Toba) with a short prayer.")], ["elders", L3("Hanya ditulis sintua", "Sian sintua sambing", "Written by elders only"), L3("Renungan dikirim hanya bila sintua menuliskannya.", "Holan molo ditulis sintua.", "Sent only when an elder writes one.")]].map(([v, a1, b1]) => `<label class="opt"><input type="radio" name="source" value="${v}" ${cur === v ? "checked" : ""}><span><b>${esc(a1)}</b><small>${esc(b1)}</small></span></label>`).join("")}
     </fieldset>
-    <div class="row two"><label>${esc(t("bs_lang"))}<select name="blang">${["id", "bt", "en"].map((l) => `<option value="${l}" ${l === bl ? "selected" : ""}>${esc(t("lang_" + l))}</option>`).join("")}</select></label>
+    <div class="row two"><label>${esc(t("bs_lang"))}<select name="blang">${["id", "bt"].map((l) => `<option value="${l}" ${l === bl ? "selected" : ""}>${esc(t("lang_" + l))}</option>`).join("")}</select></label>
       <label>${esc(t("bs_time"))}<select name="bhour">${[4, 5, 6, 7, 8, 9].map((h) => `<option value="${h}" ${h === hr ? "selected" : ""}>${String(h).padStart(2, "0")}:00</option>`).join("")}</select></label></div>
-    <label>${esc(t("f_claudeKeyServer"))}<input name="ckey" type="password" autocomplete="off" placeholder="${esc(st.claude_key_set ? t("keySaved") : "sk-ant-…")}"></label>
-    <p class="small muted">${esc(t("claudeKeyServerNote"))}</p>
     <h4>${ic("wa")} ${esc(t("bs_wa"))}</h4>
     <p class="small muted">${esc(t("bs_waLead"))}</p>
     <label>${esc(t("f_waLink"))}<input name="walink" type="url" inputmode="url" value="${esc(st.wa_group_link || "")}" placeholder="https://chat.whatsapp.com/…"></label>
@@ -3764,8 +4199,8 @@ A.breadSetup = () => {
 };
 F.breadsetup = async (f) => {
   const source = (f.querySelector("[name=source]:checked") || {}).value || "elders";
-  const key = f.ckey.value.trim(); const st = D.settings || {};
-  if (source !== "elders" && !key && !st.claude_key_set && api.mode === "remote") throw new S.AppError("need_claude_key");
+  const key = ""; const st = D.settings || {};
+  // no key needed any more: the verse of the day is free
   const link = f.walink.value.trim();
   if (link && !/^https:\/\/(chat\.whatsapp\.com|wa\.me|whatsapp\.com)\//.test(link)) throw new S.AppError("bad_wa_link");
   await api.settingsSave({ bread_source: source, bread_lang: f.blang.value, bread_hour: +f.bhour.value, wa_group_link: link, wa_senders: [...f.querySelectorAll("[name=sender]:checked")].map((x) => x.value), setup_done: true, claude_key: key });
@@ -3955,7 +4390,7 @@ A.genOne = async (d, btn) => {
   const f = btn.closest("form");
   await busy(btn, async () => {
     try { const r = await claudeBread(f.day.value, f.glang.value, D.bread.slice(0, 30).map((b) => b.verse).filter(Boolean)); f.verse.value = r.verse || ""; f.title.value = r.title || ""; f.body.value = r.body || ""; toast(t("genDone")); }
-    catch (e) { toast(e.message, true); if (!LS.get("claudeKey")) A.settings(); }
+    catch (e) { toast(errMsg(e), true); }
   });
 };
 A.genWeek = async (d, btn) => {
@@ -4018,7 +4453,7 @@ A.rrRm = (d, btn) => { const r = btn.closest(".rr-row"); if (r) r.remove(); };
 F.rosterday = async (f) => {
   const gid = f.dataset.g; const day = f.day.value; if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) throw new S.AppError("bad_date");
   const pairs = [...f.querySelectorAll(".rr-row")].map((r) => [r.querySelector("[name=job]").value.trim(), r.querySelector("[name=who]").value.trim()]).filter(([j]) => j);
-  if (!pairs.some(([, w]) => w)) { toast(L3("Isi minimal satu nama.", "Isi sahali goar.", "Fill in at least one name."), true); return; }
+  if (!pairs.some(([, w]) => w)) { toast(L3("Isi minimal satu nama.", "Isi ma nang sada goar.", "Fill in at least one name."), true); return; }
   const ym = day.slice(0, 7); const old = manualRoster(gid, ym);
   const head = old ? old.table_json[0].rows[0].slice() : [L3("Tanggal", "Tanggal", "Date")];
   pairs.forEach(([j]) => { if (!head.slice(1).some((h) => norm(h) === norm(j))) head.push(j); });
@@ -4864,7 +5299,7 @@ A.finScan = (d) => {
   const inp = document.createElement("input"); inp.type = "file"; inp.accept = "image/*";
   inp.onchange = async () => {
     const file = inp.files && inp.files[0]; if (!file) return;
-    busySheet("📷 " + L3("Membaca struk", "Manjaha struk", "Reading the receipt"), L3("Claude sedang membaca jumlah SGD…", "Claude manjaha…", "Claude is reading the SGD amounts…"));
+    busySheet("📷 " + L3("Membaca struk", "Manjaha struk", "Reading the receipt"), L3("Membaca jumlah SGD di HP Anda… (pertama kali agak lama)", "Manjaha jumlah SGD…", "Reading the SGD amounts on your phone… (slower the first time)"));
     try {
       let img = await resizeImage(file, 1600, 0.82); if (img.length > 900000) img = await resizeImage(file, 1200, 0.72);
       const p = finFor(sun); const prevSun = addDays(sun, -7);
@@ -4872,7 +5307,7 @@ A.finScan = (d) => {
       FIN_DEFAULT.forEach((df, i) => { if (!x.secs[i]) x.secs[i] = { ...df, items: [] }; });
       if (!x.secs[0].items.length) x.secs[0].items = FIN_A.map((name) => ({ name, amts: [] }));
       const names = [...new Set([...x.secs[0].items.map((r) => r.name).filter(Boolean), ...FIN_A])];
-      const r = await aiRun("receipt", { image: img.split(",")[1], mime: "image/jpeg", names });
+      const r = await ocrReceipt(img, names);
       const got = (r.items || []).filter((it) => it && it.name && isFinite(+it.sgd) && +it.sgd > 0);
       if (!got.length) throw new Error(L3("Tidak ada jumlah SGD yang terbaca. Coba foto lebih jelas, atau isi manual.", "Ndang terbaca.", "No SGD amount could be read. Try a clearer photo, or type it in."));
       // into the SGD field of the matching offering (or a new line for an offering not on the list yet)
