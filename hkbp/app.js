@@ -584,7 +584,8 @@ R.group = (gid) => {
     ${gid === "naposo" ? natalBlock(gid) : ""}
     ${ok && teach && manage() && isTMaker(gid) && !tmOk(gid) ? `<button class="card notify-ask" data-act="tmVerify" data-g="${gid}">${ic("lock")}<span><b>${esc(tmTitle(gid))}</b><small>${esc(t("tmNeedVerify"))}</small></span>${ic("chev", "chev")}</button>` : ""}
     ${ok ? `<div class="seg" role="tablist" style="--gc:${g.color}">${tabs.map(([k, l, n]) => `<a role="tab" aria-selected="${tab === k}" href="#/g/${gid}?tab=${k}">${esc(t(l))}${n ? ` <i>${n}</i>` : ""}</a>`).join("")}</div>` : ""}
-    <div style="--gc:${g.color}">${body}</div>`, { back: svc ? "#/serve" : "#/groups", title: gname(g), sub: t(svc ? "kindService" : "kindSermon") });
+    <div style="--gc:${g.color}">${body}</div>
+    ${!svc && !isGuest() ? `<div class="row two cat-links" style="--gc:${g.color}"><a class="card cat-link" href="#/tutur"><b>🤝 Partuturan</b><small>${esc(L3("Cara saling menyapa", "Partuturan", "How to address each other"))}</small></a><a class="card cat-link" href="#/ende"><b>🎵 Buku Ende</b><small>${esc(L3("Arti setiap baris lagu", "Lapatan ni ende", "The meaning of every hymn line"))}</small></a></div>` : ""}`, { back: svc ? "#/serve" : "#/groups", title: gname(g), sub: t(svc ? "kindService" : "kindSermon") });
 };
 // Youth files and videos (YB 2026-10-28): the Youth makers upload any kind of file or add a video link; every Youth member sees them.
 const ytId = (u) => (String(u || "").match(/(?:youtu\.be\/|[?&]v=|\/shorts\/|\/embed\/|\/live\/)([\w-]{11})/) || [])[1] || "";
@@ -1048,6 +1049,7 @@ function hydrate() {
     if (viewMode() === null) { if (hasRights()) setTimeout(rolePrompt, 300); else LS.set("view", "member"); }
     else if (profileOn() && !me().profile) setTimeout(() => { if ($("#sheet").hidden && profileOn() && !me().profile) profilePrompt(); }, 900);
     else if (needBday() && LS.get("bdayAsked") !== today()) setTimeout(() => { if ($("#sheet").hidden && needBday()) bdayPrompt(); }, 900);
+    else if (notifyNeeded()) setTimeout(() => { if ($("#sheet").hidden && notifyNeeded()) notifyPrompt(); }, 1200);
     else if (serveDue()) setTimeout(() => { if ($("#sheet").hidden && serveDue()) servePrompt(); }, 900);
   }
   if (D && /^#\/s\/multimedia/.test(location.hash) && $("#sheet").hidden && viewMode() !== null) {
@@ -1070,6 +1072,73 @@ window.addEventListener("hashchange", () => { window.scrollTo(0, 0); render(); }
 // ---------- actions ----------
 const A = {};
 const F = {};
+try { document.head.insertAdjacentHTML("beforeend", `<style>
+  .cat-links { margin-top: 16px; } .cat-link { display: grid; gap: 2px; padding: 14px 16px; text-decoration: none; color: inherit; border-left: 4px solid var(--gc, var(--brand)); margin: 0; }
+  .cat-link b { font-size: 15.5px; } .cat-link small { color: var(--muted); font-size: 12.5px; line-height: 1.3; }
+</style>`); } catch (e) {}
+
+// Push notifications are required in the installed app (YB 2026-10-30). Installed Sada (Home Screen / desktop app) without
+// notifications allowed shows only this screen: one big button to turn them on. If they were blocked, how to switch them back on.
+// It checks again whenever Sada comes back to the front, so it disappears by itself once notifications are on.
+// (Sada in an ordinary browser tab is not blocked; on iPhone, notifications only exist in the installed app.)
+const pushGateOn = () => standalone() && "Notification" in window && Notification.permission !== "granted";
+function pushGate() {
+  let el = document.getElementById("pushGate");
+  if (!pushGateOn()) { if (el) { el.remove(); document.body.classList.remove("gated-push"); } return; }
+  const denied = Notification.permission === "denied";
+  const html = `<div class="pg-card"><img class="pg-logo" src="icon-192.png" alt="" onerror="this.remove()">
+    <h1>${esc(L3("Nyalakan notifikasi", "Pasangkon notifikasi", "Turn on notifications"))}</h1>
+    <p>${esc(L3("Sada HKBPS memakai notifikasi untuk jadwal pelayanan, renungan harian, ulang tahun, rapat dan chat. Nyalakan untuk memakai aplikasi.", "Sada mamakke notifikasi. Pasangkon asa boi mamakke.", "Sada HKBPS uses notifications for service duties, daily devotions, birthdays, meetings and chat. Turn them on to use the app."))}</p>
+    ${denied ? `<div class="pg-steps"><b>${esc(L3("Notifikasi sedang diblokir. Nyalakan di sini:", "Diblokir. Pasangkon di:", "Notifications are blocked. Turn them on here:"))}</b>
+        <p><b>iPhone:</b> ${esc(L3("Pengaturan → Notifikasi → Sada HKBPS → Izinkan Notifikasi", "Pengaturan → Notifikasi → Sada HKBPS", "Settings → Notifications → Sada HKBPS → Allow Notifications"))}</p>
+        <p><b>Android:</b> ${esc(L3("Pengaturan → Aplikasi → Sada HKBPS → Notifikasi → Izinkan", "Pengaturan → Aplikasi → Sada HKBPS", "Settings → Apps → Sada HKBPS → Notifications → Allow"))}</p>
+        <p><b>${esc(L3("Komputer", "Komputer", "Computer"))}:</b> ${esc(L3("ikon gembok di samping alamat → Notifikasi → Izinkan", "gembok → Notifikasi", "lock icon next to the address → Notifications → Allow"))}</p></div>
+      <button class="pg-btn" data-act="pushGateCheck">${esc(L3("Sudah, periksa lagi", "Nunga, ida muse", "Done, check again"))}</button>`
+      : `<button class="pg-btn" data-act="pushGateOn">🔔 ${esc(L3("Nyalakan notifikasi", "Pasangkon notifikasi", "Turn on notifications"))}</button>`}</div>`;
+  if (!el) { el = document.createElement("div"); el.id = "pushGate"; el.setAttribute("role", "dialog"); el.setAttribute("aria-modal", "true"); document.body.appendChild(el); document.body.classList.add("gated-push"); }
+  if (el.dataset.state !== (denied ? "denied" : "default") + lang) { el.dataset.state = (denied ? "denied" : "default") + lang; el.innerHTML = html; }
+}
+A.pushGateOn = async (d, btn) => { btn.disabled = true; try { await enableNotifications(btn); } finally { btn.disabled = false; } pushGate(); };
+A.pushGateCheck = () => { pushGate(); if (pushGateOn()) toast(L3("Notifikasi masih mati.", "Dang hidup dope.", "Notifications are still off."), true); };
+document.addEventListener("visibilitychange", () => { if (!document.hidden) pushGate(); });
+setInterval(pushGate, 3000); setTimeout(pushGate, 300);
+try { document.head.insertAdjacentHTML("beforeend", `<style>
+  #pushGate { position: fixed; inset: 0; z-index: 200; display: grid; place-items: center; padding: max(24px, env(safe-area-inset-top)) 22px max(24px, env(safe-area-inset-bottom)); background: linear-gradient(160deg, var(--brand), #0b1022); color: #fff; overflow-y: auto; }
+  .pg-card { width: 100%; max-width: 440px; text-align: center; display: grid; gap: 14px; justify-items: center; }
+  .pg-logo { width: 84px; height: 84px; border-radius: 22px; background: #fff; box-shadow: 0 10px 30px rgba(0, 0, 0, .3); }
+  #pushGate h1 { font-size: 28px; line-height: 1.15; margin: 4px 0 0; } #pushGate p { margin: 0; line-height: 1.45; opacity: .92; }
+  .pg-btn { width: 100%; min-height: 64px; border: 0; border-radius: 20px; background: #fff; color: var(--brand); font-size: 20px; font-weight: 900; box-shadow: 0 12px 30px rgba(0, 0, 0, .3); margin-top: 6px; }
+  .pg-btn:disabled { opacity: .7; }
+  .pg-steps { text-align: left; background: rgba(255, 255, 255, .12); border-radius: 16px; padding: 14px 16px; display: grid; gap: 6px; font-size: 14.5px; width: 100%; }
+  body.gated-push { overflow: hidden; }
+</style>`); } catch (e) {}
+
+// Notifications on for everyone (YB 2026-10-30). Phones only allow notifications after the person taps "Allow", so:
+// once allowed, the app keeps them on by itself (ensurePush on every open); not decided yet, a one-tap request on opening,
+// at most once a day; on an iPhone in Safari, a reminder to add Sada to the Home Screen first (once a day);
+// blocked, how to switch them back on in Settings (once a week).
+function notifyNeeded() {
+  if (!D || isGuest() || api.mode !== "remote" || pushGateOn()) return false;
+  const ios = /iP(hone|ad)/.test(navigator.userAgent);
+  if (!("Notification" in window)) return ios && !standalone() && LS.get("notifyAskedDay") !== today();
+  if (Notification.permission === "granted") return false;
+  if (Notification.permission === "denied") return Date.now() - (LS.get("notifyDeniedAt", 0) || 0) > 7 * 864e5;
+  return LS.get("notifyAskedDay") !== today();
+}
+function notifyPrompt() {
+  const ios = /iP(hone|ad)/.test(navigator.userAgent);
+  if (!("Notification" in window)) { LS.set("notifyAskedDay", today());
+    return sheet("🔔 " + L3("Pasang Sada di HP", "Pasang Sada", "Install Sada on your phone"), `<p>${esc(L3("Agar menerima notifikasi (jadwal pelayanan, renungan, ulang tahun, chat), pasang Sada di Layar Utama:", "Asa dapot notifikasi, pasang Sada:", "To get notifications (duties, devotions, birthdays, chat), add Sada to your Home Screen:"))}</p>
+      <ol class="small"><li>${esc(L3("Ketuk tombol Bagikan (kotak dengan panah) di Safari", "Ketuk Bagikan", "Tap the Share button (square with an arrow) in Safari"))}</li><li>${esc(L3("Pilih “Tambahkan ke Layar Utama”", "Pilih “Add to Home Screen”", "Choose “Add to Home Screen”"))}</li><li>${esc(L3("Buka Sada dari ikon baru itu dan izinkan notifikasi", "Bukka sian ikon", "Open Sada from the new icon and allow notifications"))}</li></ol>
+      <button class="btn primary block" data-act="closeSheet">${esc(L3("Mengerti", "Olo", "Got it"))}</button>`); }
+  if (Notification.permission === "denied") { LS.set("notifyDeniedAt", Date.now());
+    return sheet("🔕 " + L3("Notifikasi diblokir", "Notifikasi diblokir", "Notifications are blocked"), `<p>${esc(L3("Anda tidak akan menerima jadwal pelayanan, renungan dan pengumuman. Untuk menyalakannya lagi:", "Asa mangkalahon:", "You won't get duty reminders, devotions or announcements. To switch them back on:"))}</p>
+      <p class="small"><b>iPhone:</b> ${esc(L3("Pengaturan → Notifikasi → Sada HKBPS → Izinkan Notifikasi", "Pengaturan → Notifikasi → Sada HKBPS", "Settings → Notifications → Sada HKBPS → Allow Notifications"))}<br><b>Android / ${esc(L3("komputer", "komputer", "computer"))}:</b> ${esc(L3("ketuk ikon gembok di samping alamat situs → Notifikasi → Izinkan", "gembok → Notifikasi → Izinkan", "tap the lock icon next to the address → Notifications → Allow"))}</p>
+      <button class="btn primary block" data-act="closeSheet">${esc(L3("Mengerti", "Olo", "Got it"))}</button>`); }
+  LS.set("notifyAskedDay", today());
+  sheet("🔔 " + t("notifyAskTitle"), `<p class="muted">${esc(t("notifyAskBody"))}</p><button class="btn primary block" data-act="notifyNow">${ic("bell")} ${esc(L3("Nyalakan notifikasi", "Pasangkon notifikasi", "Turn on notifications"))}</button>
+    <button class="btn ghost block" data-act="closeSheet">${esc(L3("Nanti saja", "Annon", "Later"))}</button>`);
+}
 
 // ---------- Computer layout (YB 2026-10-30) ----------
 // From 900px wide Sada uses the side rail (index.html). These rules make the pages use a computer screen well: a wider centred page,
@@ -1826,13 +1895,13 @@ const busySheet = (title, text) => sheet(title, `<div class="center pad">${skel(
 // More: one place for the community features.
 function communityMenu() {
   if (isGuest()) return "";
-  const elder = D.me.is_admin || "parhalado" in (D.me.groups || {});
+  const elder = "parhalado" in (D.me.groups || {});   // Time for a visit: Parhalado only (the pastor and the elders)
   const it = (href, icon, title, sub) => `<a class="li" href="${href}">${ic(icon)}<span class="grow"><b>${title}</b><small>${esc(sub)}</small></span>${ic("chev", "chev")}</a>`;
   return it("#/fx", "coins", "💱 " + esc(L3("Kurs", "Kurs", "Exchange rates")), L3("Konversi mata uang, kurs terbaru", "Kurs hepeng", "Currency converter, latest rates"))
     + it("#/tutur", "people", "🤝 Partuturan", L3("Cara saling menyapa menurut Dalihan Na Tolu", "Partuturan Dalihan Na Tolu", "How to address each other (Dalihan Na Tolu)"))
     + it("#/ende", "book", "🎵 Buku Ende", L3("Arti setiap baris lagu", "Lapatan ni ende", "The meaning of every hymn line"))
     + it("#/stories", "mic", "🎙️ Turi-turian", L3("Cerita orang tua, direkam untuk generasi muda", "Turi-turian ni natua-tua", "Elders' stories, recorded for the young"))
-    + it("#/voyage", "globe", "🚢 Pelaut", L3("Mode berlayar dan paket offline", "Mode marlayar", "Voyage mode and offline pack"))
+    + (("pelaut" in (D.me.groups || {})) ? it("#/voyage", "globe", "🚢 Pelaut", L3("Mode berlayar dan paket offline", "Mode marlayar", "Voyage mode and offline pack")) : "")
     + it("#/grief", "heart", "🕊️ Dukacita", L3("Dukung keluarga yang berduka", "Apuli na marsak", "Support a grieving family"))
     + (elder ? it("#/care", "bell", "🫶 " + esc(L3("Perlu dikunjungi", "Ingkon dikunjungi", "Time for a visit")), L3("Jemaat yang lama tidak hadir (hanya sintua)", "Ruas na leleng so ro", "Members not seen for a while (elders only)")) : "")
     + `<label class="li care-opt"><input type="checkbox" data-act="careOptin" ${D.care_optin ? "checked" : ""}><span class="grow"><b>${esc(L3("Sintua boleh menghubungi saya", "Sintua boi manghubungi au", "Elders may check on me"))}</b><small>${esc(L3("Jika saya lama tidak hadir atau membuka aplikasi", "Molo leleng ndang ro", "If I haven't been at church or in the app for a while"))}</small></span></label>`;
@@ -2097,6 +2166,7 @@ A.griefClose = async (d) => { try { await api.save("grief_close", { grief_id: +d
 
 // 7. Time for a visit (elders only): members who opted in and haven't been seen in church or the app for 3 weeks.
 R.care = () => {
+  if (!("parhalado" in (D.me.groups || {}))) { location.replace("#/more"); return ""; }
   const list = D.care || [];
   return shell("#/more", `<h2 class="page-h">🫶 ${esc(L3("Perlu dikunjungi", "Ingkon dikunjungi", "Time for a visit"))}</h2><p class="lead">${esc(L3("Jemaat yang memilih “Sintua boleh menghubungi saya” dan belum terlihat di gereja atau aplikasi selama 3 minggu. Hanya sintua yang melihat daftar ini.", "", "Members who chose “Elders may check on me” and haven't been seen at church or in the app for 3 weeks. Only elders see this list."))}</p>
     ${list.length ? `<div class="card">${list.map((p) => `<div class="li">${avatarOf(p)}<span class="grow"><b>${esc(p.name)}</b><small>${esc(L3("Terakhir di aplikasi", "Aplikasi", "Last in the app"))}: ${esc(p.seen ? fmt(p.seen, { day: "numeric", month: "short" }) : "–")} · ${esc(L3("di gereja", "gareja", "at church"))}: ${esc(p.church ? fmt(p.church, { day: "numeric", month: "short" }) : "–")}</small></span>${p.phone ? `<a class="icon-btn wa" href="${wa(L3(`Syalom ${firstName(p.name)}, apa kabar? Kami merindukan Anda di ibadah. Tuhan memberkati.`, `Horas ${firstName(p.name)}!`, `Hello ${firstName(p.name)}, how are you? We miss you at church. God bless.`), p.phone)}" target="_blank" rel="noopener" aria-label="WhatsApp">${ic("wa")}</a><a class="icon-btn" href="tel:+65${esc(p.phone)}" aria-label="Call">📞</a>` : ""}</div>`).join("")}</div>` : empty(L3("Semua yang memilih untuk disapa masih aktif. Puji Tuhan!", "", "Everyone who opted in has been around recently. Praise God!"), "heart")}`,
