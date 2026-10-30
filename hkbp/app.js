@@ -560,9 +560,11 @@ R.group = (gid) => {
   const rosterOn = (ROSTER_CATS.includes(gid) && isTeacherIn(gid)) || inElders;
   const filesOn = gid === "naposo"; const yfiles = (D.files || []).filter((f) => f.group_id === gid);
   const rym = new URLSearchParams(location.hash.split("?")[1] || "").get("m") || LS.get("ym." + gid, monthKey(today()));
-  const tabs = [["sermon", "t_sermon", sermons.length], ...(filesOn ? [["files", "File & Video", yfiles.length]] : []), ...(rosterOn ? [["roster", "Roster", D.rosters.filter((r) => r.group_id === gid && r.month === rym).length]] : []), ...(pollsOn ? [["polls", "t_polls", polls.filter((p) => p.status === "open").length]] : []), ["news", "t_news", news.length], ["events", "t_events", evs.length], ...(teach ? [["teachers", "t_teachers", teachers.length]] : []), ["members", "t_members", people.length]];
+  const slidesOn = gid === "sekolah-minggu" && Array.isArray(D.ss_decks);
+  const tabs = [["sermon", "t_sermon", sermons.length], ...(slidesOn ? [["slides", "Slide", 0]] : []), ...(filesOn ? [["files", "File & Video", yfiles.length]] : []), ...(rosterOn ? [["roster", "Roster", D.rosters.filter((r) => r.group_id === gid && r.month === rym).length]] : []), ...(pollsOn ? [["polls", "t_polls", polls.filter((p) => p.status === "open").length]] : []), ["news", "t_news", news.length], ["events", "t_events", evs.length], ...(teach ? [["teachers", "t_teachers", teachers.length]] : []), ["members", "t_members", people.length]];
   let body = "";
   if (!ok) body = isGuest() ? signInCard(t("signInCat")) : empty(t("membersOnlyLong"), "lock");
+  else if (tab === "slides" && slidesOn) body = ssList();
   else if (tab === "roster" && rosterOn) body = rosterBlock(gid, rym);
   else if (tab === "files" && filesOn) body = youthFilesTab(gid, yfiles);
   else if (tab === "polls" && pollsOn) body = pollsTab(gid, polls);
@@ -1024,7 +1026,7 @@ async function render() {
     if (!D) await refresh();
     if (!r) { history.replaceState(null, "", "#/home"); r = "home"; }
     if (isGuest() && !["home", "bread", "checkin"].includes(r)) { history.replaceState(null, "", "#/home"); r = "home"; arg = undefined; }
-    const map = { tutur: R.tutur, ende: R.ende, stories: R.stories, voyage: R.voyage, live: R.live, grief: R.grief, care: R.care, search: R.search, prayer: R.prayer, checkin: R.checkin, checkinqr: R.checkinqr, chat: R.chat, tata: R.tata, home: R.home, groups: R.groups, g: R.group, serve: R.serve, s: R.section, calendar: R.calendar, bread: R.bread, elders: R.elders, berita: R.berita, people: R.people, more: R.more, appstatus: R.appstatus, o: R.office, warta: R.warta };
+    const map = { sswb: R.sswb, ssdeck: R.ssdeck, fx: R.fx, meet: R.meet, tutur: R.tutur, ende: R.ende, stories: R.stories, voyage: R.voyage, live: R.live, grief: R.grief, care: R.care, search: R.search, prayer: R.prayer, checkin: R.checkin, checkinqr: R.checkinqr, chat: R.chat, tata: R.tata, home: R.home, groups: R.groups, g: R.group, serve: R.serve, s: R.section, calendar: R.calendar, bread: R.bread, elders: R.elders, berita: R.berita, people: R.people, more: R.more, appstatus: R.appstatus, o: R.office, warta: R.warta };
     const html = (map[r] || R.notFound)(arg);
     if (typeof html === "string") view().innerHTML = html;
     draftRestore(view()); wAutoBase();
@@ -1066,6 +1068,376 @@ window.addEventListener("hashchange", () => { window.scrollTo(0, 0); render(); }
 const A = {};
 const F = {};
 
+// ---------- Sunday School slides workbench (YB 2026-10-30) ----------
+// Learned from the Sunday School decks in the church Drive folder ("Worship (English|Indonesia|Batak) - <date>"):
+// cover, ice-breaker question, songs, prayers, Ten Commandments (one slide each), memory verse, Apostles' Creed (3 pages),
+// offering (with the child leading it), announcements, birthdays, the Lord's Prayer, closing; footer on every slide.
+// Makers (Sunday School Teacher Makers and the admin) build it here in English, Indonesian or Batak, starting from last week's
+// deck (in Sada or in the Drive folder), and publish it: Sunday School, Ama and Ina members get a push and can open it.
+const SS_FN = ((window.HKBP_CONFIG || {}).supabaseUrl || "https://tbicfofdorwrupzlqgdm.supabase.co").replace(/\/$/, "") + "/functions/v1/hkbp-ssdeck";
+const SS_LANGS = { en: "English", id: "Indonesia", bt: "Batak" };
+const SS_TYPES = ["cover", "question", "song", "prayer", "tencom", "verse", "creed", "offering", "announce", "birthday", "lords", "closing"];
+const SS_NAMES = {
+  en: { cover: "Cover", question: "Question", song: "Song", prayer: "Prayer", tencom: "Ten Commandments", verse: "Memory Verse", creed: "Apostles' Creed", offering: "Offering", announce: "Announcement", birthday: "Birthday", lords: "The Lord's Prayer", closing: "Closing" },
+  id: { cover: "Sampul", question: "Pertanyaan", song: "Lagu", prayer: "Doa", tencom: "10 Perintah Tuhan", verse: "Ayat Hafalan", creed: "Pengakuan Iman Rasuli", offering: "Persembahan", announce: "Warta Gereja", birthday: "Ulang Tahun", lords: "Doa Bapa Kami", closing: "Penutup" },
+  bt: { cover: "Sampul", question: "Sungkun-sungkun", song: "Marende", prayer: "Tangiang", tencom: "Patik", verse: "Ayat Hafalan", creed: "Hata Haporseaon", offering: "Pelean", announce: "Tingting", birthday: "Ari Tubu", lords: "Tangiang Ale Amanami", closing: "Panutup" },
+};
+const SS_TEMPLATE = {
+  en: [["cover", "Sunday School", "Welcome back to"], ["question", "", ""], ["song", "Let's Sing", ""], ["prayer", "Opening Prayer", ""], ["song", "Let's Sing", ""], ["tencom", "TEN COMMANDMENT", ""], ["verse", "Memory Verse", ""], ["song", "Let's Sing", ""], ["creed", "Apostles' Creed", ""], ["offering", "Offering", ""], ["announce", "Announcement", ""], ["birthday", "Happy Birthday!", ""], ["lords", "The Lord's Prayer", ""], ["closing", "See you next Sunday!", ""]],
+  id: [["cover", "Sunday School", "Selamat Datang"], ["question", "", ""], ["song", "Bernyanyi", ""], ["prayer", "Doa Pembuka", ""], ["song", "Bernyanyi", ""], ["tencom", "Hukum Taurat / 10 Perintah Tuhan", ""], ["verse", "Ayat Hafalan", ""], ["song", "Bernyanyi", ""], ["creed", "Pengakuan Iman Rasuli", ""], ["offering", "Persembahan", ""], ["announce", "Warta Gereja", ""], ["birthday", "Happy Birthday!", ""], ["lords", "Doa Bapa Kami", ""], ["closing", "Sampai jumpa Minggu depan!", ""]],
+  bt: [["cover", "Sunday School", "Horas!"], ["question", "", ""], ["song", "MARENDE", ""], ["prayer", "Votum/Tangiang", ""], ["prayer", "Doa Pembuka", ""], ["song", "MARENDE", ""], ["tencom", "Patik / Ten Commandments", ""], ["prayer", "Tangiang mangido gogo", ""], ["song", "MARENDE", ""], ["prayer", "Manopoti Dosa", ""], ["verse", "Ayat Hafalan", ""], ["prayer", "Turpuk Siingoton", ""], ["creed", "Hata Haporseaon", ""], ["offering", "Offering", ""], ["announce", "Announcement / Tingting", ""], ["lords", "Tangiang Ale Amanami", ""], ["closing", "Horas! Sampai jumpa Minggu depan", ""]],
+};
+const SSW = { lang: null, day: null, secs: null };
+const ssKey = () => `ssw:${SSW.lang}:${SSW.day}`;
+const ssSave = () => LS.set(ssKey(), { at: Date.now(), secs: SSW.secs });
+const ssToken = () => { try { return JSON.parse(localStorage.getItem("hkbp.remote.token") || "null"); } catch (e) { return null; } };
+async function ssCall(body) {
+  const r = await fetch(SS_FN, { method: "POST", headers: { "content-type": "application/json", "x-token": String(ssToken() || "") }, body: JSON.stringify(body) });
+  const j = await r.json().catch(() => ({})); if (!r.ok || j.error) throw new Error(j.error === "not_allowed" ? t("notAllowed") || "not_allowed" : j.error || "error " + r.status); return j;
+}
+function ssDateLabel(day, lang) { const loc = lang === "en" ? "en-GB" : "id-ID"; return new Intl.DateTimeFormat(loc, { day: "numeric", month: "long", year: "numeric", timeZone: "Asia/Singapore" }).format(new Date(day + "T12:00:00+08:00")); }
+function ssTemplate(lang) { return SS_TEMPLATE[lang].map(([type, title, extra]) => ({ type, title, extra, body: "" })); }
+
+// A deck from the Drive folder (its slides as text) into sections, so last week's wording carries over.
+function ssParse(slides, lang) {
+  const FOOT = /SUNDAY SCHOOL\s*[-–]\s*HKBP SINGAPORE/i; const secs = []; let cur = null; const add = (x) => { secs.push(x); cur = x; return x; };
+  const kind = (t0) => /commandment|taurat|patik/i.test(t0) ? "tencom" : /memory verse|ayat hafalan/i.test(t0) ? "verse" : /creed|haporseaon|iman rasuli/i.test(t0) ? "creed"
+    : /offering|persembahan|pelean/i.test(t0) ? "offering" : /announcement|warta|tingting/i.test(t0) ? "announce" : /lord.?s prayer|bapa kami|ale amanami/i.test(t0) ? "lords"
+    : /prayer|doa|tangiang|votum|manopoti|turpuk|siingoton/i.test(t0) ? "prayer" : /birthday|ari tubu|ulang tahun|🎂/i.test(t0) ? "birthday" : "";
+  slides.forEach((sl, i) => {
+    const boxes = (sl.boxes || []).filter((b) => !FOOT.test(b)); const b0 = boxes[0] || ""; const b1 = boxes[1] || "";
+    if (i === 0 && /sunday school/i.test(b0)) { add({ type: "cover", title: "Sunday School", extra: boxes[1] || "", body: "" }); return; }
+    if (!boxes.length && (sl.boxes || []).length) { if (!secs.some((x) => x.type === "closing")) add({ type: "closing", title: SS_TEMPLATE[lang].slice(-1)[0][1], extra: "", body: "" }); return; }   // only the footer: the closing slide
+    if (/^marende$/i.test(b0) || (!boxes.length && sl.pictures)) { if (!(cur && cur.type === "song" && cur.open)) add({ type: "song", title: /^marende$/i.test(b0) ? "MARENDE" : SS_TEMPLATE[lang][2][1], extra: "", body: "", open: true, pics: 0 }); cur.pics += sl.pictures || 0; return; }
+    if (cur && cur.type === "song" && cur.open && /^\s*\d+\s*\./.test(b0)) { cur.body = [cur.body, ...boxes].filter(Boolean).join("\n\n"); return; }
+    if (cur) cur.open = false;
+    if (/^\d{1,2}$/.test(b0) && cur && cur.type === "tencom") { cur.items = cur.items || []; cur.items.push(boxes.slice(1).join("\n")); cur.body = cur.items.join("\n\n"); return; }
+    const pg = b1.match(/^(.*?)\s*\n?\((?:page|halaman)\s*(\d+)/i) || (b1 && kind(b1) === "creed" ? [b1, b1, "1"] : null);
+    if (pg && kind(pg[1]) === "creed") { let c = secs.find((x) => x.type === "creed"); if (!c) c = add({ type: "creed", title: pg[1].trim(), extra: "", body: "" }); c.body = [c.body, b0].filter(Boolean).join("\n\n"); return; }
+    if (b1 && kind(b1) === "lords") { add({ type: "lords", title: b1.trim(), extra: "", body: b0 }); return; }
+    if (/^🎂|happy\s*\n?\s*birthday/i.test(b0)) { add({ type: "birthday", title: "Happy Birthday!", extra: "", body: boxes.slice(1).join("\n") }); return; }
+    if (/memory verse\s*[–-]|ayat hafalan\s*[–-]/i.test(b0)) { const v = secs.slice().reverse().find((x) => x.type === "verse") || add({ type: "verse", title: SS_NAMES[lang].verse, extra: "", body: "" }); if (!v.extra) v.extra = b0; v.body = [v.body, boxes.slice(1).join("\n")].filter(Boolean).join("\n\n"); return; }
+    const k = kind(b0.split("\n")[0]);
+    if (k === "offering") { add({ type: "offering", title: b0.split("\n")[0].trim(), extra: b0.split("\n").slice(1).join(" ").trim(), body: "" }); return; }
+    if (k) { add({ type: k, title: b0.split("\n").map((l) => l.trim()).filter(Boolean).join(" / ").replace(/:\s*\//, " /").replace(/:$/, ""), extra: "", body: boxes.slice(1).join("\n\n"), items: [] }); return; }
+    if (i === 1 || (cur && cur.type === "cover")) { add({ type: "question", title: "", extra: "", body: boxes.join("\n") }); return; }
+    if (cur && cur.type === "announce") { cur.body = [cur.body, ...boxes].filter(Boolean).join("\n"); return; }
+    if (cur && cur.type === "prayer" && !cur.body) { cur.body = boxes.join("\n"); return; }
+    if (boxes.length) add({ type: "prayer", title: b0.split("\n")[0], extra: "", body: boxes.slice(1).join("\n") });
+  });
+  return secs.map(({ open, pics, items, ...x }) => ({ ...x, note: pics && !x.body ? "pics" : "" }));
+}
+
+// The deck itself: one self-contained page of 16:9 slides in the learned colours; arrows, tap, swipe, full screen.
+function ssRender(lang, day, secs) {
+  const e = (x) => String(x == null ? "" : x).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  const year = day.slice(0, 4); const foot = `SUNDAY SCHOOL - HKBP SINGAPORE | ${year}`;
+  const paras = (txt) => String(txt || "").replace(/\r/g, "").split(/\n\s*\n/).map((p) => p.split("\n").map((l) => l.trim()).filter(Boolean)).filter((p) => p.length);
+  const chunk = (lines, max) => { if (lines.length <= max) return [lines]; const parts = Math.ceil(lines.length / max), out = []; let i = 0; for (let k = 0; k < parts; k++) { const n = Math.ceil((lines.length - i) / (parts - k)); out.push(lines.slice(i, i + n)); i += n; } return out; };
+  const S = []; const slide = (cls, inner) => S.push(`<section class="dk-slide ${cls}"><div class="in">${inner}</div><footer>${e(foot)}</footer></section>`);
+  const lines = (ls) => ls.map((l) => `<p>${e(l)}</p>`).join("");
+  secs.forEach((x) => {
+    const title = x.title || SS_NAMES[lang][x.type] || "";
+    if (x.type === "cover") return slide("cover", `<p class="kick">${e(x.extra || "")}</p><h1>${e(title || "Sunday School")}</h1><p class="date">HKBP SINGAPORE | ${e(ssDateLabel(day, lang))}</p>`);
+    if (x.type === "question") return slide("question", `<p class="q">${e(x.body)}</p>`);
+    if (x.type === "song") {
+      slide("song-t", `<p class="kick">♪ ♫</p><h1>${e(title)}</h1>${x.extra ? `<p class="sub">${e(x.extra)}</p>` : ""}`);
+      (x.images || []).forEach((src) => S.push(`<section class="dk-slide pic"><img src="${src}" alt=""><footer>${e(foot)}</footer></section>`));
+      if (x.body) { const r = HYMN.splitHymn(title + " " + (x.extra || ""), String(x.body).split(/\r?\n/));
+        (r.ok ? r.slides : chunk(String(x.body).split(/\n/).filter(Boolean), 6).map((ls, i) => ({ kind: "verse", verse: i + 1, lines: ls }))).forEach((v) => {
+          const ref = v.kind === "reff"; const tag = v.withReff ? v.reffFrom : -1;
+          slide("lyric" + (ref ? " reff" : ""), `<p class="vn">${ref ? "Reff" : e(v.verse)}</p><div class="ly">${v.lines.map((l, i) => (i === tag ? `<p class="tag">Reff</p>` : "") + `<p>${e(l)}</p>`).join("")}</div>`); }); }
+      return;
+    }
+    if (x.type === "tencom") { slide("tencom-t", `<h1>${e(title)}</h1>`); paras(x.body).forEach((p, i) => slide("tencom", `<p class="num">${i + 1}</p><div class="cmd">${lines(p)}</div>`)); return; }
+    if (x.type === "verse") { slide("verse-t", `<h1>${e(title)}</h1>`); if (x.body) slide("verse", `<p class="kick">${e(x.extra || title)}</p><div class="vtext">${lines(String(x.body).split("\n").filter(Boolean))}</div>`); return; }
+    if (x.type === "creed") { slide("creed-t", `<h1>${e(title)}</h1>`); let ps = paras(x.body); if (ps.length !== 3) { const all = ps.flat(); ps = chunk(all, Math.ceil(all.length / 3) || 1); }
+      ps.forEach((p, i) => slide("creed", `<p class="kick">${e(title)} <small>(${lang === "id" ? "halaman" : "page"} ${i + 1} ${lang === "id" ? "dari" : "out of"} ${ps.length})</small></p><div class="tx">${lines(p)}</div>`)); return; }
+    if (x.type === "offering") return slide("offering", `<h1>${e(title)}</h1>${x.extra ? `<p class="sub">${e(x.extra)}</p>` : ""}`);
+    if (x.type === "announce") { slide("announce-t", `<h1>${e(title)}</h1>`); const items = String(x.body || "").split("\n").map((l) => l.trim()).filter(Boolean); chunk(items, 5).forEach((ls) => slide("announce", `<ul>${ls.map((l) => `<li>${e(l)}</li>`).join("")}</ul>`)); return; }
+    if (x.type === "birthday") { const names = String(x.body || "").split("\n").map((l) => l.trim()).filter(Boolean); if (names.length) slide("birthday", `<p class="cake">🎂🥳</p><h1>${e(title)}</h1><div class="names">${lines(names)}</div>`); return; }
+    if (x.type === "lords") { chunk(String(x.body || "").split("\n").map((l) => l.trim()).filter(Boolean), 8).forEach((ls) => slide("lords", `<p class="kick">${e(title)}</p><div class="tx">${lines(ls)}</div>`)); return; }
+    if (x.type === "closing") return slide("closing", `<h1>${e(title)}</h1>`);
+    slide("prayer-t", `<h1>${e(title)}</h1>`); paras(x.body).forEach((p) => chunk(p, 7).forEach((ls) => slide("prayer", `<p class="kick">${e(title)}</p><div class="tx">${lines(ls)}</div>`)));
+  });
+  const css = `*{box-sizing:border-box;margin:0}html,body{height:100%;background:#0b1022;font-family:Arial,"Helvetica Neue",Calibri,sans-serif}
+  .stage{position:fixed;inset:0;display:grid;place-items:center}.deck{position:relative;width:min(100vw,177.78vh);aspect-ratio:16/9;container-type:inline-size;overflow:hidden;border-radius:6px}
+  .dk-slide{position:absolute;inset:0;display:none;color:#111;padding:6cqw 7cqw 7cqw}.dk-slide.on{display:flex;animation:in .25s ease-out}@keyframes in{from{transform:translateX(1.5cqw)}to{transform:none}}
+  .dk-slide .in{margin:auto;width:100%;text-align:center}.dk-slide footer{position:absolute;left:0;right:0;bottom:2.2cqw;text-align:center;font-size:1.5cqw;letter-spacing:.12em;font-weight:700;opacity:.7}
+  h1{font-size:7.2cqw;line-height:1.08;font-weight:900}.kick{font-size:2.4cqw;font-weight:800;letter-spacing:.08em;text-transform:uppercase;margin-bottom:1.6cqw;opacity:.85}.sub{font-size:3.4cqw;font-weight:700;margin-top:1.8cqw}
+  .cover{background:radial-gradient(circle at 15% 20%,#fff6e8,#ECE3D7 55%,#e2d3bf)}.cover h1{font-size:10cqw;color:#1d3c78}.cover .kick{font-size:4cqw;text-transform:none;letter-spacing:0;color:#c0392b}.cover .date{font-size:2.6cqw;font-weight:800;margin-top:2cqw;color:#333}
+  .question{background:linear-gradient(160deg,#cfe1ff,#A6C9FD)}.question .q{font-size:5.2cqw;font-weight:800;line-height:1.25;color:#0d2a63}
+  .song-t,.verse-t,.creed-t,.announce-t,.prayer-t{background:linear-gradient(160deg,#fff,#EBF8F6)}.song-t h1{color:#7a1fa2}.song-t .kick{font-size:5cqw;color:#e67e22}
+  .lyric,.lyric.reff{background:#fff}.lyric .in{display:flex;gap:4cqw;align-items:center;text-align:left}.lyric .vn{font-size:6cqw;font-weight:900;color:#3D6BB2;min-width:9cqw;text-align:center}.lyric.reff .vn{font-size:2.6cqw;border:.35cqw solid #3D6BB2;border-radius:1cqw;padding:1cqw 1.4cqw;letter-spacing:.12em}
+  .lyric .ly p{font-size:4.6cqw;line-height:1.3;font-weight:700;white-space:nowrap}.lyric .ly p.tag{display:inline-block;font-size:1.8cqw;letter-spacing:.16em;border:.25cqw solid #3D6BB2;color:#3D6BB2;border-radius:.8cqw;padding:.5cqw 1cqw;margin:1cqw 0}
+  .prayer,.creed,.lords{background:linear-gradient(160deg,#fff,#EBF8F6)}.tx p,.vtext p{font-size:3.9cqw;line-height:1.35;font-weight:700}.prayer-t h1,.creed-t h1,.verse-t h1,.announce-t h1{color:#0f6e5f}
+  .tencom-t{background:#3D6BB2;color:#fff}.tencom{background:#8AAFE9}.tencom .in{display:flex;align-items:center;gap:5cqw;text-align:left}.tencom .num{font-size:14cqw;font-weight:900;color:#fff;min-width:14cqw;text-align:center;line-height:1}.tencom .cmd p{font-size:4.8cqw;font-weight:800;line-height:1.25;color:#0b1a3a}
+  .verse{background:linear-gradient(160deg,#fff8e1,#ffe9a8)}.verse .vtext p{font-size:4.6cqw;color:#3b2a00}
+  .offering{background:linear-gradient(160deg,#e8f8ec,#bfe8c9)}.offering h1{color:#196B24}
+  .announce{background:#fff}.announce ul{text-align:left;font-size:3.6cqw;font-weight:700;line-height:1.35;padding-left:4cqw}.announce li{margin:1.2cqw 0}
+  .birthday{background:radial-gradient(circle at 50% 30%,#fff0f6,#ffd1e3)}.birthday .cake{font-size:9cqw}.birthday h1{color:#c2185b}.birthday .names p{font-size:4.4cqw;font-weight:800;margin-top:1cqw}
+  .closing{background:radial-gradient(circle at 15% 20%,#fff6e8,#ECE3D7)}.closing h1{color:#1d3c78}
+  .pic{background:#fff;padding:0}.pic img{width:100%;height:100%;object-fit:contain}
+  .bar{position:fixed;right:12px;bottom:12px;display:flex;gap:8px;align-items:center;background:rgba(0,0,0,.55);color:#fff;border-radius:999px;padding:6px 10px;font:600 13px Arial;z-index:9;transition:opacity .3s}
+  .bar button{border:0;background:rgba(255,255,255,.18);color:#fff;border-radius:999px;padding:6px 12px;font:700 13px Arial}body.idle .bar{opacity:0}`;
+  const js = `(function(){var s=[].slice.call(document.querySelectorAll('.dk-slide')),i=0,c=document.getElementById('cnt');function go(n){i=Math.max(0,Math.min(s.length-1,n));s.forEach(function(x,k){x.classList.toggle('on',k===i)});c.textContent=(i+1)+' / '+s.length}
+  var h=+(location.hash.replace('#s','')||1);go(h-1);document.addEventListener('keydown',function(e){if(['ArrowRight','PageDown',' ','Enter'].indexOf(e.key)>=0){go(i+1);e.preventDefault()}if(['ArrowLeft','PageUp','Backspace'].indexOf(e.key)>=0){go(i-1);e.preventDefault()}if(e.key==='Home')go(0);if(e.key==='End')go(s.length-1)});
+  document.querySelector('.deck').addEventListener('click',function(e){var r=this.getBoundingClientRect();go(i+(e.clientX-r.left>r.width/3?1:-1))});var x0=null;document.addEventListener('touchstart',function(e){x0=e.touches[0].clientX},{passive:true});document.addEventListener('touchend',function(e){if(x0==null)return;var d=e.changedTouches[0].clientX-x0;if(Math.abs(d)>50)go(i+(d<0?1:-1));x0=null},{passive:true});
+  document.getElementById('prev').onclick=function(e){e.stopPropagation();go(i-1)};document.getElementById('next').onclick=function(e){e.stopPropagation();go(i+1)};document.getElementById('fs').onclick=function(e){e.stopPropagation();var d=document.documentElement;(d.requestFullscreen||d.webkitRequestFullscreen||function(){}).call(d)};
+  var t;function wake(){document.body.classList.remove('idle');clearTimeout(t);t=setTimeout(function(){document.body.classList.add('idle')},2500)}['mousemove','touchstart','keydown'].forEach(function(n){document.addEventListener(n,wake,{passive:true})});wake()})();`;
+  return `<!doctype html><html lang="${lang === "en" ? "en" : "id"}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sunday School · ${e(ssDateLabel(day, lang))} · ${SS_LANGS[lang]}</title><style>${css}</style></head>
+  <body><div class="stage"><div class="deck">${S.join("")}</div></div><div class="bar"><button id="prev">‹</button><span id="cnt"></span><button id="next">›</button><button id="fs">⛶</button></div><script>${js}<\/script></body></html>`;
+}
+
+// Viewers: the Sunday School "Slide" tab and the deck page.
+function ssList() {
+  const list = D.ss_decks || []; const mk = !!D.ss_maker && manage();
+  return `${mk ? `<a class="btn primary block" href="#/sswb">🎨 ${esc(L3("Buka workbench slide Sekolah Minggu", "Bukka workbench", "Open the Sunday School slide workbench"))}</a>` : ""}
+    ${list.length ? `<div class="card">${list.map((x) => `<a class="li" href="#/ssdeck/${x.id}"><span class="date-chip"><b>${esc(fmt(x.day, { day: "numeric" }))}</b><small>${esc(fmt(x.day, { month: "short" }))}</small></span><span class="grow"><b>${esc(x.title || "Sunday School")}</b><small>${esc(SS_LANGS[x.lang] || x.lang)} · ${esc(x.by || "")}</small></span>${ic("chev", "chev")}</a>`).join("")}</div>`
+      : empty(L3("Belum ada slide Sekolah Minggu.", "Dang adong.", "No Sunday School slides yet."), "screen")}`;
+}
+R.ssdeck = (id) => {
+  if (isGuest()) return R.home();
+  setTimeout(async () => { const box = document.getElementById("ssBox"); if (!box) return;
+    try { const r = await api.save("ss_html", { deck_id: id }); if (!r || !r.html) throw new Error("not_found"); box.innerHTML = ""; const f = tataIframe(r.html); f.style.cssText = "width:100%;aspect-ratio:16/9;border:0;border-radius:14px;background:#0b1022"; box.appendChild(f); SSV.html = r.html; SSV.sections = r.sections; }
+    catch (e) { box.innerHTML = `<p class="warn">${esc(errMsg(e))}</p>`; } }, 0);
+  const x = (D.ss_decks || []).find((d) => d.id === id) || {};
+  return shell("#/groups", `<div id="ssBox">${skel(2)}</div>
+    <div class="row two"><button class="btn" data-act="ssFull">⛶ ${esc(L3("Layar penuh", "Layar penuh", "Full screen"))}</button>${D.ss_maker && manage() ? `<a class="btn" href="#/sswb?from=${esc(id)}">✏️ ${esc(L3("Ubah", "Ubah", "Edit"))}</a>` : ""}</div>`,
+    { back: "#/g/sekolah-minggu?tab=slides", title: "Sunday School", sub: x.day ? `${fmt(x.day, { day: "numeric", month: "long" })} · ${SS_LANGS[x.lang] || ""}` : "" });
+};
+const SSV = { html: "", sections: null };
+A.ssFull = () => { const f = document.querySelector("#ssBox iframe"); if (!f) return; (f.requestFullscreen || f.webkitRequestFullscreen || function () {}).call(f); };
+
+// The workbench (makers only).
+R.sswb = () => {
+  if (!D.ss_maker) return shell("#/groups", `<div class="card center pad">${ic("lock")}<p>${esc(L3("Hanya untuk Teacher Maker Sekolah Minggu.", "", "Sunday School Teacher Makers only."))}</p></div>`, { back: "#/g/sekolah-minggu?tab=slides", title: "Sunday School" });
+  const q = new URLSearchParams(location.hash.split("?")[1] || "");
+  if (!SSW.lang) SSW.lang = LS.get("sswLang", "en"); if (!SSW.day) SSW.day = nextSunday();
+  if (q.get("from")) { const src = (D.ss_decks || []).find((d) => d.id === q.get("from")); if (src) { SSW.lang = src.lang; SSW.day = src.day; } }
+  if (!SSW.secs) { const dr = LS.get(ssKey(), null); SSW.secs = dr && dr.secs ? dr.secs : null; }
+  if (q.get("from") && SSV.sections && !SSW.secs) SSW.secs = SSV.sections;
+  const secs = SSW.secs;
+  const typeOpt = (sel) => SS_TYPES.map((tp) => `<option value="${tp}"${tp === sel ? " selected" : ""}>${esc(SS_NAMES[SSW.lang][tp])}</option>`).join("");
+  const field = (x, i) => {
+    const extraLabel = { cover: L3("Sapaan", "Sapaan", "Greeting"), song: L3("Nomor / judul lagu", "Nomor ende", "Song number / name"), verse: L3("Judul ayat (mis. Memory Verse – November 2026)", "", "Verse heading (e.g. Memory Verse – November 2026)"), offering: L3("Anak yang memimpin", "Dakdanak", "Child leading the offering") }[x.type];
+    const bodyLabel = { question: L3("Pertanyaan pembuka", "Sungkun-sungkun", "Ice-breaker question"), song: L3("Lirik (baris kosong = bait baru, \"Reff:\" untuk reff)", "Lirik", "Lyrics (blank line = new verse, \"Reff:\" for the refrain)"), tencom: L3("10 perintah (pisahkan dengan baris kosong)", "Patik (baris kosong)", "The 10 commandments (separate with a blank line)"),
+      verse: L3("Isi ayat dan referensi", "Ayat", "Verse text and reference"), creed: L3("Teks (3 halaman, pisahkan dengan baris kosong)", "Hata Haporseaon", "Text (3 pages, separate with a blank line)"), announce: L3("Satu pengumuman per baris", "Sada baris", "One announcement per line"), birthday: L3("Nama, satu per baris", "Goar", "Names, one per line"), lords: L3("Teks doa", "Tangiang", "Prayer text"), prayer: L3("Teks (boleh kosong bila didoakan bebas)", "Tangiang", "Text (may be empty for a free prayer)") }[x.type];
+    return `<article class="card ssw-sec" data-i="${i}"><div class="row between" style="margin:0"><select class="ssw-type" data-i="${i}">${typeOpt(x.type)}</select><span class="row" style="margin:0;gap:4px"><button class="icon-btn" data-act="sswMove" data-i="${i}" data-d="-1" aria-label="Up">↑</button><button class="icon-btn" data-act="sswMove" data-i="${i}" data-d="1" aria-label="Down">↓</button><button class="icon-btn danger" data-act="sswDel" data-i="${i}" aria-label="${esc(t("delete"))}">${ic("trash")}</button></span></div>
+      ${x.type !== "question" ? `<input class="ssw-in" data-i="${i}" data-k="title" value="${esc(x.title || "")}" placeholder="${esc(SS_NAMES[SSW.lang][x.type])}">` : ""}
+      ${extraLabel ? `<label class="small">${esc(extraLabel)}<input class="ssw-in" data-i="${i}" data-k="extra" value="${esc(x.extra || "")}"></label>` : ""}
+      ${bodyLabel ? `<label class="small">${esc(bodyLabel)}<textarea class="ssw-in" data-i="${i}" data-k="body" rows="${["tencom", "creed", "lords", "song"].includes(x.type) ? 8 : 3}">${esc(x.body || "")}</textarea></label>` : ""}
+      ${x.type === "song" ? `<div class="row" style="margin:6px 0 0;flex-wrap:wrap">${(x.images || []).map((src, k) => `<span class="ssw-img"><img src="${src}" alt=""><button class="icon-btn danger" data-act="sswImgDel" data-i="${i}" data-k="${k}" aria-label="${esc(t("delete"))}">×</button></span>`).join("")}<button class="btn sm ghost" data-act="sswImg" data-i="${i}">📷 ${esc(L3("Gambar lirik", "Gambar", "Lyric pictures"))}</button></div>${x.note === "pics" ? `<p class="small muted">${esc(L3("Di deck lama liriknya berupa gambar: ketik liriknya atau unggah gambarnya.", "", "In the old deck the lyrics were pictures: type them or upload the pictures."))}</p>` : ""}` : ""}
+    </article>`;
+  };
+  return shell("#/groups", `<h2 class="page-h">🎨 ${esc(L3("Workbench Sekolah Minggu", "Workbench Sekolah Minggu", "Sunday School workbench"))}</h2>
+    <div class="seg" style="--gc:#e67e22">${Object.entries(SS_LANGS).map(([k, v]) => `<a role="tab" aria-selected="${SSW.lang === k}" href="javascript:void 0" data-act="sswLang" data-l="${k}">${v}</a>`).join("")}</div>
+    <label>${esc(L3("Hari Minggu", "Ari Minggu", "Sunday"))}<input type="date" id="sswDay" value="${esc(SSW.day)}"></label>
+    <div class="row two"><button class="btn" data-act="sswImport" data-src="drive">⬇️ ${esc(L3("Dari deck terakhir (Drive)", "Sian Drive", "From the latest deck (Drive)"))}</button><button class="btn" data-act="sswImport" data-src="sada">↺ ${esc(L3("Dari slide Sada terakhir", "Sian Sada", "From the latest Sada deck"))}</button></div>
+    ${secs ? `${secs.map(field).join("")}
+      <div class="row two"><select id="sswAdd">${typeOpt("song")}</select><button class="btn" data-act="sswAdd">${ic("plus")} ${esc(L3("Tambah bagian", "Tambah", "Add section"))}</button></div>
+      <div class="row two sticky-actions"><button class="btn" data-act="sswPreview">👁 ${esc(L3("Pratinjau", "Ida", "Preview"))}</button><button class="btn primary" data-act="sswPublish">🚀 ${esc(L3("Terbitkan", "Terbitkan", "Publish"))}</button></div>`
+      : `<button class="btn block" data-act="sswBlank">${esc(L3("Atau mulai dari template kosong", "Template kosong", "Or start from an empty template"))}</button>`}`,
+    { back: "#/g/sekolah-minggu?tab=slides", title: L3("Workbench Sekolah Minggu", "Workbench", "Sunday School workbench"), sub: SS_LANGS[SSW.lang] });
+};
+const sswRe = () => { ssSave(); const y = window.scrollY; render(); setTimeout(() => window.scrollTo(0, y), 0); };
+A.sswLang = (d) => { SSW.lang = d.l; LS.set("sswLang", d.l); const dr = LS.get(ssKey(), null); SSW.secs = dr && dr.secs ? dr.secs : null; render(); };
+A.sswBlank = () => { SSW.secs = ssTemplate(SSW.lang); sswRe(); };
+A.sswAdd = () => { const tp = (document.getElementById("sswAdd") || {}).value || "song"; SSW.secs.push({ type: tp, title: SS_NAMES[SSW.lang][tp], extra: "", body: "" }); sswRe(); };
+A.sswDel = (d) => { SSW.secs.splice(+d.i, 1); sswRe(); };
+A.sswMove = (d) => { const i = +d.i, j = i + +d.d; if (j < 0 || j >= SSW.secs.length) return; [SSW.secs[i], SSW.secs[j]] = [SSW.secs[j], SSW.secs[i]]; sswRe(); };
+A.sswImg = (d) => { const inp = document.createElement("input"); inp.type = "file"; inp.accept = "image/*"; inp.multiple = true;
+  inp.onchange = async () => { const sec = SSW.secs[+d.i]; sec.images = sec.images || []; for (const f of inp.files) { try { sec.images.push(await resizeImage(f, 1600, 0.8)); } catch (e) {} } sswRe(); }; inp.click(); };
+A.sswImgDel = (d) => { const sec = SSW.secs[+d.i]; (sec.images || []).splice(+d.k, 1); sswRe(); };
+document.addEventListener("input", (e) => { const el = e.target; if (!el || !el.classList) return;
+  if (el.classList.contains("ssw-in") && SSW.secs) { SSW.secs[+el.dataset.i][el.dataset.k] = el.value; ssSave(); }
+  if (el.id === "sswDay" && el.value) { SSW.day = el.value; } });
+document.addEventListener("change", (e) => { const el = e.target; if (el && el.classList && el.classList.contains("ssw-type") && SSW.secs) { SSW.secs[+el.dataset.i].type = el.value; sswRe(); } });
+A.sswImport = async (d, btn) => {
+  try {
+    if (d.src === "sada") {
+      const prev = (D.ss_decks || []).find((x) => x.lang === SSW.lang); if (!prev) throw new Error(L3("Belum ada slide Sada dalam bahasa ini.", "Dang adong.", "No Sada deck in this language yet."));
+      const r = await busy(btn, () => api.save("ss_html", { deck_id: prev.id })); if (!r || !r.sections) throw new Error("no_sections");
+      SSW.secs = r.sections.map((x) => ({ ...x }));
+    } else {
+      const ls = await busy(btn, () => ssCall({ op: "list" }));
+      const when = (n) => { const m = String(n).match(/(\d{1,2})\s*([A-Za-z]+)\s*(\d{4})/); if (!m) return ""; const mi = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"].indexOf(m[2].slice(0, 3).toLowerCase()); return mi < 0 ? "" : `${m[3]}-${String(mi + 1).padStart(2, "0")}-${String(m[1]).padStart(2, "0")}`; };
+      const deck = (ls.decks || []).filter((x) => x.lang === SSW.lang && !/^copy of/i.test(x.name)).map((x) => ({ ...x, d: when(x.name) })).sort((a, b) => b.d.localeCompare(a.d))[0];
+      if (!deck) throw new Error(L3("Tidak ada deck bahasa ini di folder Drive.", "Dang adong.", "No deck in this language in the Drive folder."));
+      toast(L3("Membaca ", "Manjaha ", "Reading ") + deck.name);
+      const r = await busy(btn, () => ssCall({ id: deck.id, google: deck.google }));
+      SSW.secs = ssParse(r.slides || [], SSW.lang);
+    }
+    const cov = SSW.secs.find((x) => x.type === "cover"); if (!cov) SSW.secs.unshift({ type: "cover", title: "Sunday School", extra: SS_TEMPLATE[SSW.lang][0][2], body: "" });
+    sswRe(); toast(L3("Siap diubah untuk Minggu ini.", "Siap.", "Ready to edit for this Sunday."));
+  } catch (e) { toast(e.message || errMsg(e), true); }
+};
+A.sswPreview = () => { const html = ssRender(SSW.lang, SSW.day, SSW.secs); sheet("👁 " + L3("Pratinjau", "Ida", "Preview"), `<div id="sswPrev"></div><p class="small muted">${esc(L3("Ketuk sisi kanan/kiri atau gunakan panah untuk pindah slide.", "", "Tap right/left or use the arrows to move between slides."))}</p>`);
+  const f = tataIframe(html); f.style.cssText = "width:100%;aspect-ratio:16/9;border:0;border-radius:12px;background:#0b1022"; document.getElementById("sswPrev").appendChild(f); };
+A.sswPublish = async (d, btn) => {
+  const html = ssRender(SSW.lang, SSW.day, SSW.secs);
+  try { const r = await busy(btn, () => api.save("ss_deck", { day: SSW.day, lang: SSW.lang, title: `Sunday School · ${ssDateLabel(SSW.day, SSW.lang)}`, sections: SSW.secs, html, notify: true }));
+    await refresh(); toast(L3(`Terbit. ${r.told || 0} orang diberi tahu.`, `Tarbit. ${r.told || 0} dipaboa.`, `Published. ${r.told || 0} people notified.`)); location.hash = "#/ssdeck/" + r.id; }
+  catch (e) { toast(errMsg(e), true); }
+};
+try { document.head.insertAdjacentHTML("beforeend", `<style>
+  .ssw-sec { display: grid; gap: 8px; } .ssw-sec select.ssw-type { width: auto; font-weight: 800; }
+  .ssw-img { position: relative; display: inline-block; } .ssw-img img { width: 70px; height: 50px; object-fit: cover; border-radius: 8px; } .ssw-img .icon-btn { position: absolute; top: -8px; right: -8px; width: 22px; height: 22px; font-size: 13px; }
+</style>`); } catch (e) {}
+
+// ---------- Kurs: currency converter (YB 2026-10-30) ----------
+// Rates from open.er-api.com (free, no key; updated daily), kept on the phone so it also works offline.
+// Type an amount and the result updates as you type; swap, pick any currency, or tap a chip.
+const FX_CHIPS = ["SGD", "IDR", "MYR", "USD", "EUR", "AUD", "GBP", "JPY", "CNY", "HKD", "PHP", "THB", "KRW", "INR"];
+const FX = { busy: false };
+const fxFlag = (c) => (/^[A-Z]{3}$/.test(c) && c !== "XAU" ? String.fromCodePoint(...[...c.slice(0, 2)].map((x) => 0x1f1e6 + x.charCodeAt(0) - 65)) : "💱");
+const fxDigits = (c) => { if (["IDR", "JPY", "KRW", "VND", "CLP", "ISK", "HUF", "TWD"].includes(c)) return 0; try { return new Intl.NumberFormat("en", { style: "currency", currency: c }).resolvedOptions().maximumFractionDigits; } catch (e) { return 2; } };
+const fxFmt = (v, c) => (isFinite(v) ? v.toLocaleString("en-US", { minimumFractionDigits: Math.min(fxDigits(c), v >= 1 || v === 0 ? fxDigits(c) : 2), maximumFractionDigits: v < 1 && v > 0 ? 6 : fxDigits(c) }) : "–");
+function fxRate(from, to) { const r = (LS.get("fxRates", null) || {}).rates || {}; return r[from] && r[to] ? r[to] / r[from] : NaN; }
+async function fxLoad(force) {
+  const cur = LS.get("fxRates", null);
+  if (!force && cur && Date.now() - cur.at < 3600e3) return cur;
+  if (FX.busy) return cur; FX.busy = true;
+  try { const r = await fetch("https://open.er-api.com/v6/latest/USD"); const j = await r.json(); if (j && j.result === "success" && j.rates) { const v = { at: Date.now(), updated: (j.time_last_update_unix || 0) * 1000, rates: j.rates }; LS.set("fxRates", v); return v; } }
+  catch (e) {} finally { FX.busy = false; }
+  return cur;
+}
+function fxPaint() {
+  const from = LS.get("fxFrom", "SGD"), to = LS.get("fxTo", "IDR"); const el = document.getElementById("fxAmt"); if (!el) return;
+  const amt = parseFloat(String(el.value).replace(/,/g, "")) || 0; const rate = fxRate(from, to); const st = LS.get("fxRates", null);
+  const set = (id, v) => { const x = document.getElementById(id); if (x) x.textContent = v; };
+  set("fxOut", fxFmt(amt * rate, to));
+  const fit = (id) => { const x = document.getElementById(id); if (!x) return; let fs = 34; x.style.fontSize = fs + "px"; while (fs > 16 && x.scrollWidth > x.clientWidth + 1) { fs -= 2; x.style.fontSize = fs + "px"; } };
+  fit("fxOut"); fit("fxAmt"); set("fxRate", isFinite(rate) ? `1 ${from} = ${fxFmt(rate, to)} ${to}` : L3("Kurs belum tersedia, periksa internet.", "Kurs dang adong.", "Rates not available yet, check the internet."));
+  set("fxInv", isFinite(rate) ? `1 ${to} = ${fxFmt(1 / rate, from)} ${from}` : "");
+  set("fxWhen", st ? L3("Kurs diperbarui ", "Diperbarui ", "Rates updated ") + fmt(new Date(st.updated || st.at).toISOString(), { day: "numeric", month: "short" }) + " " + fmtTime(new Date(st.updated || st.at).toISOString()) + " · open.er-api.com" : "");
+  const list = document.getElementById("fxList");
+  if (list) list.innerHTML = FX_CHIPS.filter((c) => c !== from).map((c) => `<button class="li fx-li" data-act="fxTo" data-c="${c}"><span class="fx-flag">${fxFlag(c)}</span><span class="grow"><b>${c}</b><small>${esc(curName(c))}</small></span><b class="fx-v">${fxFmt(amt * fxRate(from, c), c)}</b></button>`).join("");
+}
+R.fx = () => {
+  const from = LS.get("fxFrom", "SGD"), to = LS.get("fxTo", "IDR");
+  setTimeout(async () => { fxPaint(); const before = JSON.stringify((LS.get("fxRates", null) || {}).updated); await fxLoad(false); if (JSON.stringify((LS.get("fxRates", null) || {}).updated) !== before || !before) fxPaint(); }, 0);
+  return shell("#/more", `<h2 class="page-h">💱 ${esc(L3("Kurs", "Kurs", "Exchange rates"))}</h2>
+    <div class="fx-card">
+      <div class="fx-row"><button class="fx-cur" data-act="fxPick" data-side="from"><span class="fx-flag">${fxFlag(from)}</span>${from} ▾</button>
+        <input id="fxAmt" inputmode="decimal" autocomplete="off" value="${esc(LS.get("fxAmt", "100"))}" aria-label="${esc(t("finAmount"))}"></div>
+      <button class="fx-swap" data-act="fxSwap" aria-label="Swap">⇅</button>
+      <div class="fx-row out"><button class="fx-cur" data-act="fxPick" data-side="to"><span class="fx-flag">${fxFlag(to)}</span>${to} ▾</button><span id="fxOut" class="fx-out">–</span></div>
+      <p class="fx-rate" id="fxRate"></p><p class="fx-inv" id="fxInv"></p>
+    </div>
+    <div class="chips fx-chips">${FX_CHIPS.map((c) => `<button class="chip${c === to ? " on" : ""}" data-act="fxTo" data-c="${c}">${fxFlag(c)} ${c}</button>`).join("")}</div>
+    <h3 class="sec-h">${esc(L3("Dalam mata uang lain", "Hepeng na asing", "In other currencies"))}</h3><div class="card" id="fxList"></div>
+    <div class="row between"><small class="muted" id="fxWhen"></small><button class="btn sm ghost" data-act="fxRefresh">↻ ${esc(L3("Perbarui", "Perbarui", "Refresh"))}</button></div>`,
+    { back: "#/more", title: L3("Kurs", "Kurs", "Exchange rates") });
+};
+document.addEventListener("input", (e) => { if (e.target && e.target.id === "fxAmt") { LS.set("fxAmt", e.target.value); fxPaint(); } });
+A.fxSwap = () => { const f = LS.get("fxFrom", "SGD"), t0 = LS.get("fxTo", "IDR"); LS.set("fxFrom", t0); LS.set("fxTo", f); render(); };
+A.fxTo = (d) => { if (d.c === LS.get("fxFrom", "SGD")) { A.fxSwap(); return; } LS.set("fxTo", d.c); render(); };
+A.fxRefresh = async (d, btn) => { await busy(btn, () => fxLoad(true)); fxPaint(); toast(t("saved")); };
+A.fxPick = (d) => {
+  const side = d.side; const all = Object.keys((LS.get("fxRates", null) || {}).rates || {}).sort(); const list = [...FX_CHIPS, ...all.filter((c) => !FX_CHIPS.includes(c))];
+  sheet(L3("Pilih mata uang", "Pilih hepeng", "Choose a currency"), `<input type="search" id="fxFind" placeholder="${esc(t("search"))}" autocomplete="off" style="margin-bottom:8px">
+    <div class="card fx-pick">${list.map((c) => `<button class="li" data-act="fxSet" data-side="${side}" data-c="${c}" data-n="${esc(norm(c + " " + curName(c)))}"><span class="fx-flag">${fxFlag(c)}</span><span class="grow"><b>${c}</b><small>${esc(curName(c))}</small></span></button>`).join("")}</div>`);
+};
+A.fxSet = (d) => { const other = d.side === "from" ? LS.get("fxTo", "IDR") : LS.get("fxFrom", "SGD"); if (d.c === other) { closeSheet(); A.fxSwap(); return; } LS.set(d.side === "from" ? "fxFrom" : "fxTo", d.c); closeSheet(); render(); };
+document.addEventListener("input", (e) => { if (e.target && e.target.id === "fxFind") { const q = norm(e.target.value); document.querySelectorAll(".fx-pick .li").forEach((a) => (a.style.display = !q || a.dataset.n.includes(q) ? "" : "none")); } });
+try { document.head.insertAdjacentHTML("beforeend", `<style>
+  .fx-card { position: relative; margin: 12px 0; padding: 18px; border-radius: 24px; background: linear-gradient(145deg, var(--brand), color-mix(in srgb, var(--brand) 60%, #0b1022)); color: #fff; box-shadow: var(--shadow-lg); }
+  .fx-row { display: flex; align-items: center; gap: 12px; background: rgba(255, 255, 255, .1); border-radius: 18px; padding: 10px 12px; }
+  .fx-row.out { background: rgba(255, 255, 255, .18); }
+  .fx-cur { flex: none; display: inline-flex; align-items: center; gap: 8px; border: 0; border-radius: 12px; padding: 10px 12px; background: rgba(255, 255, 255, .16); color: #fff; font-weight: 800; font-size: 16px; }
+  .fx-flag { font-size: 22px; line-height: 1; }
+  #fxAmt { flex: 1; min-width: 0; border: 0; background: transparent; color: #fff; font-size: 34px; font-weight: 800; text-align: right; box-shadow: none; padding: 4px 0; }
+  .fx-out { flex: 1; min-width: 0; text-align: right; font-size: 34px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.15; }
+  .fx-swap { display: block; margin: -8px auto; position: relative; z-index: 1; width: 44px; height: 44px; border-radius: 50%; border: 3px solid color-mix(in srgb, var(--brand) 80%, #0b1022); background: #fff; color: var(--brand); font-size: 20px; font-weight: 900; }
+  .fx-rate { margin: 14px 0 0; font-weight: 800; font-size: 15px; } .fx-inv { margin: 2px 0 0; font-size: 13px; opacity: .8; }
+  .fx-chips { margin: 4px 0 6px; overflow-x: auto; flex-wrap: nowrap; padding-bottom: 4px; } .fx-chips .chip { flex: none; }
+  .fx-li { width: 100%; text-align: left; display: flex; align-items: center; gap: 12px; } .fx-li .grow { flex: 1; min-width: 0; } .fx-v { font-size: 15.5px; white-space: nowrap; margin-left: auto; }
+</style>`); } catch (e) {}
+
+// ---------- Private messages (YB 2026-10-30) ----------
+// One-to-one, like Messenger: the room is dm:<id>:<id> (both ids, sorted). Only the two people can read it, not even the admin.
+// Inbox with unread counts in the Chat tab, read receipts ("Dilihat"), live dot, photos, replies and reactions as in group chat.
+const dmRoom = (otherId) => "dm:" + [D.me.id, otherId].sort().join(":");
+A.dmNew = () => {
+  const people = (D.people || []).filter((p) => p.id !== D.me.id).sort((a, b) => a.name.localeCompare(b.name));
+  sheet("✏️ " + L3("Pesan baru", "Pesan baru", "New message"), `<input type="search" id="dmFind" placeholder="${esc(L3("Cari nama…", "Bilang goar…", "Search a name…"))}" autocomplete="off" style="margin-bottom:8px">
+    <div class="card dm-pick">${people.map((p) => `<a class="li" data-n="${esc(norm(p.name + " " + (p.alias || "")))}" href="#/chat/${esc(dmRoom(p.id))}">${avatarOf(p)}<span class="grow"><b>${esc(p.name)}</b><small>${esc(seenText(p.id))}</small></span>${ic("chev", "chev")}</a>`).join("")}</div>`);
+  setTimeout(() => { const i = document.getElementById("dmFind"); if (i) i.focus(); }, 50);
+};
+document.addEventListener("input", (e) => { if (e.target && e.target.id === "dmFind") { const q = norm(e.target.value); document.querySelectorAll(".dm-pick .li").forEach((a) => (a.style.display = !q || a.dataset.n.includes(q) ? "" : "none")); } });
+document.addEventListener("click", (e) => { const a = e.target.closest && e.target.closest(".dm-pick a.li"); if (a) closeSheet(); });
+try { document.head.insertAdjacentHTML("beforeend", `<style>
+  .dm-list .li.unread b { font-weight: 900; } .dm-list .li.unread small { color: var(--ink); font-weight: 700; }
+  .dm-meta { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex: none; } .dm-meta small { color: var(--muted); font-size: 12px; }
+  .dm-n { min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; background: #ef4444; color: #fff; font-size: 12px; line-height: 20px; text-align: center; }
+  .ch-seen { font-size: 11.5px; color: var(--muted); padding: 0 8px; }
+</style>`); } catch (e) {}
+
+// ---------- Rapat: video meetings (YB 2026-10-30) ----------
+// Each meeting is a private room on Jitsi Meet (free, no account for guests): video, audio, screen share, chat, raise hand,
+// reactions, lobby and password, breakout rooms, polls, tile view, virtual backgrounds, recording to your device.
+// Sada schedules it for a group, sends the invitation push, puts it in the calendar (RSVP and a 10-minute reminder),
+// opens it with your name filled in, and keeps the notes (notulen). Makers and elders can open meetings.
+const meetUrl = (x) => `https://meet.jit.si/${encodeURIComponent(x.room)}#userInfo.displayName=${encodeURIComponent(JSON.stringify(D.me.name || ""))}&config.prejoinPageEnabled=true&config.subject=${encodeURIComponent(JSON.stringify(x.title))}`;
+const meetEnd = (x) => Date.parse(x.starts_at) + (x.minutes || 60) * 60e3;
+const meetNow = () => (D.meetings || []).filter((x) => Date.now() >= Date.parse(x.starts_at) - 10 * 60e3 && Date.now() <= meetEnd(x));
+const canMeet = () => !!D && !isGuest() && (D.me.is_admin || isChatMaker() || "parhalado" in (D.me.groups || {}));
+function meetAudiences() {
+  const g = D.me.groups || {}; const elder = D.me.is_admin || "parhalado" in g; const out = [];
+  if (elder) out.push(["all", "", L3("Seluruh jemaat", "Sude ruas", "Whole church")]);
+  if (elder) out.push(["elders", "", "Parhalado"]);
+  if (isChatMaker()) out.push(["makers", "", L3("Semua makers", "Sude makers", "All makers")]);
+  (D.groups || []).filter((x) => x.kind !== "office" && (D.me.is_admin || x.id in g)).forEach((x) => out.push(["group", x.id, gname(x)]));
+  return out;
+}
+R.meet = () => {
+  const list = (D.meetings || []).slice(); const now = Date.now();
+  const live = list.filter((x) => now >= Date.parse(x.starts_at) - 10 * 60e3 && now <= meetEnd(x));
+  const next = list.filter((x) => Date.parse(x.starts_at) - 10 * 60e3 > now);
+  const past = list.filter((x) => meetEnd(x) < now).reverse().slice(0, 10);
+  const row = (x, state) => `<article class="card meet${state === "live" ? " on" : ""}"><div class="row between" style="margin:0"><span class="grow"><b>${esc(x.title)}</b><small class="muted" style="display:block">${esc(fmt(x.starts_at, { weekday: "short", day: "numeric", month: "short" }))} · ${esc(fmtTime(x.starts_at))}–${esc(fmtTime(new Date(meetEnd(x)).toISOString()))} · ${esc(x.audience === "group" ? gname(G(x.group_id)) : x.audience === "all" ? L3("Jemaat", "Ruas", "Church") : x.audience === "elders" ? "Parhalado" : "Makers")} · ${esc(x.by || "")}</small></span>${state === "live" ? `<span class="live-dot"></span>` : ""}</div>
+      ${state !== "past" ? `<div class="row two"><a class="btn${state === "live" ? " primary" : ""}" href="${esc(meetUrl(x))}" target="_blank" rel="noopener">📹 ${esc(state === "live" ? L3("Gabung sekarang", "Masuk", "Join now") : L3("Buka ruang", "Bukka", "Open room"))}</a><a class="btn wa" href="${wa(`📹 *${x.title}*\n${fmt(x.starts_at, { weekday: "long", day: "numeric", month: "long" })} · ${fmtTime(x.starts_at)}\n${"https://meet.jit.si/" + x.room}\n\n– HKBP Singapore`)}" target="_blank" rel="noopener">${ic("wa")} WhatsApp</a></div>` : ""}
+      ${x.notes ? `<details class="meet-notes"${state === "past" ? " open" : ""}><summary>📝 ${esc(L3("Notulen", "Notulen", "Notes"))}</summary><p class="pre small">${esc(x.notes)}</p></details>` : ""}
+      ${x.mine || D.me.is_admin ? `<div class="row end" style="margin-top:6px"><button class="btn sm ghost" data-act="meetNotes" data-id="${x.id}">📝 ${esc(L3("Notulen", "Notulen", "Notes"))}</button>${state !== "past" ? `<button class="btn sm danger" data-act="del" data-kind="meet" data-id="${x.id}" aria-label="${esc(t("delete"))}">${ic("trash")}</button>` : ""}</div>` : ""}</article>`;
+  return shell("#/more", `<h2 class="page-h">📹 ${esc(L3("Rapat", "Rapat", "Meetings"))}</h2>
+    <p class="lead">${esc(L3("Rapat video gratis: video, suara, berbagi layar, chat, angkat tangan, ruang kecil (breakout), polling, latar virtual, dan rekam.", "Rapat video.", "Free video meetings: video, audio, screen sharing, chat, raise hand, breakout rooms, polls, virtual backgrounds and recording."))}</p>
+    ${canMeet() ? `<div class="row two"><button class="btn primary" data-act="meetNew" data-now="1">⚡ ${esc(L3("Mulai sekarang", "Mulai", "Start now"))}</button><button class="btn" data-act="meetNew">🗓 ${esc(L3("Jadwalkan", "Jadwalhon", "Schedule"))}</button></div>` : ""}
+    ${live.length ? `<h3 class="sec-h">🔴 ${esc(L3("Sedang berlangsung", "Masa", "On now"))}</h3>${live.map((x) => row(x, "live")).join("")}` : ""}
+    <h3 class="sec-h">${esc(L3("Akan datang", "Naeng ro", "Upcoming"))}</h3>${next.length ? next.map((x) => row(x, "next")).join("") : `<p class="muted small">${esc(L3("Belum ada rapat terjadwal.", "Dang adong.", "No meetings scheduled."))}</p>`}
+    ${past.length ? `<h3 class="sec-h">${esc(L3("Sebelumnya", "Na salpu", "Earlier"))}</h3>${past.map((x) => row(x, "past")).join("")}` : ""}
+    <p class="small muted">${esc(L3("Rapat berjalan di Jitsi Meet (meet.jit.si) di browser atau aplikasi Jitsi. Orang pertama yang masuk menjadi moderator dan diminta masuk dengan Google/GitHub sekali; peserta lain tidak perlu akun.", "", "Meetings run on Jitsi Meet (meet.jit.si) in the browser or the Jitsi app. The first person in becomes the moderator and is asked to sign in with Google/GitHub once; others need no account."))}</p>`,
+    { back: "#/more", title: L3("Rapat", "Rapat", "Meetings") });
+};
+A.meetNew = (d) => {
+  const auds = meetAudiences(); const now = d.now === "1";
+  const local = new Date(Date.now() + 8 * 3600e3 + 3600e3); const dt = local.toISOString().slice(0, 13) + ":00";
+  sheet(now ? "⚡ " + L3("Mulai rapat sekarang", "Mulai rapat", "Start a meeting now") : "🗓 " + L3("Jadwalkan rapat", "Jadwalhon rapat", "Schedule a meeting"), `<form class="form" data-form="meet" data-now="${now ? 1 : 0}">
+    <label>${esc(L3("Judul", "Judul", "Title"))}<input name="title" required maxlength="120" placeholder="${esc(L3("Rapat Multimedia", "Rapat", "Multimedia meeting"))}"></label>
+    <label>${esc(L3("Undang", "Undang", "Invite"))}<select name="aud">${auds.map(([a, g, label], i) => `<option value="${a}|${g}"${i === 0 ? " selected" : ""}>${esc(label)}</option>`).join("")}</select></label>
+    ${now ? "" : `<label>${esc(L3("Mulai", "Mulai", "Starts"))}<input type="datetime-local" name="at" value="${dt}" required></label>`}
+    <label>${esc(L3("Durasi", "Durasi", "Length"))}<select name="minutes">${[30, 45, 60, 90, 120, 180].map((m) => `<option value="${m}"${m === 60 ? " selected" : ""}>${m} min</option>`).join("")}</select></label>
+    <p class="small muted">${esc(L3("Yang diundang mendapat notifikasi; rapat terjadwal masuk kalender dengan pengingat 10 menit sebelumnya.", "", "Invitees get a push; a scheduled meeting goes into the calendar with a reminder 10 minutes before."))}</p>
+    <button class="btn primary block">${esc(now ? L3("Mulai dan undang", "Mulai", "Start and invite") : L3("Jadwalkan dan undang", "Jadwalhon", "Schedule and invite"))}</button></form>`);
+};
+F.meet = async (f) => {
+  const [audience, group_id] = f.aud.value.split("|"); const now = f.dataset.now === "1";
+  const starts_at = now ? new Date().toISOString() : new Date(f.at.value + ":00+08:00").toISOString();
+  const x = await api.save("meet", { title: f.title.value.trim(), audience, group_id: group_id || null, starts_at, minutes: +f.minutes.value });
+  closeSheet(); await refresh();
+  if (now && x && x.room) window.open(meetUrl(x), "_blank", "noopener");
+  toast(L3("Undangan terkirim.", "Undangan tarkirim.", "Invitations sent."));
+};
+A.meetNotes = (d) => {
+  const x = (D.meetings || []).find((m) => String(m.id) === String(d.id)); if (!x) return;
+  sheet("📝 " + x.title, `<form class="form" data-form="meetnotes" data-id="${x.id}"><label>${esc(L3("Notulen rapat", "Notulen", "Meeting notes"))}<textarea name="notes" rows="10" maxlength="8000">${esc(x.notes || "")}</textarea></label>
+    <p class="small muted">${esc(L3("Semua yang diundang dapat membaca notulen ini.", "", "Everyone invited can read these notes."))}</p><button class="btn primary block">${esc(t("save"))}</button></form>`);
+};
+F.meetnotes = async (f) => { await api.save("meet_notes", { meet_id: +f.dataset.id, notes: f.notes.value }); closeSheet(); await refresh(); toast(t("saved")); };
+try { document.head.insertAdjacentHTML("beforeend", `<style>
+  .card.meet.on { border: 2px solid #ef4444; } .card.meet .row.two { margin-top: 10px; } .meet-notes summary { cursor: pointer; display: block !important; font-weight: 700; margin-top: 8px; }
+</style>`); } catch (e) {}
+
 // Pinned "now" card on Home (YB 2026-10-30), styled like an iPhone lock-screen activity: Sada's icon, a bold title,
 // the time on the right, and one big highlighted line. Shown only when something is happening:
 // a live service, then your duty (from the day before), then an event today.
@@ -1076,6 +1448,9 @@ function nowCard() {
   const card = (href, label, title, right, big, sub, live) => `<a class="nowcard${live ? " live" : ""}" href="${href}">
     <div class="nc-top">${icon}<span class="grow"><small>${esc(label)}</small><b>${esc(title)}</b></span>${right ? `<span class="nc-time">${right}</span>` : ""}</div>
     <div class="nc-box"><span class="nc-big">${esc(big)}</span><span class="nc-sub">${esc(sub)}</span></div></a>`;
+  const mt = meetNow()[0];
+  if (mt) return card("#/meet", "Sada HKBPS · " + L3("Rapat", "Rapat", "Meeting"), mt.title, `<i class="live-dot"></i> ${esc(fmtTime(mt.starts_at))}`,
+    L3("Gabung", "Masuk", "Join"), L3(`Sedang berlangsung · ${mt.by}. Ketuk untuk bergabung.`, "Masa · ketuk asa masuk.", `On now · ${mt.by}. Tap to join.`), true);
   if (D.live && D.live.service_id) return card("#/live", "Sada HKBPS", L3("Ibadah sedang berlangsung", "Partangiangan masa", "The service is on"), `<i class="live-dot"></i> LIVE`,
     L3("Ikuti", "Ihuthon", "Follow"), L3("Slide Tata Ibadah di HP Anda, huruf besar. Ketuk untuk membuka.", "Slide di HP mu.", "The Tata Ibadah slides on your phone, in large text. Tap to open."), true);
   const du = duties().filter((d) => d.date === td || d.date === tm).sort((a, b) => a.date.localeCompare(b.date));
@@ -1185,6 +1560,11 @@ function splitHymn(heading, rawLines, opts = {}) {
       blocks = []; verses.forEach((vs, i) => { blocks.push({ kind: "verse", items: vs }); if (repeatReff || i === 0) blocks.push({ kind: "reff", items: reff, repeat: i > 0 }); });
       how = `Reff printed once, repeated after each of ${V} verses`;
     }
+  }
+  // 2c'. One Reff and one verse (no verse count in the heading): the verse, then the Reff.
+  if (!blocks && reffAt.length === 1 && V <= 1 && reffAt[0] > 0) {
+    blocks = [{ kind: "verse", items: items.slice(0, reffAt[0]) }, { kind: "reff", items: items.slice(reffAt[0]) }];
+    how = "one verse and its Reff";
   }
   // 2d. The heading's verse count splits the lines evenly.
   if (!blocks && V >= 1 && N % V === 0 && !reffAt.length) {
@@ -1340,6 +1720,11 @@ function hymnSplit(heading, rawLines, opts = {}) {
       how = `Reff printed once, repeated after each of ${V} verses`;
     }
   }
+  // 2c'. One Reff and one verse (no verse count in the heading): the verse, then the Reff.
+  if (!blocks && reffAt.length === 1 && V <= 1 && reffAt[0] > 0) {
+    blocks = [{ kind: "verse", items: items.slice(0, reffAt[0]) }, { kind: "reff", items: items.slice(reffAt[0]) }];
+    how = "one verse and its Reff";
+  }
   // 2d. The heading's verse count splits the lines evenly.
   if (!blocks && V >= 1 && N % V === 0 && !reffAt.length) {
     const v = N / V; blocks = Array.from({ length: V }, (_, i) => ({ kind: "verse", items: items.slice(i * v, (i + 1) * v) }));
@@ -1395,7 +1780,9 @@ function communityMenu() {
   if (isGuest()) return "";
   const elder = D.me.is_admin || "parhalado" in (D.me.groups || {});
   const it = (href, icon, title, sub) => `<a class="li" href="${href}">${ic(icon)}<span class="grow"><b>${title}</b><small>${esc(sub)}</small></span>${ic("chev", "chev")}</a>`;
-  return it("#/tutur", "people", "🤝 Partuturan", L3("Cara saling menyapa menurut Dalihan Na Tolu", "Partuturan Dalihan Na Tolu", "How to address each other (Dalihan Na Tolu)"))
+  return it("#/fx", "coins", "💱 " + esc(L3("Kurs", "Kurs", "Exchange rates")), L3("Konversi mata uang, kurs terbaru", "Kurs hepeng", "Currency converter, latest rates"))
+    + it("#/meet", "screen", "📹 " + esc(L3("Rapat", "Rapat", "Meetings")), L3("Rapat video: layar, chat, angkat tangan, rekam", "Rapat video", "Video meetings: screen share, chat, raise hand, record"))
+    + it("#/tutur", "people", "🤝 Partuturan", L3("Cara saling menyapa menurut Dalihan Na Tolu", "Partuturan Dalihan Na Tolu", "How to address each other (Dalihan Na Tolu)"))
     + it("#/ende", "book", "🎵 Buku Ende", L3("Arti setiap baris lagu", "Lapatan ni ende", "The meaning of every hymn line"))
     + it("#/stories", "mic", "🎙️ Turi-turian", L3("Cerita orang tua, direkam untuk generasi muda", "Turi-turian ni natua-tua", "Elders' stories, recorded for the young"))
     + it("#/voyage", "globe", "🚢 Pelaut", L3("Mode berlayar dan paket offline", "Mode marlayar", "Voyage mode and offline pack"))
@@ -1837,7 +2224,7 @@ function markGroupSeen(gid) { if (!D || isGuest()) return; const s = groupSeen()
 const newBadge = (on) => (on ? `<span class="badge new">${esc(L3("Baru", "Baru", "New"))}</span>` : "");
 function tabBadge(h) {
   if (!D || isGuest()) return "";
-  if (h === "#/chat") return chatRooms().some((r) => chatUnread(r.id)) ? `<i class="tab-dot"></i>` : "";
+  if (h === "#/chat") { const n = dmUnread(); return n ? `<i class="tab-dot n">${n}</i>` : chatRooms().some((r) => chatUnread(r.id)) ? `<i class="tab-dot"></i>` : ""; }
   if (h === "#/groups") { const n = (D.groups || []).filter((g) => g.kind === "sermon" && canSee(g) && groupNew(g.id)).length; return n ? `<i class="tab-dot n">${n}</i>` : ""; }
   return "";
 }
@@ -1859,7 +2246,7 @@ function searchRun(q) {
   const posts = (D.posts || []).filter((p) => !["warta", "finance"].includes(p.kind) && (has(p.title) || has(p.body))).slice(0, 10);
   const lines = []; (D.rosters || []).forEach((r) => (r.table_json || []).forEach((tb) => { const rows = tb.rows || []; const head = rows[0] || []; rows.slice(1).forEach((row) => { if (row.some((c, j) => j && has(c))) lines.push({ r, row, head }); }); }));
   const sec = (title, html) => (html ? `<h3 class="sec-h">${esc(title)}</h3><div class="card">${html}</div>` : "");
-  const out = sec(L3("Anggota", "Ruas", "Members"), people.map((p) => `<div class="li">${avatarOf(p)}<span class="grow"><b>${esc(p.name)}</b><small>${esc([fmtPhone(p.phone), ...Object.keys(p.groups || {}).map((g) => gname(G(g))).filter(Boolean)].filter(Boolean).join(" · "))}</small></span>${p.phone && p.id !== D.me.id ? `<a class="icon-btn wa" href="${wa("", p.phone)}" target="_blank" rel="noopener" aria-label="WhatsApp">${ic("wa")}</a>` : ""}</div>`).join(""))
+  const out = sec(L3("Anggota", "Ruas", "Members"), people.map((p) => `<div class="li">${avatarOf(p)}<span class="grow"><b>${esc(p.name)}</b><small>${esc([fmtPhone(p.phone), ...Object.keys(p.groups || {}).map((g) => gname(G(g))).filter(Boolean)].filter(Boolean).join(" · "))}</small></span>${p.id !== D.me.id ? `<a class="icon-btn" href="#/chat/${esc(dmRoom(p.id))}" aria-label="${esc(L3("Kirim pesan", "Kirim pesan", "Message"))}">${ic("chat")}</a>` : ""}${p.phone && p.id !== D.me.id ? `<a class="icon-btn wa" href="${wa("", p.phone)}" target="_blank" rel="noopener" aria-label="WhatsApp">${ic("wa")}</a>` : ""}</div>`).join(""))
     + (groups.length ? `<h3 class="sec-h">${esc(t("tab_groups"))}</h3><div class="glist">${groups.map((g) => groupTile(g, esc(t(g.kind === "service" ? "kindService" : "kindSermon")))).join("")}</div>` : "")
     + sec(L3("Acara", "Ulaon", "Events"), evs.map(eventRow).join(""))
     + sec(L3("Roster", "Roster", "Rosters"), lines.slice(0, 15).map(({ r, row, head }) => `<a class="li" href="${rosterHome(r.group_id, r.month)}"><span class="grow"><b>${esc(gname(G(r.group_id)))} · ${esc(row[0] || "")}</b><small>${esc(row.map((c, j) => (j && c ? `${head[j] || ""}: ${c}` : "")).filter(Boolean).join(" · "))}</small></span>${ic("chev", "chev")}</a>`).join(""))
@@ -2123,7 +2510,8 @@ let CH = { room: null, msgs: [], last: 0, timer: null, sending: false, reacts: {
 // Unread: the newest message id per room (from the app data) against the last one this phone showed.
 function chatSeen() { let s = LS.get("chatSeen", null); if (!s) { s = { ...((D && D.chat_last) || {}) }; LS.set("chatSeen", s); } return s; }
 function markChatSeen(room, id) { const s = chatSeen(); if (id && (s[room] || 0) < id) { s[room] = id; LS.set("chatSeen", s); } }
-const chatUnread = (room) => !!D && !isGuest() && ((D.chat_last && D.chat_last[room]) || 0) > (chatSeen()[room] || 0);
+const chatUnread = (room) => !!D && !isGuest() && (String(room).startsWith("dm:") ? ((D.dms || []).find((x) => x.room === room) || {}).unread > 0 : ((D.chat_last && D.chat_last[room]) || 0) > (chatSeen()[room] || 0));
+const dmUnread = () => (D && D.dms ? D.dms.reduce((n, x) => n + (x.unread || 0), 0) : 0);
 function chatHtml() {
   if (!CH.msgs.length) return empty(L3("Belum ada pesan. Mulai percakapan!", "Dang adong pesan. Mulai ma!", "No messages yet. Start the conversation!"), "people");
   let lastDay = ""; const me = D.me.name;
@@ -2132,11 +2520,13 @@ function chatHtml() {
     const sep = day !== lastDay ? `<div class="ch-day">${esc(day === today() ? t("today") : fmt(day, { weekday: "long", day: "numeric", month: "long" }))}</div>` : ""; lastDay = day;
     const rx = CH.reacts[m.id] || {}; const sel = CH.sel === m.id;
     const chips = Object.keys(rx).map((e) => `<button class="ch-rx${rx[e].includes(me) ? " me" : ""}" data-act="chatReact" data-id="${m.id}" data-e="${e}" title="${esc(rx[e].join(", "))}">${e} ${rx[e].length}</button>`).join("");
-    return `${sep}<div class="ch-msg${mine ? " mine" : ""}${sel ? " sel" : ""}">${mine ? "" : `<b class="ch-name">${presDot(m.member_id)}${esc(m.name || "")}</b>`}
+    const dm = String(CH.room || "").startsWith("dm:"); const lastMine = dm && mine && !CH.msgs.slice(CH.msgs.indexOf(m) + 1).some((x) => x.member_id === D.me.id);
+    const seen = lastMine ? `<small class="ch-seen">${CH.otherRead >= m.id ? "✓✓ " + esc(L3("Dilihat", "Dibereng", "Seen")) : "✓ " + esc(L3("Terkirim", "Tarkirim", "Sent"))}</small>` : "";
+    return `${sep}<div class="ch-msg${mine ? " mine" : ""}${sel ? " sel" : ""}">${mine || dm ? "" : `<b class="ch-name">${presDot(m.member_id)}${esc(m.name || "")}</b>`}
       <div class="ch-bubble" data-act="chatMsg" data-id="${m.id}">${m.reply ? `<span class="ch-quote"><b>${esc(m.reply.name || "")}</b>${esc(m.reply.body || "")}</span>` : ""}${m.image ? `<img class="ch-img" src="${esc(m.image)}" alt="" data-act="chatImg" data-id="${m.id}">` : ""}${m.body ? `<span>${esc(m.body).replace(/\n/g, "<br>")}</span>` : ""}</div>
       ${chips ? `<div class="ch-rxs">${chips}</div>` : ""}
       ${sel ? `<div class="ch-acts">${REACTS.map((e) => `<button data-act="chatReact" data-id="${m.id}" data-e="${e}">${e}</button>`).join("")}<button data-act="chatReply" data-id="${m.id}">↩︎ ${esc(L3("Balas", "Balas", "Reply"))}</button>${mine || D.me.is_admin ? `<button data-act="chatDel" data-id="${m.id}">${esc(t("delete"))}</button>` : ""}</div>` : ""}
-      <small class="ch-time">${esc(fmtTime(m.at))}</small></div>`;
+      <small class="ch-time">${esc(fmtTime(m.at))}</small>${seen}</div>`;
   }).join("");
 }
 function chatPaint(scroll) { const box = document.getElementById("chatBox"); if (!box) return; const atEnd = window.innerHeight + window.scrollY >= document.body.scrollHeight - 120; box.innerHTML = chatHtml(); if (scroll || atEnd) window.scrollTo(0, document.body.scrollHeight); }
@@ -2153,7 +2543,9 @@ async function chatLoad(first) {
   const add = (r && r.messages) || []; add.forEach((m) => { if (!CH.msgs.some((x) => x.id === m.id)) CH.msgs.push(m); });
   if (add.length) CH.last = add[add.length - 1].id;
   markChatSeen(room, CH.last); if (D && D.chat_last) D.chat_last[room] = Math.max(D.chat_last[room] || 0, CH.last);
-  const rx = (r && r.reacts) || {}; const rxChanged = JSON.stringify(rx) !== JSON.stringify(CH.reacts); CH.reacts = rx;
+  const rx = (r && r.reacts) || {}; let rxChanged = JSON.stringify(rx) !== JSON.stringify(CH.reacts); CH.reacts = rx;
+  if (r && r.other_read != null && r.other_read !== CH.otherRead) { CH.otherRead = r.other_read; rxChanged = true; }
+  if (String(room).startsWith("dm:") && D.dms) { const x = D.dms.find((y) => y.room === room); if (x && x.unread) { x.unread = 0; const tb = document.querySelector('nav.tabs a[href="#/chat"] .tab-dot'); if (tb && !dmUnread()) tb.remove(); } }
   let liveChanged = false;
   if (r && Array.isArray(r.online)) { const before = [...CH_ONLINE].sort().join(); CH_ONLINE.clear(); r.online.forEach((id) => CH_ONLINE.add(id)); liveChanged = before !== [...CH_ONLINE].sort().join();
     const el = document.getElementById("chOnline"); if (el) el.innerHTML = `<i></i> ${esc(L3(`${r.online.length} sedang aktif`, `${r.online.length} adong di aplikasi`, `${r.online.length} live now`))}`; }
@@ -2163,9 +2555,16 @@ R.chat = (room) => {
   if (isGuest()) return R.home();
   const rooms = chatRooms();
   if (!room) return shell("#/chat", `<h2 class="page-h">💬 Chat</h2><p class="lead">${esc(L3("Percakapan dua arah. Ketuk sebuah ruang untuk membuka.", "Marsiboto dua arah. Ketuk ruang asa bukka.", "Two-way conversations. Tap a room to open it."))}</p>
-    <div class="glist">${rooms.map((r) => `<a class="gtile" href="#/chat/${r.id}" style="--gc:${r.id === "makers" ? "var(--gold)" : "var(--brand)"}"><span class="gicon">${ic(r.id === "makers" ? "gear" : "people")}</span><span class="gname"><b>${esc(r.name)}</b><small>${esc(r.sub)}</small></span>${newBadge(chatUnread(r.id))}${ic("chev", "chev")}</a>`).join("")}</div>`, { title: "Chat" });
-  const rm = rooms.find((r) => r.id === room); if (!rm) return R.notFound();
-  if (CH.room !== room) { CH.room = room; CH.msgs = []; CH.last = 0; CH.reacts = {}; CH.sel = null; CH.reply = null; CH.image = null; }
+    <div class="glist">${rooms.map((r) => `<a class="gtile" href="#/chat/${r.id}" style="--gc:${r.id === "makers" ? "var(--gold)" : "var(--brand)"}"><span class="gicon">${ic(r.id === "makers" ? "gear" : "people")}</span><span class="gname"><b>${esc(r.name)}</b><small>${esc(r.sub)}</small></span>${newBadge(chatUnread(r.id))}${ic("chev", "chev")}</a>`).join("")}</div>
+    <div class="row between" style="margin:18px 0 6px"><h3 class="sec-h" style="margin:0">${esc(L3("Pesan pribadi", "Pesan pribadi", "Private messages"))}</h3><button class="btn sm primary" data-act="dmNew">✏️ ${esc(L3("Pesan baru", "Pesan baru", "New message"))}</button></div>
+    ${(D.dms || []).length ? `<div class="card dm-list">${D.dms.map((x) => { const p = (D.people || []).find((q) => q.id === x.other) || { id: x.other, name: x.name };
+      return `<a class="li${x.unread ? " unread" : ""}" href="#/chat/${esc(x.room)}">${avatarOf(p)}<span class="grow"><b>${esc(x.name || "")}</b><small>${x.last_mine ? esc(L3("Anda: ", "Ho: ", "You: ")) : ""}${esc(x.last || "")}</small></span><span class="dm-meta"><small>${esc(sgParts(x.at).date === today() ? fmtTime(x.at) : fmt(x.at, { day: "numeric", month: "short" }))}</small>${x.unread ? `<b class="dm-n">${x.unread}</b>` : ""}</span></a>`; }).join("")}</div>`
+      : `<p class="muted small">${esc(L3("Belum ada pesan pribadi. Ketuk “Pesan baru” untuk mengirim pesan ke seorang anggota.", "Dang adong.", "No private messages yet. Tap “New message” to write to a member."))}</p>`}`, { title: "Chat" });
+  let rm = rooms.find((r) => r.id === room);
+  if (!rm && String(room).startsWith("dm:")) { const oid = room.slice(3).split(":").find((x) => x !== D.me.id); const op = (D.people || []).find((p) => p.id === oid);
+    if (op && room === dmRoom(oid)) rm = { id: room, name: op.name, sub: seenText(oid), dm: oid }; }
+  if (!rm) return R.notFound();
+  if (CH.room !== room) { CH.room = room; CH.msgs = []; CH.last = 0; CH.reacts = {}; CH.sel = null; CH.reply = null; CH.image = null; CH.otherRead = 0; }
   clearInterval(CH.timer);
   CH.timer = setInterval(() => { if (!new RegExp("^#/chat/" + CH.room + "\\b").test(location.hash)) { clearInterval(CH.timer); return; } if (!document.hidden) chatLoad(false).catch(() => {}); }, 4000);
   setTimeout(() => { chatPending(); chatLoad(true).catch((e) => toast(errMsg(e), true)); }, 0);
@@ -2387,7 +2786,7 @@ function tataPrefetch() { if (!D || !navigator.onLine) return; const v = (D.serv
 const LIVE_REPORTER = `<script>(function(){var last="";function vis(e){var s=getComputedStyle(e);return s.display!=="none"&&s.visibility!=="hidden"&&+s.opacity>0.05;}
 function cur(){var best=null,ba=0,vw=innerWidth,vh=innerHeight,els=document.querySelectorAll(".dk-slide, section.pg");for(var i=0;i<els.length;i++){var e=els[i],r=e.getBoundingClientRect();if(r.width<2||r.height<2||!vis(e))continue;
 var w=Math.max(0,Math.min(r.right,vw)-Math.max(r.left,0)),h=Math.max(0,Math.min(r.bottom,vh)-Math.max(r.top,0));if(w*h>ba){ba=w*h;best=e;}}return best;}
-setInterval(function(){var b=cur();if(!b)return;var t=(b.innerText||"").replace(/\n{3,}/g,"\n\n").trim().slice(0,4000);if(t&&t!==last){last=t;try{parent.postMessage({hkbpSlide:t},"*");}catch(e){}}},700);})();<\/script>`;
+setInterval(function(){var b=cur();if(!b)return;var t=(b.innerText||"").replace(/\\n{3,}/g,"\\n\\n").trim().slice(0,4000);if(t&&t!==last){last=t;try{parent.postMessage({hkbpSlide:t},"*");}catch(e){}}},700);})();<\/script>`;
 function tataIframe(html) { html = /<\/body>/i.test(html) ? html.replace(/<\/body>/i, LIVE_REPORTER + "</body>") : html + LIVE_REPORTER; const f = document.createElement("iframe"); f.setAttribute("sandbox", "allow-scripts"); f.title = t("tataTitle"); f.src = URL.createObjectURL(new Blob([html], { type: "text/html" })); return f; }
 A.tataFull = async (d) => { const html = await tataHtml(d.id); const el = $(".tata-frame"); if (el && el.requestFullscreen) el.requestFullscreen().catch(() => {}); else window.open(URL.createObjectURL(new Blob([html], { type: "text/html" })), "_blank"); };
 A.openWorkbench = (d) => {
