@@ -1071,6 +1071,43 @@ window.addEventListener("hashchange", () => { window.scrollTo(0, 0); render(); }
 const A = {};
 const F = {};
 
+// Meeting recordings → the Tata Ibadah Google Drive folder (YB 2026-10-30). Jitsi saves a recording on the recorder's own device;
+// this sends that file to the church's Google Apps Script (settings: drive_upload_url) in 8 MB pieces, which writes it into the folder.
+// The Drive link is added to the meeting's notes (notulen) so everyone invited can watch it.
+A.meetRec = (d) => {
+  const url = D.settings && D.settings.drive_upload_url;
+  if (!url) { toast(L3("Upload ke Drive belum diatur. Minta admin memasang skripnya.", "Dang diatur.", "Drive upload isn't set up yet. Ask the admin to install the script."), true); return; }
+  const x = (D.meetings || []).find((m) => String(m.id) === String(d.id)); if (!x) return;
+  const inp = document.createElement("input"); inp.type = "file"; inp.accept = "video/*,.webm,.mp4,.mkv,.mov";
+  inp.onchange = async () => {
+    const file = inp.files && inp.files[0]; if (!file) return;
+    const token = (() => { try { return JSON.parse(localStorage.getItem("hkbp.remote.token") || "null"); } catch (e) { return null; } })();
+    const post = async (body) => { const r = await fetch(url, { method: "POST", headers: { "content-type": "text/plain;charset=utf-8" }, body: JSON.stringify({ ...body, token }) }); return r.json(); };
+    const name = `Rekaman ${x.title} · ${fmt(x.starts_at, { day: "numeric", month: "short", year: "numeric" })}.${(file.name.split(".").pop() || "webm").toLowerCase()}`;
+    sheet("⬆️ " + L3("Menyimpan rekaman", "Manyimpan", "Saving the recording"), `<p class="small muted">${esc(name)} · ${esc(fmtSize(file.size))}</p><div class="rec-bar"><i id="recBar"></i></div><p class="small" id="recPct">0%</p><p class="small muted">${esc(L3("Biarkan Sada terbuka sampai selesai.", "Unang tutup Sada.", "Keep Sada open until it finishes."))}</p>`);
+    try {
+      const init = await post({ op: "init", name, mime: file.type || "video/webm", size: file.size }); if (!init.ok) throw new Error(init.error || "init");
+      const CH = 8 * 1024 * 1024; let start = 0, res = null;
+      while (start < file.size) {
+        const blob = file.slice(start, Math.min(file.size, start + CH));
+        const data = await new Promise((ok, no) => { const fr = new FileReader(); fr.onload = () => ok(String(fr.result).split(",")[1]); fr.onerror = no; fr.readAsDataURL(blob); });
+        let tries = 0; for (;;) { try { res = await post({ op: "chunk", id: init.id, start, total: file.size, data }); if (res.ok) break; throw new Error(res.error); } catch (e) { if (++tries >= 3) throw e; await new Promise((r) => setTimeout(r, 1500 * tries)); } }
+        start = res.done ? file.size : res.next;
+        const pct = Math.round((start / file.size) * 100); const bar = document.getElementById("recBar"); if (bar) bar.style.width = pct + "%"; const pe = document.getElementById("recPct"); if (pe) pe.textContent = pct + "%";
+      }
+      if (!res || !res.done) throw new Error("incomplete");
+      if (x.mine || D.me.is_admin) { await api.save("meet_notes", { meet_id: +x.id, notes: [x.notes || "", `🎥 ${L3("Rekaman", "Rekaman", "Recording")}: ${res.link}`].filter(Boolean).join("\n") }); await refresh(); }
+      sheet("✓ " + L3("Rekaman tersimpan di Drive", "Tarsimpan", "Recording saved to Drive"), `<p>${esc(name)}</p><a class="btn primary block" href="${esc(res.link)}" target="_blank" rel="noopener">▶ ${esc(L3("Buka di Google Drive", "Bukka", "Open in Google Drive"))}</a>
+        <a class="btn wa block" href="${wa(`🎥 ${x.title}\n${res.link}\n\n– HKBP Singapore`)}" target="_blank" rel="noopener">${ic("wa")} WhatsApp</a>`);
+      render();
+    } catch (e) { closeSheet(); toast(L3("Gagal menyimpan rekaman: ", "Gagal: ", "Could not save the recording: ") + (e.message || errMsg(e)), true); }
+  };
+  inp.click();
+};
+try { document.head.insertAdjacentHTML("beforeend", `<style>
+  .rec-bar { height: 12px; border-radius: 999px; background: var(--surface-2); overflow: hidden; margin: 12px 0 6px; } .rec-bar i { display: block; height: 100%; width: 0; background: var(--brand); transition: width .3s; }
+</style>`); } catch (e) {}
+
 // ---------- Sunday School slides workbench (YB 2026-10-30) ----------
 // Learned from the Sunday School decks in the church Drive folder ("Worship (English|Indonesia|Batak) - <date>"):
 // cover, ice-breaker question, songs, prayers, Ten Commandments (one slide each), memory verse, Apostles' Creed (3 pages),
@@ -1402,6 +1439,7 @@ R.meet = () => {
   const row = (x, state) => `<article class="card meet${state === "live" ? " on" : ""}"><div class="row between" style="margin:0"><span class="grow"><b>${esc(x.title)}</b><small class="muted" style="display:block">${esc(fmt(x.starts_at, { weekday: "short", day: "numeric", month: "short" }))} · ${esc(fmtTime(x.starts_at))}–${esc(fmtTime(new Date(meetEnd(x)).toISOString()))} · ${esc(x.audience === "group" ? gname(G(x.group_id)) : x.audience === "all" ? L3("Jemaat", "Ruas", "Church") : x.audience === "elders" ? "Parhalado" : "Makers")} · ${esc(x.by || "")}</small></span>${state === "live" ? `<span class="live-dot"></span>` : ""}</div>
       ${state !== "past" ? `<div class="row two"><a class="btn${state === "live" ? " primary" : ""}" href="${esc(meetUrl(x))}" target="_blank" rel="noopener">📹 ${esc(state === "live" ? L3("Gabung sekarang", "Masuk", "Join now") : L3("Buka ruang", "Bukka", "Open room"))}</a><a class="btn wa" href="${wa(`📹 *${x.title}*\n${fmt(x.starts_at, { weekday: "long", day: "numeric", month: "long" })} · ${fmtTime(x.starts_at)}\n${"https://meet.jit.si/" + x.room}\n\n– HKBP Singapore`)}" target="_blank" rel="noopener">${ic("wa")} WhatsApp</a></div>` : ""}
       ${x.notes ? `<details class="meet-notes"${state === "past" ? " open" : ""}><summary>📝 ${esc(L3("Notulen", "Notulen", "Notes"))}</summary><p class="pre small">${esc(x.notes)}</p></details>` : ""}
+      ${state !== "next" && canMeet() ? `<button class="btn sm block" data-act="meetRec" data-id="${x.id}" style="margin-top:8px">⬆️ ${esc(L3("Simpan rekaman ke Drive", "Simpan rekaman", "Save recording to Drive"))}</button>` : ""}
       ${x.mine || D.me.is_admin ? `<div class="row end" style="margin-top:6px"><button class="btn sm ghost" data-act="meetNotes" data-id="${x.id}">📝 ${esc(L3("Notulen", "Notulen", "Notes"))}</button>${state !== "past" ? `<button class="btn sm danger" data-act="del" data-kind="meet" data-id="${x.id}" aria-label="${esc(t("delete"))}">${ic("trash")}</button>` : ""}</div>` : ""}</article>`;
   return shell("#/calendar", `${schedHead("meet")}
     ${canMeet() ? `<div class="row two"><button class="btn primary" data-act="meetNew" data-now="1">⚡ ${esc(L3("Mulai sekarang", "Mulai", "Start now"))}</button><button class="btn" data-act="meetNew">🗓 ${esc(L3("Jadwalkan", "Jadwalhon", "Schedule"))}</button></div>` : ""}
@@ -1418,8 +1456,8 @@ A.meetNew = (d) => {
     <label>${esc(L3("Judul", "Judul", "Title"))}<input name="title" required maxlength="120" placeholder="${esc(L3("Rapat Multimedia", "Rapat", "Multimedia meeting"))}"></label>
     <label>${esc(L3("Undang", "Undang", "Invite"))}<select name="aud">${auds.map(([a, g, label], i) => `<option value="${a}|${g}"${i === 0 ? " selected" : ""}>${esc(label)}</option>`).join("")}</select></label>
     ${now ? "" : `<label>${esc(L3("Mulai", "Mulai", "Starts"))}<input type="datetime-local" name="at" value="${dt}" required></label>`}
-    <label>${esc(L3("Durasi", "Durasi", "Length"))}<select name="minutes">${[30, 45, 60, 90, 120, 180].map((m) => `<option value="${m}"${m === 60 ? " selected" : ""}>${m} min</option>`).join("")}</select></label>
-    <p class="small muted">${esc(L3("Yang diundang mendapat notifikasi; rapat terjadwal masuk kalender dengan pengingat 10 menit sebelumnya.", "", "Invitees get a push; a scheduled meeting goes into the calendar with a reminder 10 minutes before."))}</p>
+    <label>${esc(L3("Durasi", "Durasi", "Length"))}<select name="minutes">${[30, 45, 60, 90].map((m) => `<option value="${m}"${m === 60 ? " selected" : ""}>${m} min</option>`).join("")}</select></label>
+    <p class="small muted">${esc(L3("Maksimal 90 menit per rapat. Yang diundang mendapat notifikasi; rapat terjadwal masuk kalender dengan pengingat 10 menit sebelumnya.", "Maksimal 90 menit.", "Up to 90 minutes per meeting. Invitees get a push; a scheduled meeting goes into the calendar with a reminder 10 minutes before."))}</p>
     <button class="btn primary block">${esc(now ? L3("Mulai dan undang", "Mulai", "Start and invite") : L3("Jadwalkan dan undang", "Jadwalhon", "Schedule and invite"))}</button></form>`);
 };
 F.meet = async (f) => {
