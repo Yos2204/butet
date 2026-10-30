@@ -371,7 +371,7 @@ function shell(active, inner, opts = {}) {
   ${api.mode === "local" ? `<div class="banner soft">${ic("phone")} ${esc(t("demoBanner"))}</div>` : ""}
   <main${opts.cols ? ' class="cols"' : ""}>${inner}</main>
   <nav class="tabs"><div class="in" style="grid-template-columns:repeat(${tabs.length + (isGuest() ? 1 : 0)},1fr)">${nav}</div></nav>
-  ${!isGuest() && act !== "#/chat" ? `<a id="chatFab" class="chat-fab" href="#/chat" aria-label="Chat" draggable="false" style="${chatFabPos()}">${ic("chat")}${tabBadge("#/chat")}</a>` : ""}`;
+  ${!isGuest() && act !== "#/chat" && !/^#\/search/.test(location.hash) ? `<a id="chatFab" class="chat-fab" href="#/chat" aria-label="Chat" draggable="false" style="${chatFabPos()}">${ic("chat")}${tabBadge("#/chat")}</a>` : ""}`;
 }
 const langSwitch = () => `<div class="langs" role="group" aria-label="${esc(t("language"))}">${["id", "bt", "en"].map((l) => `<button data-act="lang" data-l="${l}" aria-pressed="${lang === l}">${l.toUpperCase()}</button>`).join("")}</div>`;
 const empty = (msg, icon = "star") => `<div class="empty">${ic(icon)}<p>${esc(msg)}</p></div>`;
@@ -437,7 +437,7 @@ R.home = () => {
     <section class="hello hero">
       <p class="hero-date">${esc(fmtDay(day))}</p>
       <h1>${esc(t(hour < 11 ? "morning" : hour < 15 ? "afternoon" : hour < 18 ? "evening1" : "evening2"))}${m.name ? ", " + esc(firstName(m.name)) : ""}</h1>
-      ${isGuest() ? "" : `<a class="search-entry hero-search" href="#/search">${ic("search")}<span>${esc(L3("Cari anggota, acara, file, roster…", "Lului ruas, ulaon, file…", "Search members, events, files, rosters…"))}</span></a>`}
+      ${isGuest() ? "" : `<a class="search-entry hero-search" href="#/search">${ic("search")}<span>${esc(L3("Cari anggota, lagu, dokumen, acara…", "Lului ruas, ende, dokumen…", "Search members, songs, documents, events…"))}</span></a>`}
     </section>
     ${isGuest() ? `<button class="card notify-ask" data-act="signIn">${ic("lock")}<span><b>${esc(t("guestTitle"))}</b><small>${esc(L3("Masuk untuk melihat Tata Ibadah, kalender, roster, kategorial dan tugas Anda.", "Bongot jolo asa diida Tata Ibadah, kalender, roster, kategorial dohot ulaonmu.", "Sign in to see the Tata Ibadah, calendar, rosters, your categories and your duties."))}</small></span>${ic("chev", "chev")}</button>` : ""}
     ${mine ? `<div class="card hbd">${ic("cake")}<div><h2>${esc(t("hbdTitle", firstName(m.name)))}</h2><p>${esc(t("hbdBody"))}</p></div></div>` : ""}
@@ -1063,6 +1063,151 @@ window.addEventListener("hashchange", () => { window.scrollTo(0, 0); render(); }
 // ---------- actions ----------
 const A = {};
 const F = {};
+try { document.head.insertAdjacentHTML("beforeend", `<style>
+  /* search results (YB 2026-10-30): a leading tile, a small kicker, one-line titles, two-line passages */
+  .deep-li { align-items: center; gap: 12px; } .deep-li .grow { min-width: 0; display: grid; gap: 1px; }
+  .sx-lead { flex: none; width: 46px; height: 46px; border-radius: 14px; display: grid; place-items: center; font-size: 22px; background: color-mix(in srgb, var(--brand) 8%, var(--surface)); }
+  .sx-book { display: grid; place-items: center; width: 46px; height: 46px; border-radius: 14px; font-size: 10.5px; font-weight: 900; letter-spacing: .06em; color: #fff; line-height: 1.05; }
+  .sx-book b { font-size: 16px; letter-spacing: 0; } .sx-book.kj { background: linear-gradient(140deg, #2f6fd1, #1d4fa3); } .sx-book.be { background: linear-gradient(140deg, #2f9e62, #1d7448); } .sx-book.bn { background: linear-gradient(140deg, #8a4fd6, #6233a8); }
+  .sx-lead:has(.sx-book), .sx-lead:has(.sx-date) { background: none; } .sx-doc { font-size: 22px; }
+  .sx-date { display: grid; place-items: center; width: 46px; height: 46px; border-radius: 14px; background: color-mix(in srgb, var(--gold, #d8b25e) 22%, var(--surface)); color: #8a5a00; font-size: 10.5px; font-weight: 800; text-transform: uppercase; line-height: 1.05; } .sx-date b { font-size: 17px; }
+  .sx-kick { font-style: normal; font-size: 11px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+  .sx-t { font-size: 15px; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+  .sx-s { font-size: 13px; line-height: 1.4; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .deep-li mark { background: #ffe58f; color: inherit; border-radius: 4px; padding: 0 2px; }
+</style>`); } catch (e) {}
+// ---------- Search, the look (YB 2026-10-30): one search bar, filter chips with counts, tidy sections, recent searches ----------
+const SX = { f: "all" };
+const SX_KINDS = [
+  [/^(Anggota|Ruas|Members)$/i, "people", "👤", ["Anggota", "Ruas", "Members"]], [/^(Kategorial|Groups|Kategori)/i, "groups", "👥", ["Kategorial", "Kategorial", "Groups"]],
+  [/^(Acara|Ulaon|Events)$/i, "events", "🗓", ["Acara", "Ulaon", "Events"]], [/^(Roster|Rosters)$/i, "roster", "📋", ["Roster", "Roster", "Rosters"]],
+  [/^(File & video|Files & videos)$/i, "files", "📁", ["File", "File", "Files"]], [/^(Kiriman|Posts)$/i, "posts", "📝", ["Kiriman", "Kiriman", "Posts"]],
+  [/Alkitab|Bibel|Bible/i, "bible", "📖", ["Alkitab", "Bibel", "Bible"]], [/Nyanyian|Ende|Songs/i, "songs", "🎵", ["Lagu", "Ende", "Songs"]],
+  [/Dokumen|Church documents/i, "docs", "📚", ["Dokumen", "Dokumen", "Documents"]], [/Tarombo/i, "taro", "🌳", ["Tarombo", "Tarombo", "Tarombo"]],
+  [/RPP/, "rpp", "⚖️", ["RPP", "RPP", "RPP"]], [/Liturgi|Paragenda|Liturgy/i, "lit", "📜", ["Liturgi", "Liturgi", "Liturgy"]]];
+function sxDecorate() {
+  const res = document.getElementById("searchRes"); if (!res) return;
+  res.querySelectorAll("h3.sec-h").forEach((h) => { if (h.closest(".sx-sec")) return; const body = h.nextElementSibling; if (!body) return;
+    const raw = h.textContent.replace(/^[^\p{L}]+/u, "").trim(); const k = SX_KINDS.find(([re]) => re.test(raw)) || [null, "other", "🔎", [raw, raw, raw]];
+    const n = body.querySelectorAll(".li, .gtile, .deep-li").length || body.children.length;
+    const sec = document.createElement("section"); sec.className = "sx-sec"; sec.dataset.k = k[1]; sec.dataset.n = n;
+    sec.innerHTML = `<div class="sx-h"><span class="sx-ic">${k[2]}</span><b>${esc(L3(...k[3]))}</b><em>${n}</em></div>`;
+    h.parentNode.insertBefore(sec, h); h.remove(); body.classList.add("sx-card"); sec.appendChild(body); });
+  const secs = [...res.querySelectorAll(".sx-sec")]; const chips = document.getElementById("sxChips"); if (!chips) return;
+  if (!secs.length) { chips.innerHTML = ""; return; }
+  const total = secs.reduce((a, s2) => a + +s2.dataset.n, 0); if (!secs.some((s2) => s2.dataset.k === SX.f)) SX.f = "all";
+  chips.innerHTML = `<button class="sx-chip${SX.f === "all" ? " on" : ""}" data-act="sxF" data-k="all">${esc(L3("Semua", "Sude", "All"))} <em>${total}</em></button>` + secs.map((s2) => { const k = SX_KINDS.find((x) => x[1] === s2.dataset.k);
+    return `<button class="sx-chip${SX.f === s2.dataset.k ? " on" : ""}" data-act="sxF" data-k="${s2.dataset.k}">${k ? k[2] + " " + esc(L3(...k[3])) : s2.dataset.k} <em>${s2.dataset.n}</em></button>`; }).join("");
+  secs.forEach((s2) => (s2.hidden = SX.f !== "all" && s2.dataset.k !== SX.f));
+}
+A.sxF = (d) => { SX.f = d.k; sxDecorate(); };
+A.sxClear = () => { const i = document.getElementById("searchIn"); if (!i) return; i.value = ""; SX.f = "all"; searchRun(""); i.focus(); };
+A.sxPick = (d) => { const i = document.getElementById("searchIn"); if (!i) return; i.value = d.q; searchRun(d.q); };
+A.sxForget = () => { LS.set("searchHist", []); searchRun(""); };
+function sxHistAdd(q) { q = String(q || "").trim(); if (q.length < 2) return; const h = (LS.get("searchHist", []) || []).filter((x) => norm(x) !== norm(q)); h.unshift(q); LS.set("searchHist", h.slice(0, 8)); }
+function sxEmpty() {
+  const h = LS.get("searchHist", []) || []; const sug = ["KJ 4", "Mazmur 23", "Sihombing", "Natal", "Haleluya", "parbagason"];
+  return `${h.length ? `<div class="sx-blk"><div class="sx-blk-h"><b>🕘 ${esc(L3("Pencarian terakhir", "Lului na salpu", "Recent searches"))}</b><button class="sx-link" data-act="sxForget">${esc(L3("Hapus", "Apus", "Clear"))}</button></div><div class="sx-pills">${h.map((q) => `<button class="sx-pill" data-act="sxPick" data-q="${esc(q)}">${esc(q)}</button>`).join("")}</div></div>` : ""}
+    <div class="sx-blk"><div class="sx-blk-h"><b>✨ ${esc(L3("Coba cari", "Lului", "Try"))}</b></div><div class="sx-pills">${sug.map((q) => `<button class="sx-pill soft" data-act="sxPick" data-q="${esc(q)}">${esc(q)}</button>`).join("")}</div></div>
+    <div class="sx-what"><p>${esc(L3("Satu kotak untuk semuanya:", "Sada kotak tu sude:", "One box for everything:"))}</p><div>👤 ${esc(L3("Anggota", "Ruas", "Members"))} · 🎵 ${esc(L3("Lagu", "Ende", "Songs"))} · 📚 ${esc(L3("Dokumen", "Dokumen", "Documents"))} · 📖 ${esc(L3("Alkitab", "Bibel", "Bible"))} · 🗓 ${esc(L3("Acara", "Ulaon", "Events"))} · 📋 Roster · 🌳 Tarombo</div></div>`;
+}
+try { document.head.insertAdjacentHTML("beforeend", `<style>
+  .sx-top { position: sticky; top: calc(64px + env(safe-area-inset-top)); z-index: 4; padding: 8px 0 6px; background: linear-gradient(var(--bg, #f2f3f8) 75%, transparent); }
+  .sx-box { display: flex; align-items: center; gap: 10px; background: var(--surface); border: 1.5px solid var(--line); border-radius: 20px; padding: 4px 6px 4px 16px; box-shadow: 0 8px 22px rgba(20,22,60,.08); }
+  .sx-box:focus-within { border-color: var(--brand); box-shadow: 0 0 0 4px color-mix(in srgb, var(--brand) 14%, transparent), 0 8px 22px rgba(20,22,60,.08); }
+  .sx-box svg { width: 20px; height: 20px; color: var(--brand); flex: none; } .sx-box input { flex: 1; min-width: 0; border: 0 !important; outline: 0; background: transparent !important; box-shadow: none !important; padding: 12px 0; font-size: 17px !important; -webkit-appearance: none; }
+  .sx-box input::-webkit-search-cancel-button { display: none; } .sx-x { width: 34px; height: 34px; border-radius: 50%; border: 0; background: color-mix(in srgb, var(--ink) 9%, var(--surface)); color: var(--ink); font-weight: 800; flex: none; }
+  .sx-chips { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; padding: 8px 0 2px; } .sx-chips::-webkit-scrollbar { display: none; }
+  .sx-chip { flex: none; border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 999px; padding: 7px 12px; font-size: 13.5px; font-weight: 700; white-space: nowrap; }
+  .sx-chip em { font-style: normal; font-size: 11.5px; color: var(--muted); margin-left: 2px; } .sx-chip.on { background: var(--brand); border-color: var(--brand); color: #fff; } .sx-chip.on em { color: rgba(255,255,255,.75); }
+  .sx-sec { margin: 14px 0 4px; } .sx-sec[hidden] { display: none; } .sx-h { display: flex; align-items: center; gap: 8px; margin: 0 4px 8px; }
+  .sx-ic { width: 30px; height: 30px; border-radius: 10px; display: grid; place-items: center; background: color-mix(in srgb, var(--brand) 9%, var(--surface)); font-size: 16px; }
+  .sx-h b { font-size: 15.5px; } .sx-h em { font-style: normal; font-size: 12px; font-weight: 800; color: var(--brand); background: color-mix(in srgb, var(--brand) 10%, var(--surface)); border-radius: 999px; padding: 2px 8px; }
+  .sx-card { border-radius: 18px; padding: 4px 12px; box-shadow: 0 4px 16px rgba(20,22,60,.06); } .sx-card .li { padding: 11px 2px; } .sx-card .li + .li { border-top: 1px solid var(--line); }
+  .sx-card .li small { display: block; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .sx-card mark { background: #ffe9a8; color: inherit; border-radius: 4px; padding: 0 2px; }
+  .sx-sec .glist { margin: 0; } .sx-blk { margin: 16px 2px; } .sx-blk-h { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; } .sx-link { border: 0; background: none; color: var(--brand); font-weight: 700; }
+  .sx-pills { display: flex; flex-wrap: wrap; gap: 8px; } .sx-pill { border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 8px 14px; font-weight: 700; color: var(--ink); }
+  .sx-pill.soft { background: color-mix(in srgb, var(--brand) 7%, var(--surface)); border-color: transparent; color: var(--brand); }
+  .sx-what { margin: 22px 2px; padding: 14px 16px; border-radius: 18px; background: var(--surface); border: 1px dashed var(--line); color: var(--muted); } .sx-what p { margin: 0 0 6px; font-weight: 700; color: var(--ink); } .sx-what div { line-height: 1.8; }
+  .sx-load { display: flex; align-items: center; gap: 8px; justify-content: center; color: var(--muted); font-size: 13px; margin: 14px 0; } .sx-load i { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--line); border-top-color: var(--brand); animation: sxspin .7s linear infinite; }
+  @keyframes sxspin { to { transform: rotate(360deg); } }
+  .sx-none { text-align: center; color: var(--muted); padding: 30px 10px; } .sx-none b { display: block; color: var(--ink); font-size: 17px; margin: 6px 0 4px; }
+</style>`); } catch (e) {}
+// ---------- Search everything (YB 2026-10-30): songs, church documents, the Bible, tarombo, and for Parhalado RPP and liturgy ----------
+const DEEP = { n: 0, rpp: null };
+function deepSnip(text, q, w = 46) { const t = String(text || "").replace(/\s+/g, " "); const i = norm(t).indexOf(q); if (i < 0) return t.slice(0, w * 2);
+  const a = Math.max(0, i - w), b = Math.min(t.length, i + q.length + w); return (a ? "…" : "") + t.slice(a, b) + (b < t.length ? "…" : ""); }
+const deepMark = (s, q) => { s = String(s || ""); const t = esc(s); if (!q) return t;
+  // find the words in the original text (letters may carry accents; punctuation stays in place)
+  const fold = (x) => x.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase(); const re = new RegExp(fold(q).replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "[\\s\\W]+"), "i");
+  const m = fold(s).match(re); if (!m) return t; const i = m.index, j = i + m[0].length;
+  return esc(s.slice(0, i)) + "<mark>" + esc(s.slice(i, j)) + "</mark>" + esc(s.slice(j)); };
+async function deepSearch(qRaw) {
+  const my = ++DEEP.n; const box = document.getElementById("searchDeep"); if (!box) return;
+  const q = norm(qRaw); if (q.length < 2) { box.innerHTML = ""; return; }
+  box.innerHTML = `<div class="sx-load"><i></i>${esc(L3("Mencari di lagu dan dokumen…", "Manglului di ende dohot dokumen…", "Searching songs and documents…"))}</div>`;
+  const sec = (icon, title, rows) => (rows.length ? `<h3 class="sec-h">${icon} ${esc(title)}</h3><div class="card deep-card">${rows.join("")}</div>` : "");
+  const row = (href, title, sub, act, lead, kick) => `<${act ? "button" : "a"} class="li deep-li" ${act ? act : `href="${esc(href)}"`}>${lead ? `<span class="sx-lead">${lead}</span>` : ""}<span class="grow">${kick ? `<i class="sx-kick">${esc(kick)}</i>` : ""}<b class="sx-t">${title}</b>${sub ? `<small class="sx-s">${sub}</small>` : ""}</span>${ic("chev", "chev")}</${act ? "button" : "a"}>`;
+  const tcase = (x) => { x = String(x || "").replace(/\s+/g, " ").trim(); if (x === x.toUpperCase() && /[A-Z]{3}/.test(x)) x = x.toLowerCase().replace(/(^|[\s(–-])(\p{L})/gu, (m2, a2, c) => a2 + c.toUpperCase()).replace(/\b([ivxl]+)\b(?=[.\s]|$)/gi, (r) => (/^[ivxl]+$/i.test(r) ? r.toUpperCase() : r)); return x.length > 72 ? x.slice(0, 70) + "…" : x; };
+  const book = (b, n) => `<span class="sx-book ${b.toLowerCase()}">${esc(b)}<b>${esc(n)}</b></span>`;
+  let out = "";
+  // 📖 a Bible reference: "Yoh 3:16", "Mazmur 23", "1 Korintus 13:4-7"
+  if (/^\s*[1-3]?\s*[A-Za-z]{2,}\.?\s+\d{1,3}(\s*[:.]\s*\d{1,3}(\s*[-–]\s*\d{1,3})?)?\s*$/.test(qRaw) && !/^\s*(kj|be|bn|pkj|nkb|buku|kidung|no)\b/i.test(qRaw)) out += sec("📖", L3("Alkitab", "Bibel", "Bible"), [row("", esc(qRaw.trim()), esc(L3("Buka di Alkitab · TB, Toba, KJV", "Bukka di Bibel", "Open in the Bible · TB, Toba, KJV")), `data-act="deepBible" data-q="${esc(qRaw.trim())}"`, "📖")]);
+  // 🎵 songs: by number ("KJ 4", "BE 587", "4"), title or any line
+  try { await songsLoad(false); } catch (e) {}
+  if (my !== DEEP.n) return;
+  const BK = { kj: "KJ", "kidung jemaat": "KJ", be: "BE", "buku ende": "BE", bn: "BN", "buku nyanyian": "BN" };
+  const m = norm(qRaw).match(/^(kj|be|bn|kidung jemaat|buku ende|buku nyanyian)?\s*(?:no\s*)?(\d{1,3})$/);
+  const songs = []; const list = SONGS.list || [];
+  if (m) list.filter((x) => +x.k.split(":")[1] === +m[2] && (!m[1] || x.k.startsWith(BK[m[1]] + ":"))).forEach((x) => songs.push({ x, snip: "" }));
+  else for (const x of list) { if (songs.length >= 12) break;
+    if (norm(x.t || "").includes(q)) { songs.push({ x, snip: "" }); continue; }
+    const lines = [...Object.values(x.v || {}).flat(), ...(x.r || [])]; const hit = lines.find((l) => norm(l).includes(q)); if (hit) songs.push({ x, snip: hit }); }
+  out += sec("🎵", L3("Nyanyian", "Ende", "Songs"), songs.map(({ x, snip }) => { const [b, n] = x.k.split(":"); return row(`#/song/${encodeURIComponent(x.k)}`, x.t ? deepMark(tcase(x.t), q) : esc(`${b} ${n}`), snip ? "“" + deepMark(deepSnip(snip, q), q) + "”" : "", "", book(b, n), ({ KJ: "Kidung Jemaat", BE: "Buku Ende", BN: "Buku Nyanyian" })[b] || b); }));
+  // 📚 church documents the person may read (the Agendas only for Parhalado)
+  const docRows = [];
+  for (const [slug, meta] of Object.entries(DOC_META)) { if (meta.restricted && !isParhalado()) continue; let doc = null;
+    try { doc = await docLoad(slug, false); } catch (e) { continue; } if (my !== DEEP.n) return;
+    let n = 0; const seenT = new Set(); (doc.sections || []).forEach((s2, i) => { if (n >= 4) return; const ttl = String(s2.title || ""); if (ttl.length > 110 || /\d{2,3}\s+[A-Z].*\d{2,3}\s+[A-Z]/.test(ttl)) return;   // skip table-of-contents lines
+      const key = norm(ttl); const inTitle = key.includes(q); const line = (s2.lines || []).find((l) => l && norm(l).includes(q)); if (!inTitle && !line) return; if (seenT.has(key) && !line) return; seenT.add(key);
+      n++; docRows.push(row(`#/doc/${slug}?i=${i}`, deepMark(tcase(ttl) || meta.title, q), line ? deepMark(deepSnip(line.replace(/^§/, ""), q, 60), q) : "", "", `<span class="sx-doc">${meta.icon || "📚"}</span>`, meta.title)); }); }
+  out += sec("📚", L3("Dokumen Gereja", "Dokumen Huria", "Church documents"), docRows);
+  // 🌳 tarombo margas
+  const margas = (typeof TARO_ALL !== "undefined" ? TARO_ALL : []).filter((x) => mnorm(x).includes(mnorm(qRaw))).slice(0, 8);
+  out += sec("🌳", "Tarombo", margas.map((x) => row("", deepMark(x, q), esc((taroFind(x) || []).slice(-2).join(" › ")), `data-act="deepTaro" data-m="${esc(x)}"`, "🌳", L3("Marga", "Marga", "Marga"))));
+  // ⚖️ RPP list and 📜 liturgy scripts: Parhalado only
+  if (isParhalado()) {
+    try { if (!DEEP.rpp) DEEP.rpp = await api.save("rpp_list", {}); } catch (e) { DEEP.rpp = []; }
+    out += sec("⚖️", "RPP", (DEEP.rpp || []).filter((r) => norm([r.name, r.reason, r.stage, r.notes].join(" ")).includes(q)).slice(0, 6).map((r) => row("#/rpp", deepMark(r.name, q), esc([r.stage, r.status === "aktif" ? L3("Aktif", "Aktif", "Active") : L3("Selesai", "Nunga sae", "Ended")].filter(Boolean).join(" · ")), "", "⚖️", "RPP")));
+    let lits = []; try { lits = await litList(false); } catch (e) {}
+    out += sec("📜", L3("Naskah Liturgi", "Naskah Paragenda", "Liturgy scripts"), (lits || []).filter((x) => norm([x.name, x.liturgist, x.preacher, x.day].join(" ")).includes(q)).slice(0, 6).map((x) => row(`#/lit/${x.id}`, deepMark(x.name, q), esc("📜 " + (x.liturgist || "")), "", `<span class="sx-date"><b>${esc(fmt(x.day, { day: "numeric" }))}</b>${esc(fmt(x.day, { month: "short" }))}</span>`, L3("Naskah liturgi", "Naskah paragenda", "Liturgy script"))));
+  }
+  if (my !== DEEP.n) return;
+  box.innerHTML = out; sxDecorate();
+  const res = document.getElementById("searchRes");
+  if (res && !res.querySelector(".sx-sec")) box.innerHTML = `<div class="sx-none">🔍<b>${esc(L3("Tidak ditemukan", "Ndang dapot", "Nothing found"))}</b>${esc(L3("Coba kata lain, nomor lagu (mis. KJ 4) atau nas (mis. Mazmur 23).", "Lului hata na asing.", "Try another word, a song number (e.g. KJ 4) or a passage (e.g. Psalm 23)."))}</div>`;
+  else sxHistAdd(qRaw);
+}
+A.deepBible = (d) => { LS.set("bibPendingQ", d.q); location.hash = "#/library?s=bible"; };
+A.deepTaro = (d) => { LS.set("taroPending", d.m); location.hash = "#/tarombo"; };
+// the Bible page and the tarombo page pick up what the search asked for
+setInterval(() => {
+  const bq = LS.get("bibPendingQ", ""); const f = bq && document.querySelector('form[data-form="bibSearch"]');
+  if (f) { LS.set("bibPendingQ", ""); f.q.value = bq; F.bibSearch(f).catch(() => {}); }
+  const tm = LS.get("taroPending", ""); const ti = tm && document.getElementById("taroFind");
+  if (ti && document.querySelector(".taro-tree")) { LS.set("taroPending", ""); ti.value = tm; const x = document.querySelector(".taro-x"); if (x) x.hidden = false; taroShow(tm); }
+}, 300);
+try { document.head.insertAdjacentHTML("beforeend", `<style>.deep-li small { display: block; color: var(--muted); } .deep-li mark { background: #ffe9a8; color: inherit; border-radius: 3px; padding: 0 1px; } .deep-card { padding-top: 4px; padding-bottom: 4px; }</style>`); } catch (e) {}
+// ---------- Keyboard on iPhone (YB 2026-10-30) ----------
+// Tapping Home's search pill: focus a hidden field during the tap (iOS then opens the keyboard), and the search page takes the focus over.
+document.addEventListener("click", (e) => { const a = e.target.closest && e.target.closest("a.search-entry"); if (!a) return;
+  let px = document.getElementById("kbProxy"); if (!px) { px = document.createElement("input"); px.id = "kbProxy"; px.type = "text"; px.setAttribute("aria-hidden", "true"); px.tabIndex = -1;
+    px.setAttribute("style", "position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;font-size:16px;border:0;padding:0;pointer-events:none"); document.body.appendChild(px); }
+  try { px.focus({ preventScroll: true }); } catch (err) {} }, true);
+// A field that is focused but has no keyboard (iOS) gets it back with one tap.
+document.addEventListener("touchend", (e) => { const el = e.target; if (!el || el.id !== "searchIn") return; if (document.activeElement === el && !el.dataset.kbOk) { el.blur(); el.focus(); el.dataset.kbOk = "1"; } }, true);
+document.addEventListener("focusin", (e) => { if (e.target && e.target.id === "searchIn") e.target.dataset.kbOk = "1"; });
+try { document.head.insertAdjacentHTML("beforeend", `<style>.search-top input, #taroFind, input[type=search] { font-size: 16px !important; }</style>`); } catch (e) {}
 // Live code for the downloaded Tata Ibadah file (YB 2026-10-30): Multimedia makers see it on the Tata Ibadah page.
 async function liveCodePaint(kind) { const el = document.getElementById("liveCode"); if (!el) return; try { const r = await api.save(kind || "live_code_get", {}); el.textContent = r.code; } catch (e) { el.textContent = "–"; } }
 A.liveCodeNew = async (d, btn) => { if (!confirm(L3("Buat kode live baru? Kode lama berhenti berlaku di laptop gereja.", "Kode baru?", "Make a new live code? The old one stops working on the church laptop."))) return; await busy(btn, () => liveCodePaint("live_code_new")); toast(L3("Kode live baru dibuat.", "Kode baru.", "New live code made.")); };
@@ -3983,13 +4128,18 @@ function tabBadge(h) {
 
 // Search: members, groups, events, files and videos, posts, and roster lines.
 R.search = () => {
-  setTimeout(() => { const i = document.getElementById("searchIn"); if (i) { i.focus(); searchRun(i.value); } }, 0);
-  return shell("#/home", `<div class="search-top">${ic("search")}<input id="searchIn" type="search" enterkeyhint="search" autocomplete="off" placeholder="${esc(L3("Cari anggota, acara, file, roster…", "Lului…", "Search members, events, files, rosters…"))}" value="${esc(LS.get("lastQ", "") || "")}"></div><div id="searchRes"></div>`,
+  // iPhone opens the keyboard only from a tap: focus here only when the tap that opened this page focused the stand-in field (or on a computer)
+  setTimeout(() => { const i = document.getElementById("searchIn"); if (!i) return; searchRun(i.value);
+    const px = document.getElementById("kbProxy"); const touch = matchMedia("(pointer: coarse)").matches;
+    if (!touch || (px && document.activeElement === px)) { i.focus({ preventScroll: true }); try { i.setSelectionRange(i.value.length, i.value.length); } catch (e) {} }
+    if (px) px.remove(); }, 0);
+  return shell("#/home", `<div class="sx-top"><div class="sx-box">${ic("search")}<input id="searchIn" type="search" enterkeyhint="search" autocomplete="off" placeholder="${esc(L3("Cari anggota, lagu, dokumen, acara…", "Lului ruas, ende, dokumen…", "Search members, songs, documents, events…"))}" value="${esc(LS.get("lastQ", "") || "")}"><button class="sx-x" data-act="sxClear" aria-label="Clear">✕</button></div><div class="sx-chips" id="sxChips"></div></div><div id="searchRes"></div>`,
     { back: "#/home", title: L3("Cari", "Lului", "Search") });
 };
 function searchRun(q) {
   LS.set("lastQ", q); const el = document.getElementById("searchRes"); if (!el) return;
-  const n = norm(q); if (n.length < 2) { el.innerHTML = `<p class="muted small center pad">${esc(L3("Ketik minimal 2 huruf.", "Surathon ma 2 huruf manang lobi.", "Type at least 2 letters."))}</p>`; return; }
+  const n = norm(q); const xb = document.querySelector(".sx-x"); if (xb) xb.hidden = !q;
+  if (n.length < 2) { DEEP.n++; el.innerHTML = sxEmpty(); const ch = document.getElementById("sxChips"); if (ch) ch.innerHTML = ""; return; }
   const has = (x) => norm(x || "").includes(n); const digits = q.replace(/\D/g, "");
   const people = (D.people || []).filter((p) => has(p.name) || has(p.alias) || (digits.length >= 3 && (p.phone || "").includes(digits))).slice(0, 20);
   const groups = (D.groups || []).filter((g) => canSee(g) && has(gname(g)));
@@ -4004,7 +4154,8 @@ function searchRun(q) {
     + sec(L3("Roster", "Roster", "Rosters"), lines.slice(0, 15).map(({ r, row, head }) => `<a class="li" href="${rosterHome(r.group_id, r.month)}"><span class="grow"><b>${esc(gname(G(r.group_id)))} · ${esc(row[0] || "")}</b><small>${esc(row.map((c, j) => (j && c ? `${head[j] || ""}: ${c}` : "")).filter(Boolean).join(" · "))}</small></span>${ic("chev", "chev")}</a>`).join(""))
     + sec(L3("File & video", "File & video", "Files & videos"), files.map((f) => `<div class="li"><span class="ftype">${f.link ? "▶" : esc(fileKind(f).toUpperCase())}</span><span class="grow"><b>${esc(f.title || f.file_name)}</b><small>${esc(gname(G(f.group_id)))}${f.day ? " · " + esc(fmtDay(f.day)) : ""}</small></span>${f.link ? `<a class="icon-btn" href="${esc(f.link)}" target="_blank" rel="noopener" aria-label="Video">${ic("screen")}</a>` : `<button class="icon-btn" data-act="openOffFile" data-id="${f.id}" aria-label="${esc(t("openOriginal"))}">${ic("file")}</button>`}</div>`).join(""))
     + sec(L3("Kiriman", "Kiriman", "Posts"), posts.map((p) => `<a class="li" href="#/g/${p.group_id}?tab=${p.kind === "sermon" ? "sermon" : "news"}"><span class="grow"><b>${esc(p.title || "")}</b><small>${esc(gname(G(p.group_id)))} · ${esc(String(p.body || "").slice(0, 70))}</small></span>${ic("chev", "chev")}</a>`).join(""));
-  el.innerHTML = out || empty(L3("Tidak ditemukan.", "Ndang dapot.", "Nothing found."), "search");
+  el.innerHTML = out + `<div id="searchDeep"></div>`; sxDecorate();
+  clearTimeout(searchRun._t); searchRun._t = setTimeout(() => deepSearch(q), 250);
 }
 document.addEventListener("input", (e) => { if (e.target && e.target.id === "searchIn") searchRun(e.target.value); });
 
