@@ -367,12 +367,12 @@ const signInCard = (msg) => `<div class="card center pad sign-in-card">${ic("loc
 
 // ---------- layout ----------
 let CUR_TAB = "#/home"; // the bottom tab the current page belongs to (used by swipe navigation)
-const TABS = [["home", "#/home", "tab_home"], ["groups", "#/groups", "tab_groups"], ["calendar", "#/calendar", "sched"], ["chat", "#/chat", "Chat"], ["more", "#/more", "tab_more"]];
+const TABS = [["home", "#/home", "tab_home"], ["groups", "#/groups", "tab_groups"], ["calendar", "#/calendar", "sched"], ["chat", "#/chat", "Chat"], ["book", "#/library", "lib"], ["more", "#/more", "tab_more"]];
 function shell(active, inner, opts = {}) {
   // People who are not signed in see only Home, plus a Sign in tab (YB 2026-10-28).
   const tabs = isGuest() ? TABS.filter(([, h]) => h === "#/home") : TABS;
   // Rosters pages light up the Schedule tab too (YB 2026-10-29: calendar and rosters combined).
-  const act = active === "#/serve" ? "#/calendar" : active; CUR_TAB = act; const label = (k) => (k === "sched" ? L3("Jadwal", "Jadwal", "Schedule") : k === "Chat" ? "Chat" : t(k));
+  const act = active === "#/serve" ? "#/calendar" : active; CUR_TAB = act; const label = (k) => (k === "sched" ? L3("Jadwal", "Jadwal", "Schedule") : k === "lib" ? L3("Alkitab", "Bibel", "Bible") : k === "Chat" ? "Chat" : t(k));
   const nav = tabs.map(([i, h, k]) => `<a href="${h}" class="${act === h ? "on" : ""}" ${act === h ? 'aria-current="page"' : ""}>${ic(i)}${tabBadge(h)}<span>${esc(label(k))}</span></a>`).join("")
     + (isGuest() ? `<a href="#/login" data-act="signIn">${ic("lock")}<span>${esc(t("signIn"))}</span></a>` : "");
   return `
@@ -1030,7 +1030,7 @@ async function render() {
     if (!D) await refresh();
     if (!r) { history.replaceState(null, "", "#/home"); r = "home"; }
     if (isGuest() && !["home", "bread", "checkin"].includes(r)) { history.replaceState(null, "", "#/home"); r = "home"; arg = undefined; }
-    const map = { access: R.access, sswb: R.sswb, ssdeck: R.ssdeck, fx: R.fx, meet: R.meet, tutur: R.tutur, ende: R.ende, stories: R.stories, voyage: R.voyage, live: R.live, grief: R.grief, care: R.care, search: R.search, prayer: R.prayer, checkin: R.checkin, checkinqr: R.checkinqr, chat: R.chat, tata: R.tata, home: R.home, groups: R.groups, g: R.group, serve: R.serve, s: R.section, calendar: R.calendar, bread: R.bread, elders: R.elders, berita: R.berita, people: R.people, more: R.more, appstatus: R.appstatus, o: R.office, warta: R.warta };
+    const map = { library: R.library, song: R.song, access: R.access, sswb: R.sswb, ssdeck: R.ssdeck, fx: R.fx, meet: R.meet, tutur: R.tutur, ende: R.ende, stories: R.stories, voyage: R.voyage, live: R.live, grief: R.grief, care: R.care, search: R.search, prayer: R.prayer, checkin: R.checkin, checkinqr: R.checkinqr, chat: R.chat, tata: R.tata, home: R.home, groups: R.groups, g: R.group, serve: R.serve, s: R.section, calendar: R.calendar, bread: R.bread, elders: R.elders, berita: R.berita, people: R.people, more: R.more, appstatus: R.appstatus, o: R.office, warta: R.warta };
     const html = (map[r] || R.notFound)(arg);
     if (typeof html === "string") view().innerHTML = html;
     draftRestore(view()); wAutoBase();
@@ -1072,6 +1072,231 @@ window.addEventListener("hashchange", () => { window.scrollTo(0, 0); render(); }
 // ---------- actions ----------
 const A = {};
 const F = {};
+
+// Passage search and the shared Sada library (YB 2026-10-30): a reference typed here is looked up once online (SABDA, through
+// hkbp-bible) and then kept in Sada for everyone; Sada's collected chapters can be saved onto the phone in one go.
+async function bibLibPaint(ver) {
+  const el = document.getElementById("bibLib"); if (!el) return;
+  try { const r = await api.save("bible_stats", { version: ver }); BIB.lib = BIB.lib || {}; BIB.lib[ver] = r.chapters || [];
+    const n = BIB.lib[ver].length;
+    el.innerHTML = `<div class="row between" style="margin:0;gap:10px"><span class="grow"><b>📚 ${n} ${esc(L3("pasal", "pasal", "chapters"))} ${esc(BIB_VERS[ver].short)} ${esc(L3("tersimpan di Sada", "di Sada", "kept in Sada"))}</b><small class="muted" style="display:block">${esc(L3("Bertambah setiap kali ada yang membaca atau mencari ayat.", "Tamba ganup marbaca.", "Grows every time someone reads or searches."))}</small></span>${n ? `<button class="btn sm" data-act="bibLibSave">📥 ${esc(L3("Simpan ke HP", "Simpan", "Save to phone"))}</button>` : ""}</div>`;
+  } catch (e) { el.innerHTML = `<small class="muted">${esc(L3("Perpustakaan Sada tidak bisa dibuka tanpa internet.", "", "Sada's library can't be reached without internet."))}</small>`; }
+}
+A.bibLibSave = async (d, btn) => {
+  const ver = LS.get("bibVer", "tb"); const list = (BIB.lib && BIB.lib[ver]) || []; let ok = 0; btn.disabled = true;
+  for (const name of list) { const m = name.match(/^(.*) (\d+)$/); const b = m ? BIB_ID.indexOf(m[1]) + 1 : 0; if (b > 0) { try { await bibChapter(ver, b, +m[2]); ok++; } catch (e) {} } btn.textContent = `📥 ${ok} / ${list.length}`; }
+  btn.disabled = false; toast(L3(`${ok} pasal tersimpan di HP untuk offline.`, `${ok} pasal tarsimpan.`, `${ok} chapters saved on your phone for offline use.`));
+};
+F.bibSearch = async (f) => {
+  const q = f.q.value.trim(); if (!q) return; const ver = LS.get("bibVer", "tb"); const box = document.getElementById("bibHit"); if (!box) return;
+  box.innerHTML = skel(2); const show = (html) => { BIB.hit = html; const el = document.getElementById("bibHit"); if (el) el.innerHTML = html; };
+  try {
+    const fn = BIB_VERS[ver].kjv ? "en" : BIB_VERS[ver].fn;
+    const url = `${BIB_FN}?ref=${encodeURIComponent(q)}&lang=${fn}`;
+    let j; const cache = await bibCache();
+    try { const r = await fetch(url, { headers: { apikey: BIB_CFG.supabaseKey || "", authorization: "Bearer " + (BIB_CFG.supabaseKey || "") } }); j = await r.json(); if (!r.ok || !j.verses) throw Object.assign(new Error(j.error || "error"), { code: j.error });
+      if (cache && !BIB_VERS[ver].kjv) await cache.put(url, new Response(JSON.stringify(j), { headers: { "content-type": "application/json" } })); }
+    catch (e) { const c = cache && await cache.match(url); if (c) j = await c.json(); else throw e; }
+    let verses = j.verses;
+    if (BIB_VERS[ver].kjv) { const k = await kjvLoad(false); if (!k) throw Object.assign(new Error("kjv"), { code: "kjv" }); verses = verses.map((x) => ({ ...x, t: ((k[j.book_id - 1].chapters[x.c - 1]) || [])[x.v - 1] || "" })); }
+    const ref = `${bibName(ver, j.book_id)} ${verses[0].c}:${verses[0].v}${verses.length > 1 ? "–" + (verses[verses.length - 1].c !== verses[0].c ? verses[verses.length - 1].c + ":" : "") + verses[verses.length - 1].v : ""}`;
+    show(`<div class="card bib-res"><div class="row between" style="margin:0"><b>${esc(ref)}</b><span class="badge">${esc(BIB_VERS[ver].short)}</span></div>
+      <div class="bib-text" style="font-size:${LS.get("bibFs", 19)}px">${verses.map((v) => `<p><sup>${v.c !== verses[0].c ? v.c + ":" : ""}${v.v}</sup>${esc(v.t)}</p>`).join("")}</div>
+      <div class="row two"><button class="btn" data-act="bibCh" data-b="${j.book_id}" data-c="${verses[0].c}">📖 ${esc(L3("Buka pasal", "Bukka pasal", "Open the chapter"))}</button><a class="btn wa" href="${wa(`*${ref}* (${BIB_VERS[ver].short})\n${verses.map((v) => v.v + " " + v.t).join("\n")}`)}" target="_blank" rel="noopener">${ic("wa")} WhatsApp</a></div></div>`);
+    if (!BIB_VERS[ver].kjv) bibLibPaint(ver);
+  } catch (e) {
+    show(`<p class="warn small">${esc(e.code === "bad_ref" ? L3("Ayat tidak dikenali. Contoh: Yoh 3:16, Mazmur 23, Roma 8:28-39.", "Ndang tartanda. Songon: Joh 3:16.", "Not recognised. For example: John 3:16, Psalm 23, Romans 8:28-39.") : e.code === "not_found" ? L3("Ayat itu tidak ada.", "Ndang adong.", "That passage doesn't exist.") : e.code === "kjv" ? L3("Unduh KJV dulu (tombol di bawah).", "Unduh KJV.", "Download the KJV first (button below).") : L3("Tidak ada internet, dan ayat ini belum tersimpan.", "Ndang adong internet.", "No internet, and this passage isn't saved yet."))}</p>`);
+  }
+};
+try { document.head.insertAdjacentHTML("beforeend", `<style>
+  .bib-search { display: flex; gap: 8px; margin: 6px 0 8px; } .bib-search input { flex: 1; min-width: 0; } .bib-search .btn { flex: none; }
+  .bib-res { border-left: 4px solid var(--brand); } .bib-res .bib-text { margin: 10px 0; } .bib-lib { margin-top: 12px; }
+</style>`); } catch (e) {}
+
+// ---------- Alkitab & Nyanyian: Bible and songbooks (YB 2026-10-30) ----------
+// A bottom tab of its own. Alkitab: Terjemahan Baru, Bibel Toba and ESV are read chapter by chapter from SABDA (through hkbp-bible);
+// every chapter read is kept on the phone (Cache Storage) so it opens offline next time, and a whole book can be saved for offline.
+// The King James Version (public domain) can be downloaded in full for offline use.
+// Songbooks (Kidung Jemaat, Buku Ende, others): the songs the church prints in its published Tata Ibadah and Sunday School slides,
+// collected by makers' phones and merged verse by verse (hk_songs), plus songs makers add or correct; the whole library is kept offline.
+const BIB_CFG = window.HKBP_CONFIG || {};
+const BIB_FN = (BIB_CFG.supabaseUrl || "https://tbicfofdorwrupzlqgdm.supabase.co").replace(/\/$/, "") + "/functions/v1/hkbp-bible";
+const KJV_URL = "https://raw.githubusercontent.com/thiagobodruk/bible/master/json/en_kjv.json";
+const BIB_CACHE = "sada-bible-v1";
+const BIB_ID = ["Kejadian", "Keluaran", "Imamat", "Bilangan", "Ulangan", "Yosua", "Hakim-hakim", "Rut", "1 Samuel", "2 Samuel", "1 Raja-raja", "2 Raja-raja", "1 Tawarikh", "2 Tawarikh", "Ezra", "Nehemia", "Ester", "Ayub", "Mazmur", "Amsal", "Pengkhotbah", "Kidung Agung", "Yesaya", "Yeremia", "Ratapan", "Yehezkiel", "Daniel", "Hosea", "Yoel", "Amos", "Obaja", "Yunus", "Mikha", "Nahum", "Habakuk", "Zefanya", "Hagai", "Zakharia", "Maleakhi",
+  "Matius", "Markus", "Lukas", "Yohanes", "Kisah Para Rasul", "Roma", "1 Korintus", "2 Korintus", "Galatia", "Efesus", "Filipi", "Kolose", "1 Tesalonika", "2 Tesalonika", "1 Timotius", "2 Timotius", "Titus", "Filemon", "Ibrani", "Yakobus", "1 Petrus", "2 Petrus", "1 Yohanes", "2 Yohanes", "3 Yohanes", "Yudas", "Wahyu"];
+const BIB_EN = ["Genesis", "Exodus", "Leviticus", "Numbers", "Deuteronomy", "Joshua", "Judges", "Ruth", "1 Samuel", "2 Samuel", "1 Kings", "2 Kings", "1 Chronicles", "2 Chronicles", "Ezra", "Nehemiah", "Esther", "Job", "Psalms", "Proverbs", "Ecclesiastes", "Song of Songs", "Isaiah", "Jeremiah", "Lamentations", "Ezekiel", "Daniel", "Hosea", "Joel", "Amos", "Obadiah", "Jonah", "Micah", "Nahum", "Habakkuk", "Zephaniah", "Haggai", "Zechariah", "Malachi",
+  "Matthew", "Mark", "Luke", "John", "Acts", "Romans", "1 Corinthians", "2 Corinthians", "Galatians", "Ephesians", "Philippians", "Colossians", "1 Thessalonians", "2 Thessalonians", "1 Timothy", "2 Timothy", "Titus", "Philemon", "Hebrews", "James", "1 Peter", "2 Peter", "1 John", "2 John", "3 John", "Jude", "Revelation"];
+const BIB_CH = [50, 40, 27, 36, 34, 24, 21, 4, 31, 24, 22, 25, 29, 36, 10, 13, 10, 42, 150, 31, 12, 8, 66, 52, 5, 48, 12, 14, 3, 9, 1, 4, 7, 3, 3, 3, 2, 14, 4, 28, 16, 24, 21, 28, 16, 16, 13, 6, 6, 4, 4, 5, 3, 6, 4, 3, 1, 13, 5, 5, 3, 5, 1, 1, 1, 22];
+const BIB_VERS = { tb: { name: "Terjemahan Baru", short: "TB", fn: "id", en: false }, toba: { name: "Bibel Toba", short: "Toba", fn: "bbc", en: false }, esv: { name: "English Standard Version", short: "ESV", fn: "en", en: true }, kjv: { name: "King James Version", short: "KJV", kjv: true, en: true } };
+const BIB = { kjv: null };
+const bibName = (ver, b) => (BIB_VERS[ver].en ? BIB_EN : BIB_ID)[b - 1];
+const bibUrl = (ver, b, c) => `${BIB_FN}?ref=${encodeURIComponent(BIB_ID[b - 1] + " " + c)}&lang=${BIB_VERS[ver].fn}`;
+async function bibCache() { try { return "caches" in window ? await caches.open(BIB_CACHE) : null; } catch (e) { return null; } }
+async function kjvLoad(download) {
+  if (BIB.kjv) return BIB.kjv; const c = await bibCache(); let r = c && await c.match(KJV_URL);
+  if (!r && download) { const f = await fetch(KJV_URL); if (!f.ok) throw new Error("download " + f.status); if (c) await c.put(KJV_URL, f.clone()); r = f; }
+  if (!r) return null; const txt = (await r.text()).replace(/^\uFEFF/, ""); BIB.kjv = JSON.parse(txt); return BIB.kjv;
+}
+async function bibChapter(ver, b, c) {
+  if (BIB_VERS[ver].kjv) { const k = await kjvLoad(false); if (!k) return { need: "kjv" }; return { verses: (k[b - 1].chapters[c - 1] || []).map((t0, i) => ({ v: i + 1, t: t0 })), offline: true }; }
+  const url = bibUrl(ver, b, c); const cache = await bibCache();
+  const cached = cache && await cache.match(url);
+  try {
+    const r = await fetch(url, { headers: { apikey: BIB_CFG.supabaseKey || "", authorization: "Bearer " + (BIB_CFG.supabaseKey || "") } });
+    const j = await r.clone().json(); if (!r.ok || !j.verses) throw new Error(j.error || "error");
+    if (cache) await cache.put(url, new Response(JSON.stringify(j), { headers: { "content-type": "application/json" } }));
+    return { verses: j.verses.map((x) => ({ v: x.v, t: x.t })), offline: false, saved: true };
+  } catch (e) { if (cached) { const j = await cached.json(); return { verses: j.verses.map((x) => ({ v: x.v, t: x.t })), offline: true, saved: true }; } throw e; }
+}
+// Songs
+const SONG_BOOKS = { KJ: ["Kidung Jemaat", "id"], BE: ["Buku Ende", "bt"], PKJ: ["Pelengkap Kidung Jemaat", "id"], NKB: ["Nyanyikanlah Kidung Baru", "id"], BN: ["Buku Nyanyian", "id"], KLB: ["Kidung Ceria", "id"], SS: ["Lagu Sekolah Minggu", ""], EN: ["English hymns", "en"] };
+const SONGS = { list: null, busy: false };
+const canSongs = () => !!D && !isGuest() && (D.me.is_admin || isMMMaker() || !!D.ss_maker);
+async function songsLoad(force) {
+  if (SONGS.list && !force) return SONGS.list;
+  const c = LS.get("songsLib", null); if (c && !force) SONGS.list = c.list;
+  try { const l = await api.save("songs_list", {}); SONGS.list = l || []; LS.set("songsLib", { at: Date.now(), list: SONGS.list }); } catch (e) { if (!SONGS.list) SONGS.list = (c && c.list) || []; }
+  return SONGS.list;
+}
+function songHead(head) {
+  const m = String(head || "").match(/\b(B\.\s*E|BUKU\s*ENDE|BE|PKJ|NKB|KJ|BN|KLB)\b\.?\s*(?:No\.?|Nomor|Nr\.?)?\s*(\d{1,4})/i); if (!m) return null;
+  let book = m[1].toUpperCase().replace(/[\s.]/g, ""); if (book === "BUKUENDE") book = "BE";
+  const vs = (head.slice(m.index + m[0].length).match(/^\s*[:.]\s*([\d\s,\-–]+)/) || [])[1] || "";
+  const nums = []; vs.split(/,/).forEach((p) => { const r = p.split(/[-–]/).map((x) => parseInt(x, 10)).filter((x) => x > 0); if (r.length === 2 && r[1] >= r[0] && r[1] - r[0] < 30) for (let i = r[0]; i <= r[1]; i++) nums.push(i); else if (r.length === 1) nums.push(r[0]); });
+  const title = (head.match(/[“"]([^”"]+)[”"]/) || [])[1] || (head.split("·").slice(1).join("·") || "").trim();
+  return { book, num: +m[2], nums, title: title.trim() };
+}
+function songBlocks(text) {
+  const verses = [], reff = []; String(text || "").replace(/\r/g, "").split(/\n\s*\n/).forEach((blk) => { const ls = blk.split("\n").map((l) => l.trim()).filter(Boolean); if (!ls.length) return;
+    if (/^reff?\s*:?$/i.test(ls[0]) || /^reff?\s*:/i.test(ls[0])) { const first = ls[0].replace(/^reff?\s*:?\s*/i, ""); const rl = [first, ...ls.slice(1)].filter(Boolean); if (!reff.length) reff.push(...rl); } else verses.push(ls); });
+  return { verses, reff };
+}
+async function songsCollect(quiet) {
+  if (!canSongs() || SONGS.busy || api.mode !== "remote") return 0; SONGS.busy = true; let added = 0;
+  try {
+    const done = new Set(LS.get("songsDone", []) || []); const out = [];
+    for (const v of (D.services || []).filter((x) => x.id && !done.has("t:" + x.id)).slice(0, 20)) {
+      try { const doc = new DOMParser().parseFromString(await tataHtml(v.id), "text/html");
+        endeSongs(doc).forEach((x) => { const h = songHead(x.title); if (!h) return; const bl = x.verses && x.verses.length ? { verses: x.verses, reff: (x.reffs || [])[0] ? x.reffs[0].split("\n") : [] } : songBlocks(x.text);
+          const nums = h.nums.length === bl.verses.length ? h.nums : bl.verses.map((_, i) => (h.nums[0] || 1) + i); const verses = {}; bl.verses.forEach((ls, i) => (verses[nums[i]] = ls));
+          if (bl.verses.length) out.push({ book: h.book, num: h.num, title: h.title, lang: (SONG_BOOKS[h.book] || [])[1] || "", verses, reff: bl.reff, source: v.service_date || v.day || "" }); });
+        done.add("t:" + v.id); } catch (e) {}
+    }
+    for (const dk of (D.ss_decks || []).filter((x) => !done.has("s:" + x.id)).slice(0, 10)) {
+      try { const r = await api.save("ss_html", { deck_id: dk.id }); (r.sections || []).filter((x) => x.type === "song" && x.body).forEach((x) => { const h = songHead(x.extra || x.title); const bl = songBlocks(x.body); const verses = {}; bl.verses.forEach((ls, i) => (verses[i + 1] = ls));
+          if (bl.verses.length) out.push(h ? { book: h.book, num: h.num, title: h.title || x.extra, lang: dk.lang, verses, reff: bl.reff, source: dk.day } : { book: "SS", title: (x.extra || x.title || "").slice(0, 120), lang: dk.lang, verses, reff: bl.reff, source: dk.day }); });
+        done.add("s:" + dk.id); } catch (e) {}
+    }
+    for (let i = 0; i < out.length; i += 25) { const r = await api.save("songs_upsert", { songs: out.slice(i, i + 25) }); added += (r && r.saved) || 0; }
+    LS.set("songsDone", [...done].slice(-400));
+    if (added) { await songsLoad(true); if (!quiet) toast(L3(`${added} lagu diperbarui dari Tata Ibadah.`, `${added} ende.`, `${added} songs updated from the Tata Ibadah.`)); }
+  } finally { SONGS.busy = false; }
+  return added;
+}
+// Page
+R.library = () => {
+  const q = new URLSearchParams(location.hash.split("?")[1] || ""); const sec = q.get("s") || LS.get("libSec", "bible"); LS.set("libSec", sec);
+  const seg = (k, label) => `<a role="tab" aria-selected="${sec === k}" href="#/library?s=${k}">${esc(label)}</a>`;
+  const head = `<div class="seg lib-seg" role="tablist" style="--gc:var(--brand)">${seg("bible", L3("Alkitab", "Bibel", "Bible"))}${seg("KJ", "Kidung Jemaat")}${seg("BE", "Buku Ende")}${seg("other", L3("Lainnya", "Na asing", "Others"))}</div>`;
+  if (sec === "bible") { setTimeout(bibPaint, 0); return shell("#/library", `${head}<div id="bibBox">${skel(3)}</div>`, {}); }
+  setTimeout(async () => { await songsLoad(false); songListPaint(sec); songsCollect(true).then((n) => { if (n) songListPaint(sec); }); }, 0);
+  return shell("#/library", `${head}
+    <div class="row" style="gap:8px;margin:8px 0"><input type="search" id="songFind" placeholder="${esc(L3("Nomor atau judul lagu…", "Nomor manang goar ni ende…", "Song number or title…"))}" inputmode="search" autocomplete="off" style="flex:1">${canSongs() ? `<button class="btn" data-act="songEdit" data-book="${sec === "other" ? "PKJ" : sec}">${ic("plus")}</button>` : ""}</div>
+    <div id="songList">${skel(4)}</div>
+    <p class="small muted">${esc(L3("Lagu-lagu dikumpulkan dari Tata Ibadah dan slide Sekolah Minggu yang diterbitkan gereja, dan bertambah setiap minggu. Semua tersimpan di HP untuk offline.", "Ende sian Tata Ibadah.", "Songs are collected from the church's published Tata Ibadah and Sunday School slides and grow every week. All are kept on your phone for offline use."))}</p>`, {});
+};
+function songListPaint(sec) {
+  const box = document.getElementById("songList"); if (!box) return;
+  const qv = norm((document.getElementById("songFind") || {}).value || "");
+  const list = (SONGS.list || []).filter((x) => (sec === "other" ? !["KJ", "BE"].includes(x.b) : x.b === sec)).filter((x) => !qv || String(x.n) === qv || norm((x.t || "") + " " + Object.values(x.v || {}).flat().slice(0, 4).join(" ")).includes(qv));
+  box.innerHTML = list.length ? `<div class="card song-list">${list.map((x) => { const first = (Object.values(x.v || {})[0] || [])[0] || "";
+    return `<a class="li" href="#/song/${encodeURIComponent(x.k)}"><span class="song-no">${x.n != null ? x.n : "♪"}</span><span class="grow"><b>${esc(x.t || first || x.k)}</b><small>${sec === "other" ? esc((SONG_BOOKS[x.b] || [x.b])[0]) + " · " : ""}${esc(first)}</small></span>${ic("chev", "chev")}</a>`; }).join("")}</div>`
+    : empty(qv ? L3("Tidak ditemukan.", "Ndang dapot.", "Nothing found.") : L3("Belum ada lagu di buku ini. Lagu muncul setelah dicetak di Tata Ibadah.", "Dang adong dope.", "No songs in this book yet. Songs appear once they are printed in a Tata Ibadah."), "book");
+}
+document.addEventListener("input", (e) => { if (e.target && e.target.id === "songFind") songListPaint(LS.get("libSec", "KJ")); });
+R.song = (key) => {
+  key = decodeURIComponent(key || ""); const fs = LS.get("songFs", 20);
+  setTimeout(async () => { await songsLoad(false); const x = (SONGS.list || []).find((y) => y.k === key); const box = document.getElementById("songBox"); if (!box) return;
+    if (!x) { box.innerHTML = empty(L3("Lagu tidak ditemukan.", "Ndang dapot.", "Song not found."), "book"); return; }
+    const nums = Object.keys(x.v || {}).map(Number).sort((a, b) => a - b);
+    box.innerHTML = `<div class="song-head"><span class="song-book">${esc((SONG_BOOKS[x.b] || [x.b])[0])}${x.n != null ? " · " + x.n : ""}</span><h2>${esc(x.t || "")}</h2></div>
+      <div class="song-text" style="font-size:${fs}px">${nums.map((n, i) => `<div class="sv"><span class="svn">${n}</span><div>${x.v[n].map((l) => `<p>${esc(l)}</p>`).join("")}</div></div>${i === 0 && (x.r || []).length ? `<div class="sv reff"><span class="svn">Reff</span><div>${x.r.map((l) => `<p>${esc(l)}</p>`).join("")}</div></div>` : ""}`).join("")}</div>
+      <div class="row two" style="margin-top:14px"><button class="btn" data-act="songFs" data-d="-2">A−</button><button class="btn" data-act="songFs" data-d="2">A+</button></div>
+      ${x.b === "BE" ? `<button class="btn block" data-act="songMeaning" data-k="${esc(x.k)}">🎵 ${esc(L3("Arti setiap baris", "Lapatan", "The meaning of each line"))}</button>` : ""}
+      ${canSongs() ? `<button class="btn ghost block" data-act="songEdit" data-k="${esc(x.k)}">✏️ ${esc(L3("Ubah lagu ini", "Ubah", "Edit this song"))}</button>` : ""}`; }, 0);
+  return shell("#/library", `<div id="songBox">${skel(3)}</div>`, { back: "#/library", title: L3("Nyanyian", "Ende", "Songs") });
+};
+A.songFs = (d) => { const v = Math.max(14, Math.min(40, LS.get("songFs", 20) + +d.d)); LS.set("songFs", v); const el = document.querySelector(".song-text"); if (el) el.style.fontSize = v + "px"; };
+A.songMeaning = (d) => { const x = (SONGS.list || []).find((y) => y.k === d.k); if (!x) return; const nums = Object.keys(x.v || {}).map(Number).sort((a, b) => a - b);
+  endeShow(`BE ${x.n} ${x.t || ""}`, nums.map((n, i) => x.v[n].join("\n") + (i === 0 && (x.r || []).length ? "\n\nReff:\n" + x.r.join("\n") : "")).join("\n\n")); };
+A.songEdit = (d) => {
+  const x = d.k ? (SONGS.list || []).find((y) => y.k === d.k) : null; const book = x ? x.b : d.book || "KJ";
+  const text = x ? Object.keys(x.v || {}).map(Number).sort((a, b) => a - b).map((n, i) => x.v[n].join("\n") + (i === 0 && (x.r || []).length ? "\n\nReff:\n" + x.r.join("\n") : "")).join("\n\n") : "";
+  sheet(x ? "✏️ " + L3("Ubah lagu", "Ubah", "Edit song") : "➕ " + L3("Tambah lagu", "Tambah", "Add a song"), `<form class="form" data-form="song" data-k="${esc(x ? x.k : "")}">
+    <div class="row two"><label>${esc(L3("Buku", "Buku", "Book"))}<select name="book">${Object.entries(SONG_BOOKS).map(([k, v]) => `<option value="${k}"${k === book ? " selected" : ""}>${esc(v[0])}</option>`).join("")}</select></label>
+      <label>${esc(L3("Nomor", "Nomor", "Number"))}<input name="num" inputmode="numeric" value="${x && x.n != null ? x.n : ""}"></label></div>
+    <label>${esc(L3("Judul", "Judul", "Title"))}<input name="title" value="${esc(x ? x.t || "" : "")}"></label>
+    <label>${esc(L3("Lirik (baris kosong = bait baru, “Reff:” untuk reff, bait dimulai dari 1)", "Lirik", "Lyrics (blank line = new verse, “Reff:” for the refrain, verses start at 1)"))}<textarea name="text" rows="12">${esc(text)}</textarea></label>
+    <button class="btn primary block">${esc(t("save"))}</button>${x ? `<button type="button" class="btn danger block" data-act="songDel" data-k="${esc(x.k)}">${ic("trash")} ${esc(t("delete"))}</button>` : ""}</form>`);
+};
+F.song = async (f) => {
+  const bl = songBlocks(f.text.value); const verses = {}; bl.verses.forEach((ls, i) => (verses[i + 1] = ls));
+  const num = parseInt(f.num.value, 10); const book = f.book.value;
+  if (!bl.verses.length || (!num && !f.title.value.trim())) throw new Error(L3("Isi nomor atau judul, dan liriknya.", "Isi nomor dohot lirik.", "Fill in a number or title, and the lyrics."));
+  if (f.dataset.k && f.dataset.k !== `${book}:${num || norm(f.title.value).slice(0, 60)}`) await api.save("song_delete", { key: f.dataset.k }).catch(() => {});
+  await api.save("songs_upsert", { songs: [{ book, num: num || null, title: f.title.value.trim(), lang: (SONG_BOOKS[book] || [])[1] || "", verses, reff: bl.reff, replace: true }] });
+  closeSheet(); await songsLoad(true); toast(t("saved")); render();
+};
+A.songDel = async (d) => { await api.save("song_delete", { key: d.k }); closeSheet(); await songsLoad(true); location.hash = "#/library"; };
+// Bible view
+async function bibPaint() {
+  const box = document.getElementById("bibBox"); if (!box) return;
+  const ver = LS.get("bibVer", lang === "en" ? "esv" : lang === "bt" ? "toba" : "tb"), b = LS.get("bibB", 19), c = LS.get("bibC", 23), fs = LS.get("bibFs", 19);
+  const kjvReady = !!(await bibCache() && await (await bibCache()).match(KJV_URL));
+  box.innerHTML = `<div class="chips bib-vers">${Object.entries(BIB_VERS).map(([k, v]) => `<button class="chip${k === ver ? " on" : ""}" data-act="bibVer" data-v="${k}">${esc(v.short)}${v.kjv ? (kjvReady ? " ✓" : " ⬇") : ""}</button>`).join("")}</div>
+    <form class="bib-search" data-form="bibSearch"><input name="q" type="search" placeholder="${esc(L3("Cari ayat: Yoh 3:16, Mazmur 23, Roma 8:28-39", "Bilang ayat: Joh 3:16", "Find a passage: John 3:16, Psalm 23, Romans 8:28-39"))}" autocomplete="off" enterkeyhint="search"><button class="btn primary" aria-label="${esc(t("search"))}">${ic("search")}</button></form>
+    <div id="bibHit"></div>
+    <div class="bib-nav"><button class="icon-btn" data-act="bibGo" data-d="-1" aria-label="${esc(L3("Pasal sebelumnya", "Na parjolo", "Previous chapter"))}">‹</button><button class="bib-ref" data-act="bibPick">${esc(bibName(ver, b))} ${c} ▾</button><button class="icon-btn" data-act="bibGo" data-d="1" aria-label="${esc(L3("Pasal berikutnya", "Na mangihut", "Next chapter"))}">›</button></div>
+    <div id="bibText" class="bib-text" style="font-size:${fs}px">${skel(4)}</div>
+    <div class="row two" style="margin-top:12px"><button class="btn" data-act="bibFs" data-d="-1">A−</button><button class="btn" data-act="bibFs" data-d="1">A+</button></div>
+    ${BIB_VERS[ver].kjv ? "" : `<div class="card bib-lib" id="bibLib"><small class="muted">${esc(L3("Menghitung pasal di Sada…", "", "Counting chapters in Sada…"))}</small></div>`}
+    ${BIB_VERS[ver].kjv ? "" : `<button class="btn ghost block" data-act="bibBook">📥 ${esc(L3(`Simpan seluruh ${bibName(ver, b)} untuk offline`, "Simpan offline", `Save all of ${bibName(ver, b)} for offline`))}</button>`}
+    <p class="small muted">${esc(BIB_VERS[ver].name)} · ${esc(BIB_VERS[ver].kjv ? L3("domain publik, tersimpan di HP", "", "public domain, kept on your phone") : L3("dari alkitab.sabda.org; pasal yang dibaca tersimpan untuk offline", "", "from alkitab.sabda.org; chapters you read are kept for offline"))}</p>`;
+  const tx = document.getElementById("bibText");
+  const hitEl = document.getElementById("bibHit"); if (hitEl && BIB.hit) hitEl.innerHTML = BIB.hit;
+  if (!BIB_VERS[ver].kjv) bibLibPaint(ver);
+  try { const r = await bibChapter(ver, b, c);
+    if (r.need === "kjv") { tx.innerHTML = `<div class="card center pad"><p>${esc(L3("King James Version bisa diunduh sekali (± 4 MB) lalu dibaca tanpa internet.", "", "The King James Version downloads once (about 4 MB), then works without internet."))}</p><button class="btn primary" data-act="bibKjv">⬇ ${esc(L3("Unduh KJV", "Unduh KJV", "Download the KJV"))}</button></div>`; return; }
+    tx.innerHTML = `<h2 class="bib-h">${esc(bibName(ver, b))} ${c}${r.offline ? ` <span class="badge">${esc(L3("offline", "offline", "offline"))}</span>` : ""}</h2>` + r.verses.map((v) => `<p><sup>${v.v}</sup>${esc(v.t)}</p>`).join("");
+  } catch (e) { tx.innerHTML = `<p class="warn">${esc(L3("Pasal ini belum tersimpan dan tidak ada internet.", "Dang tarsimpan.", "This chapter isn't saved yet and there's no internet."))}</p>`; }
+}
+A.bibVer = (d) => { LS.set("bibVer", d.v); bibPaint(); };
+A.bibFs = (d) => { const v = Math.max(14, Math.min(34, LS.get("bibFs", 19) + +d.d)); LS.set("bibFs", v); const el = document.getElementById("bibText"); if (el) el.style.fontSize = v + "px"; };
+A.bibGo = (d) => { BIB.hit = null; let b = LS.get("bibB", 19), c = LS.get("bibC", 23) + +d.d; if (c < 1) { b = b > 1 ? b - 1 : 66; c = BIB_CH[b - 1]; } else if (c > BIB_CH[b - 1]) { b = b < 66 ? b + 1 : 1; c = 1; } LS.set("bibB", b); LS.set("bibC", c); bibPaint(); window.scrollTo(0, 0); };
+A.bibPick = () => { const ver = LS.get("bibVer", "tb");
+  const grid = (from, to) => `<div class="bib-books">${BIB_ID.slice(from, to).map((_, i) => `<button class="bib-bk" data-act="bibBk" data-b="${from + i + 1}">${esc(bibName(ver, from + i + 1))}</button>`).join("")}</div>`;
+  sheet(L3("Pilih kitab", "Pilih buku", "Choose a book"), `<h3 class="sec-h">${esc(L3("Perjanjian Lama", "Padan Na Robi", "Old Testament"))}</h3>${grid(0, 39)}<h3 class="sec-h">${esc(L3("Perjanjian Baru", "Padan Na Imbaru", "New Testament"))}</h3>${grid(39, 66)}`); };
+A.bibBk = (d) => { const b = +d.b, ver = LS.get("bibVer", "tb");
+  sheet(bibName(ver, b), `<div class="bib-chs">${Array.from({ length: BIB_CH[b - 1] }, (_, i) => `<button class="bib-ch" data-act="bibCh" data-b="${b}" data-c="${i + 1}">${i + 1}</button>`).join("")}</div>`); };
+A.bibCh = (d) => { BIB.hit = null; LS.set("bibB", +d.b); LS.set("bibC", +d.c); closeSheet(); bibPaint(); window.scrollTo(0, 0); };
+A.bibKjv = async (d, btn) => { try { await busy(btn, () => kjvLoad(true)); toast(L3("KJV tersimpan untuk offline.", "Tarsimpan.", "The KJV is saved for offline use.")); bibPaint(); } catch (e) { toast(L3("Gagal mengunduh. Periksa internet.", "Gagal.", "Download failed. Check the internet."), true); } };
+A.bibBook = async (d, btn) => { const ver = LS.get("bibVer", "tb"), b = LS.get("bibB", 19), n = BIB_CH[b - 1]; let ok = 0; btn.disabled = true;
+  for (let c = 1; c <= n; c++) { try { await bibChapter(ver, b, c); ok++; } catch (e) {} btn.textContent = `📥 ${ok} / ${n}`; }
+  btn.disabled = false; toast(L3(`${bibName(ver, b)}: ${ok} dari ${n} pasal tersimpan untuk offline.`, `${ok}/${n} tarsimpan.`, `${bibName(ver, b)}: ${ok} of ${n} chapters saved for offline.`)); bibPaint(); };
+try { document.head.insertAdjacentHTML("beforeend", `<style>
+  nav.tabs .in { grid-template-columns: repeat(6, 1fr); } nav.tabs a span { font-size: 11px; }
+  .lib-seg { margin-top: 6px; } .bib-vers { margin: 10px 0 6px; flex-wrap: wrap; }
+  .bib-nav { display: flex; align-items: center; gap: 8px; margin: 8px 0 4px; } .bib-ref { flex: 1; min-height: 46px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); color: var(--ink); font-size: 17px; font-weight: 800; }
+  .bib-text { line-height: 1.65; } .bib-text p { margin: 0 0 .55em; } .bib-text sup { font-size: .6em; font-weight: 800; color: var(--brand); margin-right: .3em; } .bib-h { font-size: 1.15em; margin: 10px 0 12px; }
+  .bib-books { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 6px; } .bib-bk { min-height: 40px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); font-size: 13.5px; font-weight: 700; padding: 4px 6px; }
+  .bib-chs { display: grid; grid-template-columns: repeat(auto-fill, minmax(48px, 1fr)); gap: 6px; } .bib-ch { height: 46px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); font-weight: 800; }
+  .song-no { min-width: 44px; height: 36px; border-radius: 10px; background: var(--brand-soft); color: var(--brand); font-weight: 900; display: grid; place-items: center; flex: none; }
+  .song-head { margin: 8px 0 12px; } .song-book { font-size: 12.5px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--brand); } .song-head h2 { margin: 2px 0 0; font-size: 24px; }
+  .song-text .sv { display: flex; gap: 14px; margin: 0 0 18px; } .song-text .svn { min-width: 30px; font-weight: 900; color: var(--brand); font-size: .9em; padding-top: .1em; }
+  .song-text .sv p { margin: 0; line-height: 1.45; } .song-text .reff { background: var(--brand-soft); border-radius: 14px; padding: 12px 14px; } .song-text .reff .svn { font-size: .7em; letter-spacing: .1em; text-transform: uppercase; }
+  @media (min-width: 900px) { .bib-text, .song-text { max-width: 780px; } }
+</style>`); } catch (e) {}
 
 // ---------- Access & views (YB 2026-10-30, Yosafat only) ----------
 // Every category, service section and office with its members and their roles; tap 👁 to see Sada exactly as that member does
