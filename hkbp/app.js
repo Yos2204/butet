@@ -353,10 +353,10 @@ const signInCard = (msg) => `<div class="card center pad sign-in-card">${ic("loc
 
 // ---------- layout ----------
 let CUR_TAB = "#/home"; // the bottom tab the current page belongs to (used by swipe navigation)
-const TABS = [["home", "#/home", "tab_home"], ["groups", "#/groups", "tab_groups"], ["calendar", "#/calendar", "sched"], ["chat", "#/chat", "Chat"], ["book", "#/library", "lib"], ["more", "#/more", "tab_more"]];
+const TABS_ALL = [["home", "#/home", "tab_home"], ["groups", "#/groups", "tab_groups"], ["calendar", "#/calendar", "sched"], ["chat", "#/chat", "Chat"], ["book", "#/library", "lib"], ["more", "#/more", "tab_more"]];
 function shell(active, inner, opts = {}) {
   // People who are not signed in see only Home, plus a Sign in tab (YB 2026-10-28).
-  const tabs = isGuest() ? TABS.filter(([, h]) => h === "#/home") : navTabs();
+  const tabs = isGuest() ? TABS_ALL.filter(([, h]) => h === "#/home") : navTabs();
   // Rosters pages light up the Schedule tab too (YB 2026-10-29: calendar and rosters combined).
   const act = active === "#/serve" ? "#/calendar" : active; CUR_TAB = act; const label = (k) => (k === "sched" ? L3("Jadwal", "Jadwal", "Schedule") : k === "lib" ? L3("Dokumen", "Dokumen", "Documents") : k === "Chat" ? "Chat" : t(k));
   const nav = tabs.map(([i, h, k]) => `<a href="${h}" class="${act === h ? "on" : ""}" ${act === h ? 'aria-current="page"' : ""}>${ic(i)}${tabBadge(h)}<span>${esc(label(k))}</span></a>`).join("")
@@ -370,7 +370,8 @@ function shell(active, inner, opts = {}) {
   ${D && D.offline ? `<div class="banner">${esc(t("offline"))}</div>` : ""}
   ${api.mode === "local" ? `<div class="banner soft">${ic("phone")} ${esc(t("demoBanner"))}</div>` : ""}
   <main${opts.cols ? ' class="cols"' : ""}>${inner}</main>
-  <nav class="tabs"><div class="in" style="grid-template-columns:repeat(${tabs.length + (isGuest() ? 1 : 0)},1fr)">${nav}</div></nav>`;
+  <nav class="tabs"><div class="in" style="grid-template-columns:repeat(${tabs.length + (isGuest() ? 1 : 0)},1fr)">${nav}</div></nav>
+  ${!isGuest() && act !== "#/chat" ? `<a id="chatFab" class="chat-fab" href="#/chat" aria-label="Chat" draggable="false" style="${chatFabPos()}">${ic("chat")}${tabBadge("#/chat")}</a>` : ""}`;
 }
 const langSwitch = () => `<div class="langs" role="group" aria-label="${esc(t("language"))}">${["id", "bt", "en"].map((l) => `<button data-act="lang" data-l="${l}" aria-pressed="${lang === l}">${l.toUpperCase()}</button>`).join("")}</div>`;
 const empty = (msg, icon = "star") => `<div class="empty">${ic(icon)}<p>${esc(msg)}</p></div>`;
@@ -433,10 +434,10 @@ R.home = () => {
   const annivToday = isGuest() ? [] : D.people.filter((p) => p.anniv && p.anniv === day.slice(5));
   const notifyAsk = "Notification" in window ? Notification.permission === "default" || !LS.get("notifyOn") : /iP(hone|ad)/.test(navigator.userAgent) && !standalone();
   return shell("#/home", `
-    <section class="hello">
-      <p class="muted small">${esc(fmtDay(day))}</p>
+    <section class="hello hero">
+      <p class="hero-date">${esc(fmtDay(day))}</p>
       <h1>${esc(t(hour < 11 ? "morning" : hour < 15 ? "afternoon" : hour < 18 ? "evening1" : "evening2"))}${m.name ? ", " + esc(firstName(m.name)) : ""}</h1>
-      ${isGuest() ? "" : `<a class="search-entry" href="#/search">${ic("search")}<span>${esc(L3("Cari anggota, acara, file, roster…", "Lului ruas, ulaon, file…", "Search members, events, files, rosters…"))}</span></a>`}
+      ${isGuest() ? "" : `<a class="search-entry hero-search" href="#/search">${ic("search")}<span>${esc(L3("Cari anggota, acara, file, roster…", "Lului ruas, ulaon, file…", "Search members, events, files, rosters…"))}</span></a>`}
     </section>
     ${isGuest() ? `<button class="card notify-ask" data-act="signIn">${ic("lock")}<span><b>${esc(t("guestTitle"))}</b><small>${esc(L3("Masuk untuk melihat Tata Ibadah, kalender, roster, kategorial dan tugas Anda.", "Bongot jolo asa diida Tata Ibadah, kalender, roster, kategorial dohot ulaonmu.", "Sign in to see the Tata Ibadah, calendar, rosters, your categories and your duties."))}</small></span>${ic("chev", "chev")}</button>` : ""}
     ${mine ? `<div class="card hbd">${ic("cake")}<div><h2>${esc(t("hbdTitle", firstName(m.name)))}</h2><p>${esc(t("hbdBody"))}</p></div></div>` : ""}
@@ -446,7 +447,6 @@ R.home = () => {
     ${notifyAsk ? `<button class="card notify-ask" data-act="notify">${ic("bell")}<span><b>${esc(t("notifyAskTitle"))}</b><small>${esc(standalone() || !/iP(hone|ad)/.test(navigator.userAgent) ? t("notifyAskBody") : t("iosInstallFirst"))}</small></span>${ic("chev", "chev")}</button>` : ""}
 
     ${nowCard()}
-    <a class="card sun-link" href="#/sunday"><span>📅</span><span class="grow"><b>${esc(L3("Minggu Ini", "Minggu On", "This Sunday"))}</b><small>${esc(L3("Tata Ibadah, lagu, nas dan live dalam satu halaman", "Tata Ibadah, ende, turpuk dohot live", "Tata Ibadah, songs, readings and live on one page"))}</small></span>${ic("chev", "chev")}</a>
     ${thisSundayCard()}
     ${voyageHomeCard()}
     ${griefHomeCard()}
@@ -1061,6 +1061,248 @@ window.addEventListener("hashchange", () => { window.scrollTo(0, 0); render(); }
 // ---------- actions ----------
 const A = {};
 const F = {};
+
+// ---------- Liturgy workbench: build every week from the month's order of service (YB 2026-10-30) ----------
+// Agenda code lookup (YB 2026-10-30): "A.XV/A.1", "D.XIII.41", "B.7", "C.2" → the text, from an Agenda in Dokumen Gereja.
+// A = verses by season (sub-parts A/B), B = confession prayers, C = words of forgiveness, D = opening prayers (numbered straight through).
+const AG_ROM = "(?:XX|XIX|XVIII|XVII|XVI|XV|XIV|XIII|XII|XI|X|IX|VIII|VII|VI|V|IV|III|II|I)";
+function agLines(doc) { const out = []; (doc.sections || []).forEach((s) => { if (s.title) out.push(String(s.title).trim()); (s.lines || []).forEach((l) => { if (l && l.trim()) out.push(l.trim()); }); }); return out; }
+function agRegions(L, lang) {
+  const find = (re, from = 0, to = L.length) => { for (let i = from; i < to; i++) if (re.test(L[i])) return i; return -1; };
+  const b0 = lang === "id" ? find(/^B\.\s+DOA PENGAKUAN DOSA/) : find(/^B\.\s+Tan/, Math.floor(L.length * 0.4));
+  if (b0 < 0) return null;
+  let a0 = -1; for (let i = b0 - 1; i >= 0; i--) if (/^I\.\s+A\s*D\s*V\s*E\s*N\s*T\s*U\s*S/i.test(L[i])) { a0 = i; break; }
+  const c0 = find(/^C\.\s+\S/, b0 + 1); const d0 = lang === "id" ? find(/^D\.\s+\S/, b0 + 1) : find(/^I\.\s+A\s*D\s*V\s*E\s*N\s*T\s*U\s*S/i, Math.max(b0, c0) + 1);
+  const e0 = find(/^E\.\s+\S/, d0 + 1);
+  return { A: [a0, b0], B: [b0, c0 > 0 && (d0 < 0 || c0 < d0) ? c0 : d0], C: c0 > 0 && (d0 < 0 || c0 < d0) ? [c0, d0] : null, D: [d0, e0 > 0 ? e0 : L.length] };
+}
+function agItem(L, i, stop) {
+  const out = []; const first = L[i].replace(/^(?:[A-D]\.\s*)?\d{1,3}\.\s*/, ""); if (first) out.push(first);
+  for (let j = i + 1; j < stop; j++) { const l = L[j]; if (/^(?:[A-D]\.\s*)?\d{1,3}\.\s/.test(l) || new RegExp("^" + AG_ROM + "\\.\\s").test(l) || /^[A-E]\.\s+[A-Z]{3}/.test(l)) break; out.push(l); }
+  return out.join(" ").replace(/\s+/g, " ").replace(/\bA\s+m\s+i\s+n\s*\.?/g, "Amin.").replace(/\bA\s+m\s+e\s+n\s*\.?/g, "Amen.").replace(/\s+([.,!?;:])(?=\s|$)/g, "$1").trim();
+}
+function agResolve(doc, lang, kind, sec, sub, n) {
+  if (!doc) return null; const L = doc._lines || (doc._lines = agLines(doc)); const R = doc._reg || (doc._reg = agRegions(L, lang)); if (!R) return null;
+  const r = R[kind]; if (!r || r[0] < 0) return null; const stop = r[1] > 0 ? r[1] : L.length;
+  if (kind === "B" || kind === "C" || kind === "D") { const re = new RegExp("^(?:" + kind + "\\.\\s*)?" + n + "\\.\\s"); for (let i = r[0]; i < stop; i++) if (re.test(L[i])) return agItem(L, i, stop); return null; }
+  const heads = []; for (let i = r[0]; i < stop; i++) if (new RegExp("^" + sec + "\\.\\s").test(L[i])) heads.push(i);
+  for (const h of heads) { let end = stop; for (let j = h + 1; j < stop; j++) if (new RegExp("^" + AG_ROM + "\\.\\s").test(L[j])) { end = j; break; }
+    let insub = !sub;
+    for (let i = h + 1; i < end; i++) { if (!insub && new RegExp("^" + sub + "\\.\\s*(?:1\\.|\\S)").test(L[i])) insub = true; else if (insub && sub && /^[B-D]\.\s*1?\.?/.test(L[i]) && L[i][0] !== sub) break;
+      if (insub && new RegExp("^(?:" + (sub || "[A-D]") + "\\.\\s*)?" + n + "\\.\\s").test(L[i])) return agItem(L, i, end); } }
+  return null;
+}
+function agParse(s) { const t = String(s || "").replace(/\s+/g, ""); const o = {}; let m;
+  m = t.match(/A\.?([IVX]+)[./]([AB])\.?(\d+)/); o.A = m ? [m[1], m[2], +m[3]] : null; m = t.match(/D\.?([IVX]+)\.?(\d+)/); o.D = m ? [m[1], null, +m[2]] : null;
+  m = t.match(/B\.?(\d+)/); o.B = m ? +m[1] : null; m = t.match(/C\.?(\d+)/); o.C = m ? +m[1] : null; return o; }
+// Liturgy from the month's order of service (YB 2026-10-30): read the PDF by position, find each week, and build the liturgist's script.
+function pdfLinesFromItems(items) {
+  // group text pieces by their height on the page (rows), then left to right; a wide gap becomes two spaces
+  const rows = [];
+  items.filter((it) => it.str && it.str.trim()).forEach((it) => { const x = it.transform[4], y = it.transform[5], h = Math.abs(it.transform[3]) || 10;
+    let r = rows.find((q) => Math.abs(q.y - y) <= Math.max(2.5, h * 0.35)); if (!r) { r = { y, items: [] }; rows.push(r); } r.items.push({ x, w: it.width || 0, s: it.str }); });
+  rows.sort((a, b) => b.y - a.y);
+  return rows.map((r) => { r.items.sort((a, b) => a.x - b.x); let out = "", end = null; r.items.forEach((p) => { if (end != null) out += p.x - end > 6 ? "  " : (/\s$/.test(out) || /^\s/.test(p.s) ? "" : p.x - end > 1.2 ? " " : ""); out += p.s; end = p.x + p.w; }); return out.replace(/[ \t]+$/, ""); });
+}
+const AC_MONTHS = { januari: 1, februari: 2, maret: 3, april: 4, mei: 5, juni: 6, juli: 7, agustus: 8, september: 9, oktober: 10, november: 11, desember: 12, january: 1, february: 2, march: 3, may: 5, june: 6, july: 7, august: 8, october: 10, december: 12 };
+const AC_REF = "([1-3]?\\s?[A-Za-zÀ-ÿ]+(?:\\s[A-Za-zÀ-ÿ]+)?\\s+\\d+\\s*:\\s*\\d+[a-z]?(?:\\s*[-–]\\s*\\d+[a-z]?)?(?:\\s*[,.]\\s*\\d+(?:\\s*[-–]\\s*\\d+)?)*)";
+function parseAcara(text) {
+  const lines = String(text).replace(/\r/g, "").split("\n"); const flat = lines.join("\n");
+  const dre = /(\d{1,2})\s*,?\s+(januari|februari|maret|april|mei|juni|juli|agustus|september|oktober|november|desember|january|february|march|may|june|july|august|october|december)\s+(20\d{2})/gi;
+  const marks = []; let m; while ((m = dre.exec(flat))) marks.push({ at: m.index, day: `${m[3]}-${String(AC_MONTHS[m[2].toLowerCase()]).padStart(2, "0")}-${String(+m[1]).padStart(2, "0")}` });
+  const weeks = [];
+  marks.forEach((mk, i) => { if (weeks.some((w) => w.day === mk.day)) return;
+    const start = Math.max(0, flat.lastIndexOf("\n", Math.max(0, flat.lastIndexOf("\n", mk.at - 1) - 1)));
+    const block = flat.slice(start, i + 1 < marks.length ? Math.max(start, flat.lastIndexOf("\n", Math.max(0, flat.lastIndexOf("\n", marks[i + 1].at - 1) - 1))) : flat.length);
+    weeks.push({ day: mk.day, ...parseWeek(block) }); });
+  return weeks;
+}
+function parseWeek(block) {
+  const t = block.replace(/[ \t]+/g, " "); const one = t.replace(/\s+/g, " ");
+  const topic = ((one.match(/Top[i]k\s*:?\s*[“"'‘]\s*([^“”"'‘’\n]{4,120}?)\s*[”"'’]/i) || t.match(/Top[i]k\s*:?\s*([A-Z][^\n]{3,100})/i) || [])[1] || "").replace(/\s+ACARA IBADAH.*$/i, "").trim();
+  const name = ((t.match(/\n\s*(Minggu\s+[^\n]{3,80}?)\s*\n/i) || [])[1] || "").replace(/\s+/g, " ").trim();
+  const book0 = ((one.match(/Acara Kebaktian Minggu\s+(BN\/KJ|KJ\/BN|KJ|BE|BN)\b/i) || [])[1] || "KJ").toUpperCase().slice(0, 2);
+  const ev = []; let m;
+  const songRe = /(?:Bernyanyi|BERNYANYI|Marende|MARENDE)\s*(?:dari\s+(?:Buku Nyanyian(?:\s+HKBP)?|Kidung Jemaat|Buku Ende)\s*)?(?:(KJ|BE|BN|B\.\s?E|B\.\s?N|PKJ)\.?\s*(?:HKBP\.?)?\s*(?:N[Oo]\.?\s*:?\s*)?)?(\d{1,3})\s*:\s*(\d{1,2}(?:\s*[-–]\s*\d{1,2})?(?:\s*[,+]\s*\d{1,2}(?:\s*[-–]\s*\d{1,2})?)*)/g;
+  while ((m = songRe.exec(one))) { let book = (m[1] || book0).replace(/[\s.]/g, "").toUpperCase(); if (book === "BN" && /Buku Nyanyian/i.test(m[0])) book = "BN";
+    const vs = []; m[3].split(/[,+]/).forEach((p) => { const r = p.split(/[-–]/).map((x) => parseInt(x, 10)).filter((x) => x > 0); if (r.length === 2 && r[1] >= r[0] && r[1] - r[0] < 20) for (let q = r[0]; q <= r[1]; q++) vs.push(q); else if (r.length === 1) vs.push(r[0]); });
+    const title = ((one.slice(m.index + m[0].length, m.index + m[0].length + 60).match(/^\s*[“"]\s*([^”"]{2,50})\s*[”"]/) || [])[1] || "").trim();
+    ev.push({ at: m.index, k: "song", book: ["KJ", "BE", "BN"].includes(book) ? book : book0, num: +m[2], verses: vs, title, offering: /^[^\n]{0,70}?\(?\s*PERSEMBAHAN/i.test(one.slice(m.index + m[0].length, m.index + m[0].length + 90).split(/\s\d{1,2}\s*\.\s|Bernyanyi|BERNYANYI/)[0]) || /PERSEMBAHAN[^.]{0,40}$/i.test(one.slice(Math.max(0, m.index - 45), m.index)) }); }
+  const add = (k, re, f) => { const r = new RegExp(re.source, "gi"); let x; while ((x = r.exec(one))) ev.push({ at: x.index, k, ...(f ? f(x) : {}) }); };
+  add("votum", /Votum[^()]{0,70}?\(?\s*(A\s*\.?\s*[IVX]+\s*[./]\s*[AB]\s*\.?\s*\d+\s*[\/–-]\s*D\s*\.?\s*[IVX]+\s*\.?\s*\d+)/, (x) => ({ ref: x[1] }));
+  add("hukum", new RegExp("Hukum\\s+(?:Tuhan|Taurat)\\s*:?\\s*([IVX]+\\s*[-–]\\s*[IVX]+|" + AC_REF.slice(1, -1) + ")"), (x) => ({ ref: x[1] }));
+  add("confess", /(?:Pangakuan|Pengakuan)\s+Dosa[^()]{0,70}?\(?\s*(B\s*\.?\s*\d+\s*[-–\/]\s*C\s*\.?\s*\d+)/, (x) => ({ ref: x[1] }));
+  add("epistel", new RegExp("Epistel\\s*:?\\s*" + AC_REF), (x) => ({ ref: x[1] }));
+  add("creed", /Pengakuan\s+Iman/); add("warta", /Warta\s+Jemaat/);
+  add("sermon", new RegExp("(?:Khotbah|Kotbah)\\s*:?\\s*" + AC_REF), (x) => ({ ref: x[1] }));
+  add("close", /Doa\s+(?:Persembahan|Penutup)/);
+  ev.sort((a, b) => a.at - b.at);
+  const firstOf = (k) => ev.filter((e) => e.k === k).slice(0, 1);
+  const plan = []; const seen = {};
+  ev.forEach((e) => { if (e.k === "song") { if (!plan.some((p) => p.k === "song" && p.num === e.num && p.book === e.book)) plan.push(e); return; } if (seen[e.k]) return; seen[e.k] = 1; plan.push(e); });
+  const scripted = (one.match(/\bL\s*:/g) || []).length >= 4 && !plan.some((p) => p.k === "votum");
+  return { topic, name, book: book0, plan, scripted, lines: block.split("\n") };
+}
+function buildFromWeek(w, meta, T, agDoc) {
+  const lang = meta.lang === "bt" ? "bt" : "id"; const t = T[lang]; const items = [];
+  const L = (s) => t.L + ": " + s, J = (s) => t.J + ": " + s;
+  const cue = (kind) => items.push({ t: "cue", kind, text: t[kind] });
+  const standBefore = () => { for (let i = items.length - 1; i >= 0; i--) { const it = items[i]; if (it.t === "song") { it.standLast = true; return; } if (it.t === "part" || it.t === "reading") break; } cue("stand"); };
+  const ag = (kind, sec, sub, n) => { const x = agResolve(agDoc, lang, kind, sec, sub, n); return x ? ["§" + x] : [`(${lang === "bt" ? "Ida Agenda" : "Lihat Agenda"} ${kind}${sec ? "." + sec : ""}${sub ? "/" + sub : ""}.${n})`]; };
+  const nm = (meta.name || w.name || "").split(" · ")[0];
+  items.push({ t: "welcome", title: lang === "bt" ? "Hata Panjouon" : "Ucapan Selamat Datang", lines: lang === "bt"
+    ? [`Horas jala selamat ari Minggu ma di hita saluhutna. Goar ni Minggu sadarion: Minggu ${nm}.`, "Molo adong na parjolo hali marminggu di HKBP Singapura, hujou hami ma asa ro tu jolo laho mangalehon goarna. Mauliate.", "Tapasaut ma roha dohot pingkiranta marhitehite tangiang, laho mamuji Debata."]
+    : [`Selamat hari Minggu bagi seluruh jemaat Tuhan yang terkasih. Hari ini kita beribadah pada Minggu ${nm}.`, "Jika ada di antara kita yang baru pertama kali beribadah di HKBP Singapura, kami undang ke depan untuk memperkenalkan diri. Terima kasih.", "Mari kita bersaat teduh sejenak dan berdoa, mempersiapkan hati untuk memuji dan memuliakan Tuhan."] });
+  items.push({ t: "cue", kind: "music", text: "Musik" });
+  let afterWarta = false, afterSermon = false;
+  w.plan.forEach((p) => {
+    if (p.k === "song") { const off = afterWarta || afterSermon || p.offering; items.push({ t: "song", book: p.book, num: p.num, verses: p.verses, title: p.title || "", lines: [], offering: !!off }); afterWarta = false; afterSermon = false; return; }
+    afterWarta = false; afterSermon = false;
+    if (p.k === "votum") { const r = agParse(p.ref); standBefore();
+      items.push({ t: "part", title: t.parts.votum, lines: [L(t.votum[0]), ...(r.A ? ag("A", ...r.A) : []), J(t.haleluya)] });
+      items.push({ t: "part", title: lang === "bt" ? "Martangiang" : "Berdoa", lines: [L(lang === "bt" ? "Martangiang ma hita." : "Marilah kita berdoa."), ...(r.D ? ag("D", r.D[0], null, r.D[2]) : []), J(lang === "bt" ? "Amen." : "Amin.")] }); cue("sit"); return; }
+    if (p.k === "hukum") { const rng = p.ref.replace(/\s/g, ""); const ROM = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"];
+      if (/^[IVX]+[-–][IVX]+$/.test(rng)) { const [a, b] = rng.split(/[-–]/).map((x) => ROM.indexOf(x)); items.push({ t: "part", title: t.parts.hukum, lines: [L(t.hukum_intro), ...ROM.slice(a, b + 1).map((r) => `§${r}. ${t.hukum[r]}`), ...t.hukum_close.map((x) => "§" + x), J(t.hukum_resp)] }); }
+      else items.push({ t: "reading", title: t.parts.hukum, ref: p.ref.replace(/\s+/g, " ").replace(/\b([A-Z])([A-Z]+)\b/g, (q, a, b) => a + b.toLowerCase()), ver: lang === "bt" ? "toba" : "tb", intro: [L(t.hukum_intro)], close: [J(t.hukum_resp)] }); return; }
+    if (p.k === "confess") { const r = agParse(p.ref); standBefore(); items.push({ t: "part", title: t.parts.confess, lines: [L(t.confess_intro), ...(r.B ? ag("B", null, null, r.B) : []), L(t.promise_intro), ...(r.C ? ag("C", null, null, r.C) : []), "L+J: " + (lang === "bt" ? "Amen." : "Amin.")] }); cue("sit"); return; }
+    const pretty = (s) => s.replace(/\s+/g, " ").replace(/\b([A-Z])([A-Z]+)\b/g, (q, a, b) => a + b.toLowerCase());
+    if (p.k === "epistel") { items.push({ t: "reading", title: t.parts.epistel, ref: pretty(p.ref), ver: lang === "bt" ? "toba" : "tb", intro: [L(t.epistel_intro)], close: [L(t.epistel_close)] }); return; }
+    if (p.k === "creed") { standBefore(); items.push({ t: "part", title: t.parts.creed, lines: [L(t.creed[0]), ...t.creed.slice(1)] }); cue("sit"); return; }
+    if (p.k === "warta") { items.push({ t: "note", title: lang === "bt" ? "Koor sian HKBPS (molo adong)" : "Koor dari HKBPS (jika ada)", text: "" });
+      items.push({ t: "note", title: t.warta, say: lang === "bt" ? "Tabege ma tingting ni huria di ari Minggu on." : "Marilah kita mendengar warta jemaat pada hari Minggu ini.", text: meta.warta ? (lang === "bt" ? "Dijaha " : "Dibacakan oleh ") + meta.warta : "" });
+      items.push({ t: "note", title: lang === "bt" ? "Koor sian tamu (molo adong)" : "Koor dari tamu (jika ada)", text: "" }); afterWarta = true; return; }
+    if (p.k === "sermon") { items.push({ t: "note", title: t.sermon + ": " + pretty(p.ref), text: meta.preacher || "" }); afterSermon = true; return; }
+    if (p.k === "close") { standBefore();
+      items.push({ t: "part", title: lang === "bt" ? "Tangiang Pelean" : "Doa Persembahan", lines: [L(t.offer_prayer[0]), ...t.offer_prayer.slice(1)] });
+      items.push({ t: "part", title: lang === "bt" ? "Marende (Huria, dipandu Song Leader)" : "Bernyanyi (Jemaat, dipandu Song Leader)", lines: [J("♫ " + (t.offer_song.length ? t.offer_song.join(" ") : "Ale Tuhan, sai jalo ma …"))] });
+      items.push({ t: "part", title: lang === "bt" ? "Tangiang Ale Amanami" : "Doa Bapa Kami", lines: [L(t.our_father[0]), ...t.our_father.slice(1), J("♫ " + t.our_father_resp)] });
+      items.push({ t: "part", title: lang === "bt" ? "Pasupasu" : "Doa Berkat", lines: [L(t.blessing[0]), ...t.blessing.slice(1), J("♫ " + t.amen)],
+        after: lang === "bt" ? "(Parjamita dohot Paragenda laho tu jolo ni pintu gareja manalami ruas, jala angka parhalado manutup ulaon i dohot tangiang na dipangulahon Parjamita.)" : "(Pengkhotbah dan Liturgis berjalan ke depan pintu gereja untuk berjabat tangan dengan jemaat, dan para pelayan menutup pelayanan dengan doa yang dipimpin oleh Pengkhotbah.)" }); }
+  });
+  return items;
+}
+function buildScripted(w, meta, T) {
+  const lang = meta.lang === "bt" ? "bt" : "id"; const t = T[lang]; const nm = (meta.name || w.name || "").split(" · ")[0];
+  const items = [{ t: "welcome", title: lang === "bt" ? "Hata Panjouon" : "Ucapan Selamat Datang", lines: lang === "bt"
+    ? [`Horas jala selamat ari Minggu ma di hita saluhutna. Goar ni Minggu sadarion: Minggu ${nm}.`, "Molo adong na parjolo hali marminggu di HKBP Singapura, hujou hami ma asa ro tu jolo laho mangalehon goarna. Mauliate.", "Tapasaut ma roha dohot pingkiranta marhitehite tangiang, laho mamuji Debata."]
+    : [`Selamat hari Minggu bagi seluruh jemaat Tuhan yang terkasih. Hari ini kita beribadah pada Minggu ${nm}.`, "Jika ada di antara kita yang baru pertama kali beribadah di HKBP Singapura, kami undang ke depan untuk memperkenalkan diri. Terima kasih.", "Mari kita bersaat teduh sejenak dan berdoa, mempersiapkan hati untuk memuji dan memuliakan Tuhan."] }, { t: "cue", kind: "music", text: "Musik" }];
+  const L = w.lines.map((l) => l.replace(/\s{2,}/g, " ").trim()).filter((l) => l && !/^\d+\s*\|?\s*ACARA IBADAH/i.test(l) && !/^ACARA IBADAH( BULAN)?/i.test(l) && !/^\d{1,3}\s*\|?$/.test(l));
+  const isHead = (l) => /^\d{1,2}\s*\.\s*\S/.test(l) && /[A-Z]{4}/.test(l.slice(0, 40)) || /^(Bernyanyi|BERNYANYI)\b/.test(l);
+  let i = L.findIndex(isHead); if (i < 0) return null;
+  const sections = []; let cur = null;
+  for (; i < L.length; i++) { const l = L[i];
+    if (isHead(l)) { cur = { head: l.replace(/^\d{1,2}\s*\.\s*/, ""), body: [] }; sections.push(cur); continue; }
+    if (cur) { const p = cur.body[cur.body.length - 1]; if (p && !/^(L\+J|L|J)\s*:/.test(l) && !/Berdiri|Duduk/i.test(l) && !/^\d\s*[.:]\s/.test(l) && !/[.!?:;”"»)…]$/.test(p)) cur.body[cur.body.length - 1] = p + " " + l; else cur.body.push(l); } }
+  const songRe = /(KJ|BE|BN|B\.\s?E|B\.\s?N)\.?\s*(?:HKBP\.?)?\s*(?:N[Oo]\.?\s*:?\s*)?(\d{1,3})\s*:\s*(\d{1,2}(?:\s*[-–]\s*\d{1,2})?(?:\s*[,+]\s*\d{1,2}(?:\s*[-–]\s*\d{1,2})?)*)/;
+  const cap = (x) => (x === x.toUpperCase() ? x.toLowerCase().replace(/(^|[\s(–-])(\p{L})/gu, (m, a, c) => a + c.toUpperCase()) : x);
+  for (const sec of sections) {
+    const sm = sec.head.match(songRe);
+    if (sm && /BERNYANYI|Bernyanyi|MARENDE/.test(sec.head)) { const vs = []; sm[3].split(/[,+]/).forEach((p) => { const r = p.split(/[-–]/).map((x) => parseInt(x, 10)).filter((x) => x > 0); if (r.length === 2 && r[1] >= r[0]) for (let q = r[0]; q <= r[1]; q++) vs.push(q); else if (r.length === 1) vs.push(r[0]); });
+      items.push({ t: "song", book: sm[1].replace(/[\s.]/g, "").toUpperCase(), num: +sm[2], verses: vs, title: ((sec.head.match(/[“"]\s*([^”"]+?)\s*[”"]/) || [])[1] || ""), lines: sec.body.filter((x) => !/Berdiri/i.test(x)), offering: /PERSEMBAHAN/i.test(sec.head), standLast: sec.body.some((x) => /Berdiri/i.test(x)) }); continue; }
+    let part = { t: "part", title: cap(sec.head.replace(/\s*\((?:L|Liturgis)\s*:[^)]*\)\s*$/i, "").trim()), lines: [] };
+    for (const x of sec.body) {
+      if (/^-*\s*\(?\s*Jemaat\s+Berdiri\s*\)?\s*-*$|^-+\s*Berdiri\s*-+$/i.test(x)) { if (part.lines.length) items.push(part); items.push({ t: "cue", kind: "stand", text: t.stand }); part = { ...part, lines: [] }; continue; }
+      if (/\(Jemaat\s+Duduk\)/i.test(x)) { part.lines.push(x.replace(/\s*\(Jemaat\s+Duduk\)/i, "")); items.push(part); items.push({ t: "cue", kind: "sit", text: t.sit }); part = { ...part, lines: [] }; continue; }
+      part.lines.push(x); }
+    if (part.lines.length || !items.length || items[items.length - 1].title !== part.title) items.push(part);
+  }
+  return items;
+}
+const LIT_T = {"id": {"votum": ["Di dalam Nama Allah Bapa, dan Nama AnakNya Tuhan Yesus Kristus dan Nama Roh Kudus, yang menciptakan langit dan bumi. Amin."], "haleluya": "Haleluya - Haleluya - Haleluya!", "hukum_intro": "Dengarlah Hukum Tuhan!", "hukum": {"I": "Akulah Tuhan Allahmu! Jangan ada padamu allah lain di hadapanKu.", "II": "Jangan perbuat bagimu patung yang menyerupai apapun yang ada di langit, atau yang ada di bumi, atau yang ada di dalam air di bawah bumi, untuk disembah atau dituruti.", "III": "Jangan menyebut Nama Tuhan AllahMu dengan sembarangan sebab Tuhan akan menghukum orang yang menyianyiakan namaNya.", "IV": "Ingat dan kuduskanlah hari Sabat: enam hari lamanya engkau akan bekerja dan melakukan segala pekerjaanmu, tetapi hari ke tujuh adalah hari Sabat Tuhan, Allahmu maka jangan melakukan sesuatu pekerjaan, engkau atau anakmu laki-laki, atau anakmu perempuan atau hambamu laki-laki atau hambamu perempuan, atau hewanmu, atau orang asing yang berada di tempat kediamanmu. Sebab pada enam hari lamanya Tuhan menjadikan langit dan bumi laut dan segala isinya, dan Ia berhenti pada hari yang ke tujuh, itulah sebabnya Tuhan memberkati hari Sabat dan menguduskannya.", "V": "Hormatilah ayah dan ibumu, supaya lanjut umurmu di bumi yang diberikan Tuhan, Allahmu, kepadamu.", "VI": "Jangan membunuh.", "VII": "Jangan berzina.", "VIII": "Jangan mencuri.", "IX": "Jangan mengucapkan saksi dusta terhadap sesamamu manusia.", "X": "Jangan mengingini rumah sesamamu: Jangan mengingini isterinya, atau hambanya laki-laki, atau hambanya perempuan atau lembunya atau keledainya, atau apapun yang dimiliki sesamamu."}, "hukum_close": ["Bagaimana Firman Tuhan tentang kesepuluh Hukum itu?", "\"Aku, Tuhan, Allahmu, adalah Allah yang cemburu, yang membalaskan kesalahan bapa kepada anak-anaknya, kepada keturunannya yang ketiga dan keempat dari orang yang membenci Aku, tetapi Aku menunjukkan Kasih setia kepada beribu-ribu orang, yaitu mereka yang mengasihi Aku dan berpegang pada perintah-perintahKu\"."], "hukum_resp": "Ya Tuhan, Allah, kuatkanlah kami melakukan yang sesuai dengan HukumMu.", "confess_intro": "Marilah kita merendahkan diri untuk mengaku dosa kita!", "promise_intro": "Marilah kita mendengar janji Tuhan tentang pengampunan dosa.", "epistel_intro": "Marilah kita mendengar Firman Tuhan yang ditetapkan untuk hari Minggu ini.", "epistel_close": "Berbahagialah orang yang mendengar Firman Allah serta memeliharanya. Amin.", "creed": ["Marilah kita bersama-sama mengaku iman kepercayaan kita, sebagaimana teman-teman seiman di seluruh dunia. Kita bersama-sama mengucapkannya:", "Aku percaya kepada Allah, Bapa yang Mahakuasa, Khalik langit dan bumi.", "Aku percaya kepada Yesus Kristus, AnakNya yang tunggal Tuhan kita. Yang dikandung daripada Roh Kudus, lahir dari anak dara Maria, yang menderita sengsara di bawah pemerintahan Pontius Pilatus, disalibkan, mati dan dikuburkan, yang turun ke dalam kerajaan maut. Pada hari yang ketiga, bangkit pula dari antara orang mati.", "Naik ke surga, duduk di sebelah kanan Allah, Bapa yang Mahakuasa. Dari sana akan datang kelak, untuk menghakimi orang yang hidup dan yang mati Aku percaya kepada Roh Kudus, dan adanya satu gereja yang Kudus; Persekutuan orang Kudus; Pengampunan dosa; Kebangkitan daging; dan hidup yang kekal.", "Amin."], "offer_prayer": ["Marilah kita berdoa untuk menyerahkan persembahan kita kepada Tuhan:", "Ya Allah, Bapa kami yang di surga. Kami mengaku bahwa Tuhan adalah sumber dari segala karunia yang melimpah dalam kehidupan kami masing-masing.", "Sebahagian daripada karunia itu, kami serahkan kembali sebagai persembahan kepada Tuhan.", "Terimalah dan berkatilah persembahan umatMu ini, agar dapat kami pergunakan untuk pekerjaan dan pelayanan Kerajaan Tuhan di dunia ini.", "Bukalah hati kami untuk mengenal betapa banyak berkat dan karunia yang kami peroleh dari Tuhan, supaya kami senantiasa bersyukur kepadaMu di dalam Nama Yesus Kristus Tuhan kami. Amin."], "offer_song": ["Tuhan, karuniaMu, roh dan jiwaku semua. Nyawa juga hidupku, harta milikku semua.", "Kuserahkan padaMu, untuk selama-lamanya."], "our_father": ["Bapa kami yang di surga, dikuduskanlah namaMu, datanglah kerajaanMu, jadilah kehendakMu di bumi seperti di surga.", "Berikanlah kami pada hari ini makanan kami yang secukupnya.", "Dan ampunilah kami akan kesalahan kami, seperti kami juga telah mengampuni orang yang bersalah kepada kami.", "Dan janganlah membawa kami ke dalam pencobaan, tetapi lepaskanlah kami daripada yang jahat."], "our_father_resp": "Karena Engkau punya Kerajaan dan Kekuasaan dan Kemuliaan sampai selama- lamanya. Amin.", "blessing": ["Pulanglah dengan sejahtera, dan terimalah berkat Tuhan:", "\"Tuhan memberkati engkau dan melindungi engkau, Tuhan menyinari engkau dengan wajahNya dan memberi engkau Kasih karunia, Tuhan menghadapkan wajahNya kepadamu dan memberi engkau damai sejahtera\"."], "amen": "Amin - Amin - Amin.", "L": "Liturgis", "J": "Jemaat", "stand": "Jemaat dipersilakan berdiri.", "sit": "Jemaat dipersilakan duduk kembali.", "warta": "Warta Jemaat", "sermon": "Khotbah", "parts": {"votum": "Votum / Introitus", "hukum": "Hukum Tuhan", "confess": "Pengakuan Dosa", "epistel": "Epistel", "creed": "Pengakuan Iman Rasuli", "close": "Doa Persembahan – Doa Bapa Kami – Doa Berkat"}}, "bt": {"votum": ["Marhitehite Goar ni Debata Ama dohot Goar ni AnakNa, Tuhan Jesus Kristus dohot Goar ni Tondi Parbadia, na tumompa langit dohot tano on. Amen."], "haleluya": "Haleluya! Haleluya! Haleluya!", "hukum_intro": "Tangihon hamu ma Patik ni Debata.", "hukum": {"I": "Ahu do Jahowa Debatam, ninna Debatanta. Ndang jadi marangkup Ahu bahenonmu Debatam.", "II": "Ndang jadi ganaonmu jala ndang jadi sumanonmu manang aha na di banua ginjang dohot na di banua tonga on, ro di na di bagasan aek na di toru ni tano, ianggo tung gabe sisombaon manang sioloan.", "III": "Ndang jadi dohonon Goar ni Debata, ianggo so ture dalanna, ai hona uhumNa do sogot angka na marsineang di GoarNa.", "IV": "Ingot hamu ma pabadiahon ari Minggu i! Di na onom ari ma ula hamu nasa siulaonmu; alai anggo ari papituhon i, ari paradianan ni Jahowa Debatam doi. Ndang jadi ho mangula anggo di na sadari i, manang anakmu pe manang borum manang naposom lahilahi manang naposom boruboru, ro di pinahanmu, ro di isi ni huta ni halak pe na mangebati hutam. Aidina onom ari do ditompa Debata langit dohot tano dohot laut dohot nasa isina, dung i maradian do Ibana di ari papituhon i. Dibahen i do umbahen na dipasupasu Debata Jahowa ari paradiananNa i jala diparbadiai.", "V": "Ingkon pasangaponmu do natorasmu, asa martua ho jala leleng mangolu di tano na nilehon ni Jahowa Debatam di ho,", "VI": "Unang ho mamunu!", "VII": "Unang ho mangalangkup!", "VIII": "Unang ho manangko!", "IX": "Unang ho olo manghatindangkon hata na so tutu maralohon dongan jolma.", "X": "Ndang jadi haliangan ni roham bagas ni donganmu, ndang jadi haliangan ni roham dongan saripe ni donganmu, manang naposona baoa manang naposona boruboru manang lombuna manang hodana, manang dia pe ugasan ni donganmu."}, "hukum_close": ["Beha pandok ni Debata taringot tu Patik na sampulu i?", "‘On do: Ahu do Jahowa Debatam, ninna Debatanta. Pargogo na so hatudosan jala Parrimas, Siluluhon dosa ni amaama tu pinomparna, ro di sundut patoluhon, ro di sundut paopathon, pinompar ni angka na sogo roha di Ahu; alai asi do rohangKu di angka na marriburibu, angka na marholong ni roha di Ahu, na so mangalaosi PatikHi (Manang pamilliton sian Katechismus i singkat ni Patik ondeng)."], "hukum_resp": "Ale Tuhan Debata! Sai pargogoi ma hami mangulahon na hombar tu PatikMi.", "confess_intro": "Tatopoti ma dosanta!", "promise_intro": "Tabege ma hata bagabaga taringot tu hasesaan ni dosa.", "epistel_intro": "Tabege ma Hata ni Debata turpuk ni ari Minggu on.", "epistel_close": "Martua do angka na tumangihon Hata ni Debata, jala na umpeopsa. Amen.", "creed": ["Tahatindangkon ma haporseaonta i, songon na hinatindangkon ni donganta sahaporseaon di sandok portibi on. Rap ma hita mandok:", "Ahu porsea di Debata Jahowa, i do Ama, Pargogo na so hatudosan na tumompa langit dohot tano.", "Ahu porsea di Jesus Kristus, Anak ni Debata Jahowa, na sasada i; i ma na tinubuhon ni si Maria na gabegabean sian Tondi Parbadia andorang so habubuhan;", "ido Tuhanta, na tumaon na bernit di panguhuman ni si Latus; na mate tarpajal do Ibana di hau pinarsilang, na tuat tu banua toru, dung ditanom, na mulak mangolu di ari patoluhon, na manack tu surgo laho hundul tu siamun ni Debata Jahowa, AmaNa i, Pargogo na so hatudosan i, disi ma Ibana, paima mulak sogot tu tano on manguhumi halak na mangolu dohot na mate.", "Ahu porsea di Tondi Parbadia, jala adong sada huria na badia, Huria hatopan ni halak Kristen angka na badia, dohot di hasesaan ni dosa, dohot di Hata i, na mandok: Mulak mangolu sogot daging ni halak naung mate, dohot di hangoluan na so ra suda."], "offer_prayer": ["a. Tatangianghon ma peleanta:", "Ale Debata, Amanami na di banua ginjang, Ho do haroroan ni saluhut silehonlehon na denggan dohot nasa uhbasa na mauliutus.", "Hupasahat hami ma sian na nilehonMi tu hami, peleannami tu Ho. Sai jalo ma i gabe uap na hushus di joloM. Pasupasu ma i jala ramoti asa huparhaseang hami pelean on, patimbulhon harajaonMu di tongatonga ni HuriaM dohot di portibi on.", "Buhai ma rohanami marhitehite TondiM, asa lam hutanda hami godang ni silehonlehonMi tu hami, asa lam girgir hami mandok mauliate tu Ho, marhitehite / Jesus Kristus Tuhannami. Amen."], "offer_song": [], "our_father": ["Ale Amanami na di banua ginjang! Sai pinarbadia ma GoarMu! Sai ro ma harajaonMu! Sai saut ma lomo ni rohaM di banua tonga on songon na di banua ginjang! Lehon ma tu hami sadari on hangoluan siapari! Sesa ma dosanami songon panesanami di dosa ni dongan na mardosa tu hami! Unang hami togihon tu pangunjunan! Palua ma hami sian pangago!"], "our_father_resp": "Ai Ho do nampuna harajaon dohot hagogoon ro di hasangapon saleleng ni lelengna. Amen!", "blessing": ["Laho ma hamu marhitehite dame, jala jalo hamu ma pasupasu ni Debata:", "\"Sai dipasupasu Jahowa ma ho jala diramoti!", "Sai disondangi Jahowa ma ho marhitehite bohiNa jala asi ma rohaNa di ho!", "Sai diompakkon Jahowa ma bohiNa tu ho jala dilehon ma tu ho hadameon!\""], "amen": "Amen, Amen, Amen.", "L": "Paragenda", "J": "Huria", "stand": "Jongjong ma hamu saluhutna.", "sit": "Hundul ma hamu saluhutna.", "warta": "Tingting", "sermon": "Jamita", "parts": {"votum": "Votum / Introitus", "hukum": "Patik ni Debata", "confess": "Panopotion Dosa", "epistel": "Epistel", "creed": "Haporseaon (Panindangion Haporseaon)", "close": "Tangiang Pelean – Ale Amanami – Pasupasu"}}};
+async function pdfLayoutText(file, onPage) {
+  const lib = await pdfjsLoad(); const doc = await lib.getDocument({ data: await file.arrayBuffer() }).promise; let out = "";
+  for (let p = 1; p <= doc.numPages; p++) { const tc = await (await doc.getPage(p)).getTextContent(); out += pdfLinesFromItems(tc.items).join("\n") + "\n"; if (onPage) onPage(p, doc.numPages); }
+  return out;
+}
+// the week's details from the Parhalado roster: language, Sunday name, preacher, liturgist, announcements
+function rosterMeta(day) {
+  const out = {};
+  (D.rosters || []).filter((r) => r.group_id === "parhalado").forEach((r) => (r.table_json || []).forEach((tb) => { const rows = tb.rows || []; const head = (rows[0] || []).map((h) => String(h || ""));
+    const col = (re) => head.findIndex((h) => re.test(h));
+    rows.slice(1).forEach((row) => { if (rowDate(row, r.month) !== day || out.name) return; const v = (re) => { const i = col(re); return i >= 0 ? String(row[i] || "").trim() : ""; };
+      out.lang = /batak/i.test(v(/Bahasa/i)) ? "bt" : "id"; out.name = v(/Nama Minggu/i); out.preacher = v(/Khotbah|Pengkhotbah/i); out.resort = v(/Asal|Resort/i);
+      out.liturgist = v(/Liturgis|Agenda/i); out.warta = v(/Warta/i); }); }));
+  return out;
+}
+const LAUTO = { weeks: [] };
+A.litAuto = () => {
+  const inp = document.createElement("input"); inp.type = "file"; inp.accept = ".pdf,.txt,application/pdf,text/plain";
+  inp.onchange = async () => { const file = inp.files && inp.files[0]; if (!file) return;
+    sheet("📥 " + L3("Membaca Acara Ibadah", "Manjaha Acara Ibadah", "Reading the order of service"), `<p class="small muted">${esc(file.name)}</p><div class="rec-bar"><i id="impBar"></i></div><p class="small" id="impPct"></p>`);
+    try {
+      const text = /\.txt$/i.test(file.name) ? await file.text() : await pdfLayoutText(file, (p, n) => { const b = document.getElementById("impBar"); if (b) b.style.width = Math.round((p / n) * 100) + "%"; const e = document.getElementById("impPct"); if (e) e.textContent = `${p} / ${n}`; });
+      const weeks = parseAcara(text); if (!weeks.length) throw new Error(L3("Tidak ada tanggal ibadah yang terbaca (mis. “01 NOVEMBER 2026”). Berkas hasil scan tidak bisa dibaca.", "Ndang adong tanggal.", "No service dates found (e.g. “01 NOVEMBER 2026”). Scanned files can't be read."));
+      const ag = {}; for (const k of ["id", "bt"]) { try { ag[k] = await docLoad("agenda-" + k, false); } catch (e) { ag[k] = null; } }
+      const have = await litList(true);
+      LAUTO.weeks = weeks.map((w) => { const rm = rosterMeta(w.day); const txt = w.lines.join(" "); const cnt = (re) => (txt.match(re) || []).length;
+        const lang = rm.lang || (w.book === "BE" && !w.scripted ? "bt" : null) || (cnt(/\b(Marende|Huria|Paragenda|Tangiang|Patik|Jamita|Haporseaon)\b/gi) > cnt(/\b(Bernyanyi|Jemaat|Liturgis|Doa|Hukum|Khotbah|Pengakuan)\b/gi) ? "bt" : "id");
+        const pretty = (x) => (x === x.toUpperCase() ? x.toLowerCase().replace(/(^|[\s(–-])(\p{L})/gu, (m, a, c) => a + c.toUpperCase()).replace(/\b(Xx|Xv|Xi|Iv|Vi|Ii|Iii|Viii|Vii|Xxi|Xxii|Xxiii|Xxiv|Xxv|Xiii|Xii|Xiv|Xvi|Xvii|Xviii|Xix)\b/g, (r) => r.toUpperCase()) : x);
+        const name = rm.name || pretty((w.name || "").replace(/^Minggu\s+/i, "")) || "Ibadah Minggu";
+        const meta = { day: w.day, lang, name, topic: w.topic ? pretty(w.topic) : "", preacher: rm.preacher || "", resort: rm.resort || "", liturgist: rm.liturgist || "", warta: rm.warta || "" };
+        const items = w.scripted ? buildScripted(w, meta, LIT_T) || [] : buildFromWeek(w, meta, LIT_T, ag[lang]);
+        const ex = (have || []).find((x) => x.day === w.day);
+        return { ...meta, items, id: ex ? ex.id : null, scripted: w.scripted, on: true,
+          songs: items.filter((x) => x.t === "song").length, reads: items.filter((x) => x.t === "reading").map((x) => x.ref).filter(Boolean),
+          missing: items.filter((x) => (x.lines || []).some((l) => /^\((Lihat|Ida) Agenda/.test(l))).length, noAgenda: !ag[lang] && !w.scripted }; });
+      litAutoSheet();
+    } catch (e) { closeSheet(); toast(e.message || errMsg(e), true); } };
+  inp.click();
+};
+function litAutoSheet() {
+  sheet("📥 " + L3("Liturgi dari Acara Ibadah", "Liturgi sian Acara Ibadah", "Liturgy from the order of service"), `<p class="small muted">${esc(L3("Periksa setiap minggu. Lagu, nas dan kode Agenda diambil dari berkas; pengkhotbah, liturgis dan bahasa dari roster Parhalado.", "Ida ganup minggu.", "Check each week. Songs, readings and Agenda codes come from the file; preacher, liturgist and language from the Parhalado roster."))}</p>
+    <div class="card">${LAUTO.weeks.map((w, i) => `<label class="li lauto"><input type="checkbox" class="lauto-cb" data-i="${i}"${w.on ? " checked" : ""}><span class="date-chip"><b>${esc(fmt(w.day, { day: "numeric" }))}</b><small>${esc(fmt(w.day, { month: "short" }))}</small></span>
+      <span class="grow"><b>${esc(w.name)}</b><small>${w.lang === "bt" ? "Batak" : "Indonesia"} · 🎵 ${w.songs} · 📖 ${esc(w.reads.join(", ") || "–")}${w.liturgist ? " · 📜 " + esc(w.liturgist) : ""}</small>
+      <small>${w.scripted ? `<span class="badge">${esc(L3("naskah lengkap dari berkas", "naskah lengkap", "full script from the file"))}</span> ` : ""}${w.noAgenda ? `<span class="badge warn">${esc(L3("Agenda belum ada di Dokumen Gereja", "Agenda dang adong", "Agenda not in Church Documents"))}</span> ` : w.missing ? `<span class="badge warn">${w.missing} ${esc(L3("kode Agenda tidak ditemukan", "kode ndang dapot", "Agenda codes not found"))}</span> ` : !w.scripted ? `<span class="badge ok">✓ Agenda</span> ` : ""}<span class="badge">${esc(w.id ? L3("memperbarui", "manguba", "updates existing") : L3("baru", "baru", "new"))}</span></small></span></label>`).join("")}</div>
+    <button class="btn primary block" data-act="litAutoSave">💾 ${esc(L3("Simpan", "Simpan", "Save"))} ${LAUTO.weeks.filter((w) => w.on).length} ${esc(L3("minggu", "minggu", "weeks"))}</button><button class="btn ghost block" data-act="closeSheet">${esc(t("cancel"))}</button>`);
+}
+document.addEventListener("change", (e) => { const el = e.target; if (!el || !el.classList || !el.classList.contains("lauto-cb")) return; const w = LAUTO.weeks[+el.dataset.i]; if (w) w.on = !!el.checked; const b = document.querySelector('[data-act="litAutoSave"]'); if (b) b.textContent = `💾 ${L3("Simpan", "Simpan", "Save")} ${LAUTO.weeks.filter((x) => x.on).length} ${L3("minggu", "minggu", "weeks")}`; });
+A.litAutoSave = async (d, btn) => { const todo = LAUTO.weeks.filter((w) => w.on); if (!todo.length) return;
+  try { await busy(btn, async () => { for (const w of todo) { await api.save("lit_save", { id: w.id || null, day: w.day, lang: w.lang, name: w.name, topic: w.topic, preacher: w.preacher, resort: w.resort, liturgist: w.liturgist, warta: w.warta, items: w.items, draft: false }); } });
+    closeSheet(); LIT.list = null; toast(L3(`${todo.length} minggu tersimpan.`, `${todo.length} minggu tarsimpan.`, `${todo.length} weeks saved.`)); render(); } catch (e) { toast(errMsg(e), true); } };
+try { document.head.insertAdjacentHTML("beforeend", `<style>.lauto { align-items: center; } .lauto input { width: 20px; height: 20px; flex: none; } .badge.ok { background: #dcf3e4; color: #17633a; }</style>`); } catch (e) {}
+try { document.head.insertAdjacentHTML("beforeend", `<style>
+  /* Home top (YB 2026-10-30): one hero band, then one This Sunday card */
+  .hero { background: linear-gradient(140deg, var(--brand) 0%, #23266b 62%, #3b2f7a 100%); color: #fff; border-radius: 26px; padding: 18px 18px 16px; margin: 6px 0 14px; box-shadow: 0 14px 30px rgba(30,32,90,.22); position: relative; overflow: hidden; }
+  .hero::after { content: ""; position: absolute; right: -40px; top: -40px; width: 160px; height: 160px; border-radius: 50%; background: radial-gradient(circle, rgba(216,178,94,.35), transparent 70%); pointer-events: none; }
+  .hero .hero-date { margin: 0; font-size: 12.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: rgba(255,255,255,.75); }
+  .hero h1 { color: #fff; margin: 4px 0 14px; font-size: 26px; line-height: 1.15; position: relative; z-index: 1; padding-right: 62px; } .hero .hero-date { padding-right: 62px; }
+  .hero .hero-search { display: flex; align-items: center; gap: 10px; background: #fff; color: var(--muted); border: 0; border-radius: 16px; padding: 12px 14px; margin: 0; box-shadow: 0 4px 14px rgba(0,0,0,.12); position: relative; z-index: 1; text-decoration: none; font-size: 15px; }
+  .hero .hero-search svg { width: 18px; height: 18px; color: var(--brand); flex: none; } .hero .hero-search span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .card.sunday { padding: 14px 14px 10px; border-top: 0; border-left: 5px solid var(--gold, #d8b25e); }
+  .sun-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+  .sun-head .sun-kick { display: grid; font-size: 16px; font-weight: 800; color: var(--ink); } .sun-head .sun-kick small { font-size: 12.5px; font-weight: 600; color: var(--muted); }
+  .sun-open { display: inline-flex; align-items: center; gap: 2px; font-weight: 800; font-size: 14px; color: var(--brand); text-decoration: none; background: color-mix(in srgb, var(--brand) 9%, var(--surface)); padding: 6px 10px 6px 12px; border-radius: 999px; }
+  .sun-open svg { width: 16px; height: 16px; }
+  .sun-acts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 8px; }
+  .sun-acts > a, .sun-acts > span.off { display: grid; justify-items: center; gap: 4px; padding: 10px 6px; border-radius: 14px; background: var(--surface-2, #f4f5fa); border: 1px solid var(--line); color: var(--ink); text-decoration: none; font-size: 12.5px; font-weight: 700; text-align: center; line-height: 1.2; }
+  .sun-acts > a > span, .sun-acts > span.off > span { font-size: 22px; line-height: 1; } .sun-acts > span.off { opacity: .45; }
+  .sun-acts > a:active { transform: scale(.97); }
+  main.cols > .hero, main.cols > .card.sunday { grid-column: 1 / -1; }
+</style>`); } catch (e) {}
+// ---------- Floating chat bubble (YB 2026-10-30): top right by default, drag it anywhere; the place is kept on this phone ----------
+function chatFabPos() { const p = LS.get("chatFab", null); const W = window.innerWidth || 390, Hh = window.innerHeight || 800;
+  const x = p ? Math.round(p.x * W) : W - 74, y = p ? Math.round(p.y * Hh) : 92;
+  return `left:${Math.max(6, Math.min(W - 64, x))}px;top:${Math.max(6, Math.min(Hh - 130, y))}px`; }
+(() => { let drag = null;
+  document.addEventListener("pointerdown", (e) => { const f = e.target.closest && e.target.closest("#chatFab"); if (!f) return; const r = f.getBoundingClientRect(); drag = { f, dx: e.clientX - r.left, dy: e.clientY - r.top, x0: e.clientX, y0: e.clientY, moved: false }; try { f.setPointerCapture(e.pointerId); } catch (err) {} e.stopPropagation(); }, true);
+  document.addEventListener("pointermove", (e) => { if (!drag) return; if (!drag.moved && Math.hypot(e.clientX - drag.x0, e.clientY - drag.y0) < 6) return; drag.moved = true; drag.f.classList.add("dragging");
+    const W = window.innerWidth, Hh = window.innerHeight; drag.f.style.left = Math.max(6, Math.min(W - 64, e.clientX - drag.dx)) + "px"; drag.f.style.top = Math.max(6, Math.min(Hh - 130, e.clientY - drag.dy)) + "px"; e.preventDefault(); e.stopPropagation(); }, { passive: false, capture: true });
+  document.addEventListener("pointerup", () => { if (!drag) return; const f = drag.f; f.classList.remove("dragging");
+    if (drag.moved) { LS.set("chatFab", { x: parseFloat(f.style.left) / window.innerWidth, y: parseFloat(f.style.top) / window.innerHeight }); f.dataset.justDragged = "1"; setTimeout(() => delete f.dataset.justDragged, 300); } drag = null; }, true);
+  document.addEventListener("dragstart", (e) => { if (e.target.closest && e.target.closest("#chatFab")) e.preventDefault(); }, true);
+  document.addEventListener("pointercancel", () => { if (drag) { drag.f.classList.remove("dragging"); drag = null; } }, true);
+  document.addEventListener("touchmove", (e) => { if (drag && drag.moved) e.preventDefault(); }, { passive: false, capture: true });
+  document.addEventListener("click", (e) => { const f = e.target.closest && e.target.closest("#chatFab"); if (f && f.dataset.justDragged) { e.preventDefault(); e.stopPropagation(); } }, true);
+})();
+try { document.head.insertAdjacentHTML("beforeend", `<style>
+  .chat-fab { position: fixed; z-index: 60; width: 56px; height: 56px; border-radius: 50%; display: grid; place-items: center; background: var(--brand); color: #fff; box-shadow: 0 8px 22px rgba(20,22,70,.35); touch-action: none; -webkit-user-select: none; user-select: none; -webkit-user-drag: none; transition: transform .15s, box-shadow .15s; }
+  .chat-fab svg { width: 26px; height: 26px; } .chat-fab.dragging { transform: scale(1.1); box-shadow: 0 12px 30px rgba(20,22,70,.45); transition: none; }
+  .chat-fab .badge, .chat-fab .tbadge, .chat-fab > span { position: absolute; top: -2px; right: -2px; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 99px; background: #e5484d; color: #fff; font-size: 11px; font-weight: 800; display: grid; place-items: center; border: 2px solid var(--surface, #fff); }
+  .sun-link { display: block; padding: 0; overflow: hidden; } main.cols > .sun-link { grid-column: 1 / -1; }
+  .sun-link summary { display: flex; align-items: center; gap: 12px; padding: 14px 16px; cursor: pointer; list-style: none; } .sun-link summary::-webkit-details-marker { display: none; }
+  .sun-link summary b { flex: 1; font-size: 16px; } .sun-ic { font-size: 22px; line-height: 1; } .sun-tog { display: grid; transition: transform .2s; color: var(--muted); } .sun-link[open] .sun-tog { transform: rotate(90deg); }
+  .sun-link > p, .sun-link > .btn { margin: 0 16px 12px; } .sun-link > .btn { width: calc(100% - 32px); }
+</style>`); } catch (e) {}
 // ---------- No paid AI (YB 2026-10-30): every helper below runs free, on the phone or from the church's own texts ----------
 // RPP: a topic engine built on the rulings in the Juklak RPP HKBP; it quotes the matching Juklak lines live from Dokumen Gereja.
 const RPP_TOPICS = [
@@ -1296,9 +1538,9 @@ const isPastor = () => !!D && !isGuest() && /^Pdt\b\.?/i.test(D.me.name || "");
 const isPlainElder = () => !!D && !isGuest() && ((D.me.groups || {}).parhalado === "member") && !D.me.is_admin;
 const simpleKind = () => (VIEWAS && VIEWAS.on ? (isPastor() ? "pastor" : isPlainElder() ? "elder" : "") : LS.get("fullView", false) ? "" : isPastor() ? "pastor" : isPlainElder() ? "elder" : "");
 function navTabs() {
-  const k = simpleKind();
+  const k = simpleKind(); const TABS = TABS_ALL.filter(([, h]) => h !== "#/chat");   // Chat is the floating bubble (YB 2026-10-30)
   if (k === "pastor") return TABS.filter(([, h]) => ["#/home", "#/calendar", "#/library", "#/more"].includes(h));
-  if (k === "elder") return TABS.filter(([, h]) => ["#/home", "#/calendar", "#/chat", "#/library", "#/more"].includes(h));
+  if (k === "elder") return TABS.filter(([, h]) => ["#/home", "#/calendar", "#/library", "#/more"].includes(h));
   return TABS;
 }
 function upcomingService() { const td = today(); return (D.services || []).filter((s) => s.service_date >= td).sort((a, b) => a.service_date.localeCompare(b.service_date))[0] || null; }
@@ -1517,7 +1759,7 @@ R.lit = (arg) => {
       const row = (x) => `<a class="li${x.day < td ? " past" : ""}" href="#/lit/${x.id}"><span class="date-chip"><b>${esc(fmt(x.day, { day: "numeric" }))}</b><small>${esc(fmt(x.day, { month: "short" }))}</small></span><span class="grow"><b>${esc(x.name)}</b><small>📜 ${esc(x.liturgist || "–")} · ${esc(x.lang === "bt" ? "Batak" : "Indonesia")} · ${x.songs} ${esc(L3("lagu", "ende", "songs"))}${x.draft ? " · " + esc(L3("draf", "draf", "draft")) : ""}</small></span>${ic("chev", "chev")}</a>`;
       const up = l.filter((x) => x.day >= td), past = l.filter((x) => x.day < td).reverse().slice(0, 6);
       box.innerHTML = `${up.length ? `<div class="card">${up.map(row).join("")}</div>` : empty(L3("Belum ada naskah liturgi.", "Ndang adong.", "No liturgy scripts yet."), "book")}${past.length ? `<h3 class="sec-h">${esc(L3("Sebelumnya", "Na salpu", "Earlier"))}</h3><div class="card">${past.map(row).join("")}</div>` : ""}`; }, 0);
-    return shell("#/calendar", `${schedHead("lit")}<div id="litBox">${skel(4)}</div>`, {});
+    return shell("#/calendar", `${schedHead("lit")}<button class="btn primary block" data-act="litAuto">📥 ${esc(L3("Buat dari Acara Ibadah (PDF bulanan)", "Bahen sian Acara Ibadah (PDF)", "Build from the order of service (monthly PDF)"))}</button><div id="litBox">${skel(4)}</div>`, {});
   }
   setTimeout(async () => { const box = document.getElementById("litBox"); if (!box) return;
     try { const x = await litGet(id); LIT.cur = x; await songsLoad(false); box.innerHTML = litScript(x); litReadings(x); } catch (e) { box.innerHTML = empty(errMsg(e), "book"); } }, 0);
@@ -3602,9 +3844,8 @@ function thisSundayCard() {
   (D.rosters || []).forEach((r) => { if (r.file_name || r.link) return; const tb = (r.table_json || [])[0]; if (!tb) return; const rows = tb.rows || []; const head = rows[0] || [];
     rows.slice(1).forEach((row) => { if (rowDate(row, r.month) !== sun) return; const jobs = head.map((h, j) => [h, row[j]]).slice(1).filter(([h, w]) => h && w); if (jobs.length) serving.push({ g: G(r.group_id), jobs }); }); });
   const evs = (D.events || []).filter((e) => sgParts(e.starts_at).date === sun);
-  if (!tata && !mine.length && !serving.length && !evs.length) return "";
-  return `<article class="card sunday"><div class="sun-kick">⛪ ${esc(L3("Minggu ini", "Minggu on", "This Sunday"))} · ${esc(fmt(sun, { weekday: "long", day: "numeric", month: "long" }))}</div>
-    ${tata ? `<a class="btn primary block" href="#/tata/${tata.id}">${ic("book")} ${esc(t("tataTitle"))}</a>` : ""}
+  return `<article class="card sunday"><div class="sun-head"><div class="sun-kick">⛪ ${esc(L3("Minggu ini", "Minggu on", "This Sunday"))}<small>${esc(fmt(sun, { weekday: "long", day: "numeric", month: "long" }))}</small></div><a class="sun-open" href="#/sunday">${esc(L3("Buka", "Bukka", "Open"))} ${ic("chev")}</a></div>
+    <div class="sun-acts">${tata ? `<a href="#/tata/${tata.id}"><span>📖</span>${esc(L3("Tata Ibadah", "Tata Ibadah", "Order of service"))}</a>` : `<span class="off"><span>📖</span>${esc(L3("Tata Ibadah", "Tata Ibadah", "Order of service"))}</span>`}<a href="#/sunday"><span>🎵</span>${esc(L3("Lagu & Nas", "Ende & Turpuk", "Songs & readings"))}</a><a href="#/live"><span>🔴</span>Live</a></div>
     ${mine.map((d) => `<div class="li sun-mine" style="--gc:${d.group ? d.group.color : "var(--brand)"}"><span class="grow"><b>✓ ${esc(L3("Anda bertugas", "Ho marhobas", "You're serving"))} · ${esc(gname(d.group))}</b><small>${esc(d.roles.join(", "))}</small></span><button class="btn sm ghost" data-act="cantMake" data-g="${esc(d.roster.group_id)}" data-day="${sun}" data-jobs="${esc(d.roles.join(", "))}">${esc(L3("Tidak bisa?", "Ndang boi?", "Can't make it?"))}</button></div>`).join("")}
     ${serving.length ? `<details class="sun-serve"><summary>${esc(L3("Yang bertugas", "Na marhobas", "Who's serving"))} · ${serving.length} ${esc(L3("seksi", "seksi", "sections"))}</summary>${serving.map((x) => `<div class="li" style="--gc:${x.g ? x.g.color : "var(--brand)"}"><span class="sun-gi">${ic(x.g ? x.g.icon : "people")}</span><span class="grow"><b>${esc(gname(x.g))}</b><small>${esc(x.jobs.map(([h, w]) => `${h}: ${w}`).join(" · "))}</small></span></div>`).join("")}</details>` : ""}
     ${evs.map(eventRow).join("")}</article>`;
