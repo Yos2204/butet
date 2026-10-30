@@ -549,13 +549,15 @@ R.group = (gid) => {
   const filesOn = gid === "naposo"; const yfiles = (D.files || []).filter((f) => f.group_id === gid);
   const rym = new URLSearchParams(location.hash.split("?")[1] || "").get("m") || LS.get("ym." + gid, monthKey(today()));
   const slidesOn = gid === "sekolah-minggu" && Array.isArray(D.ss_decks);
-  const tabs = [["sermon", "t_sermon", sermons.length], ...(slidesOn ? [["slides", "Slide", 0]] : []), ...(filesOn ? [["files", "File & Video", yfiles.length]] : []), ...(rosterOn ? [["roster", "Roster", D.rosters.filter((r) => r.group_id === gid && r.month === rym).length]] : []), ...(pollsOn ? [["polls", "t_polls", polls.filter((p) => p.status === "open").length]] : []), ["news", "t_news", news.length], ["events", "t_events", evs.length], ...(teach ? [["teachers", "t_teachers", teachers.length]] : []), ["members", "t_members", people.length]];
+  const quizOn = gid === "remaja" && !isGuest() && (D.me.is_admin || gid in (D.me.groups || {}));
+  const tabs = [["sermon", "t_sermon", sermons.length], ...(slidesOn ? [["slides", "Slide", 0]] : []), ...(filesOn ? [["files", "File & Video", yfiles.length]] : []), ...(rosterOn ? [["roster", "Roster", D.rosters.filter((r) => r.group_id === gid && r.month === rym).length]] : []), ...(pollsOn ? [["polls", "t_polls", polls.filter((p) => p.status === "open").length]] : []), ...(quizOn ? [["quiz", "🎯 Kuis", 0]] : []), ["news", "t_news", news.length], ["events", "t_events", evs.length], ...(teach ? [["teachers", "t_teachers", teachers.length]] : []), ["members", "t_members", people.length]];
   let body = "";
   if (!ok) body = isGuest() ? signInCard(t("signInCat")) : empty(t("membersOnlyLong"), "lock");
   else if (tab === "slides" && slidesOn) body = ssList();
   else if (tab === "roster" && rosterOn) body = rosterBlock(gid, rym);
   else if (tab === "files" && filesOn) body = youthFilesTab(gid, yfiles);
   else if (tab === "polls" && pollsOn) body = pollsTab(gid, polls);
+  else if (tab === "quiz" && quizOn) body = quizTab(gid);
   else if (tab === "teachers" && teach) body = teachersTab(gid, teachers);
   else if (tab === "sermon") body = (edit && g.kind === "sermon" ? `<button class="btn block" data-act="discuss" data-g="${gid}">✨ ${esc(L3("Bahan diskusi dari Tata Ibadah Minggu ini", "Bahan diskusi sian Tata Ibadah", "Discussion questions from Sunday's Tata Ibadah"))}</button>` : "") + (edit ? `<button class="btn primary block" data-act="newPost" data-g="${gid}" data-kind="sermon">${ic("plus")} ${esc(t("newSermon"))}</button>` : "") + (sermons.length ? sermons.map((p) => postCard(p, edit)).join("") : empty(t("noSermon"), "book"));
   else if (tab === "news") body = (edit ? `<button class="btn primary block" data-act="newPost" data-g="${gid}" data-kind="news">${ic("plus")} ${esc(t("newNews"))}</button>` : "") + (news.length ? news.map((p) => postCard(p, edit)).join("") : empty(t("noNews"), "bell"));
@@ -1018,7 +1020,7 @@ async function render() {
     if (!D) await refresh();
     if (!r) { history.replaceState(null, "", "#/home"); r = "home"; }
     if (isGuest() && !["home", "bread", "checkin"].includes(r)) { history.replaceState(null, "", "#/home"); r = "home"; arg = undefined; }
-    const map = { sunday: R.sunday, usage: R.usage, tarombo: R.tarombo, rpp: R.rpp, lit: R.lit, litwb: R.litwb, doc: R.doc, library: R.library, song: R.song, access: R.access, sswb: R.sswb, ssdeck: R.ssdeck, fx: R.fx, meet: R.meet, tutur: R.tutur, ende: R.ende, stories: R.stories, voyage: R.voyage, live: R.live, grief: R.grief, care: R.care, search: R.search, prayer: R.prayer, checkin: R.checkin, checkinqr: R.checkinqr, chat: R.chat, tata: R.tata, home: R.home, groups: R.groups, g: R.group, serve: R.serve, s: R.section, calendar: R.calendar, bread: R.bread, elders: R.elders, berita: R.berita, people: R.people, more: R.more, appstatus: R.appstatus, o: R.office, warta: R.warta };
+    const map = { quizwb: R.quizwb, sunday: R.sunday, usage: R.usage, tarombo: R.tarombo, rpp: R.rpp, lit: R.lit, litwb: R.litwb, doc: R.doc, library: R.library, song: R.song, access: R.access, sswb: R.sswb, ssdeck: R.ssdeck, fx: R.fx, meet: R.meet, tutur: R.tutur, ende: R.ende, stories: R.stories, voyage: R.voyage, live: R.live, grief: R.grief, care: R.care, search: R.search, prayer: R.prayer, checkin: R.checkin, checkinqr: R.checkinqr, chat: R.chat, tata: R.tata, home: R.home, groups: R.groups, g: R.group, serve: R.serve, s: R.section, calendar: R.calendar, bread: R.bread, elders: R.elders, berita: R.berita, people: R.people, more: R.more, appstatus: R.appstatus, o: R.office, warta: R.warta };
     try { usageTick(r); } catch (e) {}
     const html = (map[r] || R.notFound)(arg);
     if (typeof html === "string") view().innerHTML = html;
@@ -1061,6 +1063,127 @@ window.addEventListener("hashchange", () => { window.scrollTo(0, 0); render(); }
 // ---------- actions ----------
 const A = {};
 const F = {};
+// ---------- Weekly quiz (YB 2026-10-30): Remaja makers write it, teens play once on Sunday, leaderboard; scored on the server ----------
+const QZ = { list: [], gid: "", play: null, ed: null };
+const qzMaker = (gid) => !!D && (D.me.is_admin || ["tmaker", "teacher", "chair", "maker"].includes((D.me.groups || {})[gid]));
+function quizTab(gid) {
+  QZ.gid = gid; setTimeout(() => quizPaint(gid), 0);
+  return `${qzMaker(gid) ? `<a class="btn primary block" href="#/quizwb/new?g=${gid}">🎯 ${esc(L3("Buat kuis minggu ini", "Bahen kuis minggu on", "Make this week's quiz"))}</a>` : ""}<div id="quizBox">${skel(3)}</div>`;
+}
+async function quizPaint(gid) {
+  const box = document.getElementById("quizBox"); if (!box) return;
+  try { QZ.list = (await api.save("quiz_list", { group_id: gid })) || []; } catch (e) { box.innerHTML = `<p class="warn">${esc(errMsg(e))}</p>`; return; }
+  const mk = qzMaker(gid); const st = (z) => ({ draft: L3("Draf", "Draf", "Draft"), open: L3("Dibuka", "Tarbukka", "Open"), closed: L3("Selesai", "Nunga sae", "Closed") })[z.status];
+  const open = QZ.list.filter((z) => z.status === "open");
+  const hero = !mk ? open.map((z) => `<article class="qz-hero"><p class="qz-kick">🎯 ${esc(L3("Kuis Minggu Ini", "Kuis Minggu On", "This week's quiz"))} · ${esc(fmt(z.day, { day: "numeric", month: "long" }))}</p><h2>${esc(z.title)}</h2><p>${z.n} ${esc(L3("pertanyaan", "sungkun-sungkun", "questions"))} · ${z.played} ${esc(L3("sudah ikut", "nunga ro", "played"))}</p>
+      ${z.mine ? `<div class="qz-score">⭐ ${z.mine.score} / ${z.mine.total}</div><button class="btn block" data-act="qzResults" data-id="${z.id}">🏆 ${esc(L3("Lihat peringkat", "Ida peringkat", "See the leaderboard"))}</button>`
+        : `<button class="btn qz-go block" data-act="qzStart" data-id="${z.id}">▶ ${esc(L3("Mulai kuis", "Mulai kuis", "Start the quiz"))}</button>`}</article>`).join("") : "";
+  const rows = QZ.list.filter((z) => mk || z.status !== "open").map((z) => `<div class="li qz-row"><span class="date-chip"><b>${esc(fmt(z.day, { day: "numeric" }))}</b><small>${esc(fmt(z.day, { month: "short" }))}</small></span>
+      <span class="grow"><b>${esc(z.title)}</b><small><span class="badge${z.status === "open" ? " ok" : ""}">${esc(st(z))}</span> ${z.n} ${esc(L3("soal", "sungkun", "questions"))} · ${z.played} ${esc(L3("ikut", "ro", "played"))}${z.mine ? ` · ⭐ ${z.mine.score}/${z.mine.total}` : ""}</small></span>
+      <span class="qz-acts">${mk ? `${z.status !== "open" ? `<button class="btn sm primary" data-act="qzStatus" data-id="${z.id}" data-s="open">▶ ${esc(L3("Buka", "Bukka", "Open"))}</button>` : `<button class="btn sm" data-act="qzStatus" data-id="${z.id}" data-s="closed">■ ${esc(L3("Tutup", "Tutup", "Close"))}</button>`}
+        <a class="icon-btn" href="#/quizwb/${z.id}?g=${gid}" aria-label="Edit">✏️</a>` : ""}${mk || z.mine || z.status === "closed" ? `<button class="icon-btn" data-act="qzResults" data-id="${z.id}" aria-label="Hasil">🏆</button>` : ""}</span></div>`).join("");
+  box.innerHTML = hero + (rows ? `<h3 class="sec-h">${esc(mk ? L3("Semua kuis", "Sude kuis", "All quizzes") : L3("Kuis sebelumnya", "Kuis na salpu", "Earlier quizzes"))}</h3><div class="card">${rows}</div>` : "")
+    + (!hero && !rows ? empty(mk ? L3("Belum ada kuis. Buat kuis pertama untuk Minggu ini!", "Dang adong kuis.", "No quizzes yet. Make the first one for this Sunday!") : L3("Belum ada kuis minggu ini. Nantikan hari Minggu!", "Dang adong kuis.", "No quiz this week yet. Watch this space on Sunday!"), "star") : "");
+}
+A.qzStatus = async (d, btn) => { try { await busy(btn, () => api.save("quiz_status", { id: d.id, status: d.s })); toast(d.s === "open" ? L3("Kuis dibuka. Anggota Remaja diberi tahu.", "Kuis tarbukka.", "Quiz opened. The teens have been notified.") : L3("Kuis ditutup. Semua bisa melihat jawabannya.", "Kuis ditutup.", "Quiz closed. Everyone can see the answers.")); quizPaint(QZ.gid); } catch (e) { toast(errMsg(e), true); } };
+// Playing: one question at a time; the answers are checked on the server at the end.
+A.qzStart = (d) => { const z = QZ.list.find((x) => x.id === d.id); if (!z) return; QZ.play = { z, i: 0, ans: [], t0: Date.now() }; qzShow(); };
+function qzShow() {
+  const p = QZ.play; const q = p.z.questions[p.i]; const n = p.z.questions.length;
+  sheet("🎯 " + p.z.title, `<div class="qz-play"><div class="qz-prog"><i style="width:${Math.round((p.i / n) * 100)}%"></i></div><p class="qz-count">${p.i + 1} / ${n}</p><h3 class="qz-q">${esc(q.q)}</h3>
+    <div class="qz-opts">${q.options.map((o, k) => `<button class="qz-opt" data-act="qzPick" data-k="${k}"><span>${"ABCD"[k]}</span>${esc(o)}</button>`).join("")}</div></div>`);
+}
+A.qzPick = async (d, btn) => { const p = QZ.play; if (!p || p.lock) return; p.lock = true; p.ans[p.i] = +d.k; btn.classList.add("on");
+  await new Promise((r) => setTimeout(r, 220)); p.lock = false;
+  if (p.i < p.z.questions.length - 1) { p.i++; qzShow(); return; }
+  sheet("🎯 " + p.z.title, `<div class="center pad">⏳ ${esc(L3("Menghitung skor…", "Mangetong skor…", "Counting your score…"))}</div>`);
+  try { const r = await api.save("quiz_answer", { id: p.z.id, answers: p.ans, ms: Date.now() - p.t0 }); const pct = r.score / r.total;
+    sheet("🎯 " + p.z.title, `<div class="qz-done"><div class="qz-big">${pct === 1 ? "🏆" : pct >= 0.7 ? "🎉" : pct >= 0.4 ? "👍" : "💪"}</div><h2>${r.score} / ${r.total}</h2><p class="muted">${esc(pct === 1 ? L3("Sempurna! Luar biasa!", "Sempurna!", "Perfect!") : pct >= 0.7 ? L3("Hebat! Hampir sempurna.", "Denggan!", "Great job!") : L3("Terima kasih sudah ikut! Lihat pembahasannya di bawah.", "Mauliate!", "Thanks for playing! See the answers below."))}</p>
+      <div class="qz-review">${p.z.questions.map((q, i) => { const key = (r.key[i] || {}); const ok = p.ans[i] === +key.answer; return `<div class="qz-rv ${ok ? "ok" : "no"}"><b>${ok ? "✓" : "✗"} ${esc(q.q)}</b><small>${esc(L3("Jawaban", "Alus", "Answer"))}: ${esc(q.options[+key.answer] || "")}${ok ? "" : ` · ${esc(L3("pilihanmu", "pilihanmu", "yours"))}: ${esc(q.options[p.ans[i]] || "–")}`}</small>${key.explain ? `<small class="qz-ex">💡 ${esc(key.explain)}</small>` : ""}</div>`; }).join("")}</div>
+      <button class="btn primary block" data-act="qzResults" data-id="${p.z.id}">🏆 ${esc(L3("Lihat peringkat", "Ida peringkat", "See the leaderboard"))}</button></div>`);
+    QZ.play = null; quizPaint(QZ.gid); } catch (e) { closeSheet(); toast(e.message === "already_played" ? L3("Anda sudah ikut kuis ini.", "Nunga ro ho.", "You've already played this quiz.") : errMsg(e), true); } };
+A.qzResults = async (d) => { sheet("🏆 " + L3("Peringkat", "Peringkat", "Leaderboard"), skel(3));
+  try { const l = await api.save("quiz_results", { id: d.id }); const sec = (ms) => (ms ? Math.round(ms / 1000) + "s" : "");
+    sheet("🏆 " + L3("Peringkat", "Peringkat", "Leaderboard"), l.length ? `<div class="qz-board">${l.map((x, i) => `<div class="qz-b${x.me ? " me" : ""}"><span class="qz-rank">${["🥇", "🥈", "🥉"][i] || i + 1}</span><b>${esc(x.name)}</b><span>${x.score}/${x.total}</span><small>${sec(x.ms)}</small></div>`).join("")}</div>
+      <p class="small muted">${esc(L3("Urutan: skor tertinggi, lalu yang paling cepat.", "Skor, dungi hatop.", "Ranked by score, then by speed."))}</p>` : empty(L3("Belum ada yang ikut.", "Dang adong.", "Nobody has played yet."), "star")); }
+  catch (e) { sheet("🏆", `<p class="warn">${esc(e.message === "play_first" ? L3("Ikuti kuisnya dulu untuk melihat peringkat.", "Ihuthon kuis jolo.", "Play the quiz first to see the leaderboard.") : errMsg(e))}</p>`); } };
+// The workbench: title, Sunday, questions with 2–4 options, the right answer and an optional explanation.
+const QZ_BIBLE = [["Siapa yang membangun bahtera atas perintah Allah?", ["Nuh", "Abraham", "Musa", "Daud"], 0, "Kejadian 6–9."], ["Apa kitab pertama dalam Alkitab?", ["Kejadian", "Keluaran", "Matius", "Mazmur"], 0, ""], ["Berapa murid yang dipilih Tuhan Yesus?", ["7", "10", "12", "40"], 2, "Markus 3:13-19."],
+  ["Di kota mana Tuhan Yesus lahir?", ["Nazaret", "Betlehem", "Yerusalem", "Kapernaum"], 1, "Lukas 2:4-7."], ["Siapa yang dilemparkan ke gua singa?", ["Yunus", "Daniel", "Elia", "Yusuf"], 1, "Daniel 6."], ["Siapa yang ditelan ikan besar?", ["Yunus", "Petrus", "Paulus", "Musa"], 0, "Yunus 1–2."],
+  ["Siapa yang mengalahkan Goliat?", ["Saul", "Daud", "Simson", "Gideon"], 1, "1 Samuel 17."], ["Murid mana yang menyangkal Yesus tiga kali?", ["Yohanes", "Yudas", "Petrus", "Tomas"], 2, "Lukas 22:54-62."], ["Apa kitab terakhir dalam Alkitab?", ["Yudas", "Wahyu", "Maleakhi", "Kisah Para Rasul"], 1, ""],
+  ["Pada hari ke berapa Tuhan Yesus bangkit?", ["Pertama", "Kedua", "Ketiga", "Ketujuh"], 2, "1 Korintus 15:4."], ["Siapa yang memimpin bangsa Israel keluar dari Mesir?", ["Yosua", "Musa", "Harun", "Samuel"], 1, "Keluaran 12–14."], ["Berapa jumlah Hukum Taurat (Dasa Titah)?", ["5", "7", "10", "12"], 2, "Keluaran 20."],
+  ["Siapa ibu Tuhan Yesus?", ["Marta", "Maria", "Elisabet", "Hana"], 1, ""], ["Siapa pemungut cukai yang naik pohon ara untuk melihat Yesus?", ["Matius", "Zakheus", "Nikodemus", "Lewi"], 1, "Lukas 19:1-10."], ["Apa mukjizat pertama Tuhan Yesus?", ["Berjalan di atas air", "Air menjadi anggur", "Memberi makan 5000 orang", "Menyembuhkan orang buta"], 1, "Yohanes 2:1-11."]];
+const QZ_BOOKS = ["Kejadian", "Keluaran", "Mazmur", "Amsal", "Yesaya", "Yeremia", "Matius", "Markus", "Lukas", "Yohanes", "Kisah Para Rasul", "Roma", "1 Korintus", "Galatia", "Efesus", "Filipi", "Kolose", "Ibrani", "Yakobus", "1 Petrus", "Wahyu"];
+const qzShuffle = (a) => a.map((x) => [Math.random(), x]).sort((p, q) => p[0] - q[0]).map((x) => x[1]);
+function qzOpts(right, pool, n = 4) { const opts = qzShuffle([right, ...qzShuffle(pool.filter((x) => x !== right)).slice(0, n - 1)]); return { options: opts, answer: opts.indexOf(right) }; }
+R.quizwb = (arg) => {
+  const id = String(arg || "").split("?")[0]; const gid = new URLSearchParams(location.hash.split("?")[1] || "").get("g") || "remaja";
+  if (!qzMaker(gid)) { location.replace(`#/g/${gid}?tab=quiz`); return ""; }
+  setTimeout(async () => { const box = document.getElementById("qzwBox"); if (!box) return;
+    if (id === "new") QZ.ed = { gid, id: null, day: nextSunday(), title: L3("Kuis Minggu Ini", "Kuis Minggu On", "This week's quiz"), questions: [] };
+    else { if (!QZ.list.length || QZ.gid !== gid) { QZ.gid = gid; QZ.list = (await api.save("quiz_list", { group_id: gid })) || []; } const z = QZ.list.find((x) => x.id === id); if (!z) { box.innerHTML = empty("–", "star"); return; } QZ.ed = { gid, id: z.id, day: z.day, title: z.title, status: z.status, questions: JSON.parse(JSON.stringify(z.questions)) }; }
+    qzwPaint(); }, 0);
+  return shell("#/groups", `<div id="qzwBox">${skel(4)}</div>`, { back: `#/g/${gid}?tab=quiz`, title: L3("Pembuat Kuis", "Pambahen Kuis", "Quiz maker") });
+};
+function qzwPaint() {
+  const box = document.getElementById("qzwBox"); const e = QZ.ed; if (!box || !e) return;
+  box.innerHTML = `<div class="card qzw-meta"><label class="small">${esc(L3("Judul kuis", "Judul", "Quiz title"))}<input class="qzw-m" data-k="title" value="${esc(e.title)}"></label><label class="small">${esc(L3("Untuk hari Minggu", "Tu ari Minggu", "For Sunday"))}<input type="date" class="qzw-m" data-k="day" value="${esc(e.day)}"></label></div>
+    <button class="btn block" data-act="qzwAuto">✨ ${esc(L3("Draf otomatis dari Tata Ibadah + soal Alkitab", "Draf sian Tata Ibadah", "Auto-draft from the Tata Ibadah + Bible questions"))}</button>
+    ${e.questions.map((q, i) => `<article class="card qzw-q"><div class="row between" style="margin:0"><b>${i + 1}.</b><span class="row" style="margin:0;gap:4px"><button class="icon-btn" data-act="qzwMove" data-i="${i}" data-d="-1">↑</button><button class="icon-btn" data-act="qzwMove" data-i="${i}" data-d="1">↓</button><button class="icon-btn danger" data-act="qzwDel" data-i="${i}">${ic("trash")}</button></span></div>
+      <textarea class="qzw-i" data-i="${i}" data-k="q" rows="2" placeholder="${esc(L3("Pertanyaan", "Sungkun-sungkun", "Question"))}">${esc(q.q || "")}</textarea>
+      ${[0, 1, 2, 3].map((k) => `<div class="qzw-o"><input type="radio" name="ans${i}" class="qzw-r" data-i="${i}" data-k="${k}"${+q.answer === k ? " checked" : ""} aria-label="${esc(L3("Jawaban benar", "Alus na tama", "Correct answer"))}"><input class="qzw-i" data-i="${i}" data-k="o${k}" value="${esc((q.options || [])[k] || "")}" placeholder="${esc(L3("Pilihan", "Pilihan", "Option"))} ${"ABCD"[k]}${k > 1 ? " (" + L3("boleh kosong", "boi kosong", "optional") + ")" : ""}"></div>`).join("")}
+      <input class="qzw-i" data-i="${i}" data-k="explain" value="${esc(q.explain || "")}" placeholder="💡 ${esc(L3("Penjelasan / ayat (boleh kosong)", "Penjelasan", "Explanation / verse (optional)"))}"></article>`).join("")}
+    <button class="btn block" data-act="qzwAdd">${ic("plus")} ${esc(L3("Tambah pertanyaan", "Tambah sungkun-sungkun", "Add a question"))}</button>
+    <p class="small muted">${esc(L3("Tandai jawaban benar dengan bulatan di kiri. Teens mengerjakan satu kali; skor dihitung di server.", "", "Mark the right answer with the circle on the left. Teens play once; the score is counted on the server."))}</p>
+    <div class="row two sticky-actions"><button class="btn" data-act="qzwSave" data-open="0">💾 ${esc(L3("Simpan draf", "Simpan draf", "Save draft"))}</button><button class="btn primary" data-act="qzwSave" data-open="1">▶ ${esc(L3("Simpan & buka", "Simpan & bukka", "Save & open"))}</button></div>`;
+}
+document.addEventListener("input", (ev) => { const el = ev.target; if (!el || !el.classList || !QZ.ed) return;
+  if (el.classList.contains("qzw-m")) QZ.ed[el.dataset.k] = el.value;
+  if (el.classList.contains("qzw-i")) { const q = QZ.ed.questions[+el.dataset.i]; const k = el.dataset.k; if (k[0] === "o" && k.length === 2) { q.options = q.options || []; q.options[+k[1]] = el.value; } else q[k] = el.value; } });
+document.addEventListener("change", (ev) => { const el = ev.target; if (el && el.classList && el.classList.contains("qzw-r") && QZ.ed) QZ.ed.questions[+el.dataset.i].answer = +el.dataset.k; });
+const qzwRe = () => { const y = window.scrollY; qzwPaint(); window.scrollTo(0, y); };
+A.qzwAdd = () => { QZ.ed.questions.push({ q: "", options: ["", "", "", ""], answer: 0, explain: "" }); qzwRe(); };
+A.qzwDel = (d) => { QZ.ed.questions.splice(+d.i, 1); qzwRe(); };
+A.qzwMove = (d) => { const a = QZ.ed.questions, i = +d.i, j = i + +d.d; if (j < 0 || j >= a.length) return; [a[i], a[j]] = [a[j], a[i]]; qzwRe(); };
+A.qzwAuto = async (d, btn) => {
+  const e = QZ.ed; const out = [];
+  await busy(btn, async () => {
+    const sv = (D.services || []).find((v) => v.service_date === e.day) || upcomingService();
+    let text = ""; if (sv) { try { const doc = new DOMParser().parseFromString(await tataHtml(sv.id), "text/html"); text = doc.body.textContent.replace(/\s+/g, " "); } catch (er) {} }
+    const ref = (re) => { const m = text.match(re); return m ? m[1].trim() : ""; };
+    const bookOf = (r) => (r.match(/^([1-3]?\s?[A-Za-z][A-Za-z ]+?)\s+\d/) || [])[1] || "";
+    const kh = ref(/(?:Khotbah|Kotbah|Jamita)\s*:?\s*([1-3]?\s?[A-Za-z][A-Za-z ]+\d+\s*:\s*\d+(?:\s*[-–]\s*\d+)?)/i), ep = ref(/Epistel\s*:?\s*([1-3]?\s?[A-Za-z][A-Za-z ]+\d+\s*:\s*\d+(?:\s*[-–]\s*\d+)?)/i);
+    const theme = ref(/(?:Tema|Topik|Thema)\s*:?\s*[“"‘']([^”"’']{4,80})[”"’']/i);
+    const tc = (s) => s.toLowerCase().replace(/(^|\s)(\p{L})/gu, (m, a2, c) => a2 + c.toUpperCase());
+    if (kh && bookOf(kh)) { const b = tc(bookOf(kh)); out.push({ q: L3("Nas khotbah Minggu ini diambil dari kitab apa?", "Sian buku dia turpuk jamita Minggu on?", "Which book was this Sunday's sermon text from?"), ...qzOpts(b, QZ_BOOKS), explain: tc(kh) }); }
+    if (ep && bookOf(ep)) { const b = tc(bookOf(ep)); out.push({ q: L3("Nas Epistel Minggu ini diambil dari kitab apa?", "Sian buku dia Epistel Minggu on?", "Which book was this Sunday's Epistle from?"), ...qzOpts(b, QZ_BOOKS), explain: tc(ep) }); }
+    if (theme) out.push({ q: L3("Apa tema ibadah Minggu ini?", "Aha topik ni Minggu on?", "What was this Sunday's theme?"), ...qzOpts(tc(theme), ["Kasih Yang Sejati", "Hidup Dalam Pengharapan", "Setia Dalam Perkara Kecil", "Bersukacitalah Senantiasa", "Berjaga-jaga Dan Berdoa"]), explain: "" });
+    qzShuffle(QZ_BIBLE).slice(0, Math.max(3, 6 - out.length)).forEach(([q, o, a2, ex]) => { const opts = qzShuffle(o); out.push({ q, options: opts, answer: opts.indexOf(o[a2]), explain: ex }); });
+  });
+  e.questions.push(...out); qzwRe(); toast(L3(`${out.length} pertanyaan ditambahkan. Periksa dan ubah bila perlu.`, `${out.length} sungkun-sungkun.`, `${out.length} questions added. Check and edit them.`));
+};
+A.qzwSave = async (d, btn) => {
+  const e = QZ.ed; const qs = e.questions.map((q) => { const opts = (q.options || []).map((o) => String(o || "").trim()); const keep = opts.map((o, k) => [o, k]).filter(([o]) => o);
+    return { q: String(q.q || "").trim(), options: keep.map(([o]) => o), answer: Math.max(0, keep.findIndex(([, k]) => k === +q.answer)), explain: String(q.explain || "").trim() }; });
+  const bad = qs.findIndex((q) => !q.q || q.options.length < 2); if (!qs.length || bad >= 0) { toast(qs.length ? L3(`Pertanyaan ${bad + 1} perlu teks dan minimal 2 pilihan.`, "Isi sungkun-sungkun.", `Question ${bad + 1} needs text and at least 2 options.`) : L3("Tambahkan minimal 1 pertanyaan.", "Tambah sungkun-sungkun.", "Add at least one question."), true); return; }
+  try { await busy(btn, async () => { const r = await api.save("quiz_save", { id: e.id, group_id: e.gid, day: e.day, title: e.title, questions: qs }); e.id = r.id; if (d.open === "1") await api.save("quiz_status", { id: r.id, status: "open" }); });
+    toast(d.open === "1" ? L3("Kuis dibuka. Anggota Remaja diberi tahu.", "Kuis tarbukka.", "Quiz opened. The teens have been notified.") : t("saved")); location.hash = `#/g/${e.gid}?tab=quiz`; } catch (er) { toast(errMsg(er), true); } };
+try { document.head.insertAdjacentHTML("beforeend", `<style>
+  .qz-hero { background: linear-gradient(140deg, #ff7a59, #e3367d 60%, #7b3fe4); color: #fff; border-radius: 24px; padding: 18px; margin: 10px 0 14px; box-shadow: 0 12px 28px rgba(227,54,125,.28); }
+  .qz-hero h2 { color: #fff; margin: 4px 0; font-size: 24px; } .qz-hero p { margin: 0 0 12px; opacity: .92; } .qz-kick { font-size: 12.5px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+  .qz-go { background: #fff; color: #c2185b; font-weight: 900; font-size: 18px; border: 0; } .qz-score { font-size: 30px; font-weight: 900; margin: 6px 0 10px; } .qz-hero .btn:not(.qz-go) { background: rgba(255,255,255,.18); color: #fff; border: 0; }
+  .qz-row { align-items: center; } .qz-acts { display: flex; gap: 4px; align-items: center; flex: none; }
+  .qz-play { padding: 4px 0; } .qz-prog { height: 8px; border-radius: 99px; background: var(--line); overflow: hidden; } .qz-prog i { display: block; height: 100%; background: linear-gradient(90deg, #ff7a59, #e3367d); transition: width .3s; }
+  .qz-count { text-align: center; color: var(--muted); font-weight: 800; margin: 10px 0 2px; } .qz-q { text-align: center; font-size: 21px; line-height: 1.3; margin: 6px 0 16px; }
+  .qz-opts { display: grid; gap: 10px; } .qz-opt { display: flex; align-items: center; gap: 12px; text-align: left; padding: 14px 16px; border-radius: 16px; border: 2px solid var(--line); background: var(--surface); font-size: 17px; font-weight: 700; color: var(--ink); }
+  .qz-opt span { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; background: color-mix(in srgb, #e3367d 12%, var(--surface)); color: #c2185b; font-weight: 900; flex: none; }
+  .qz-opt.on { border-color: #e3367d; background: color-mix(in srgb, #e3367d 10%, var(--surface)); transform: scale(.98); }
+  .qz-done { text-align: center; } .qz-big { font-size: 64px; } .qz-done h2 { font-size: 36px; margin: 0; } .qz-review { text-align: left; display: grid; gap: 8px; margin: 14px 0; }
+  .qz-rv { padding: 10px 12px; border-radius: 12px; display: grid; gap: 3px; } .qz-rv.ok { background: #e7f6ec; } .qz-rv.no { background: #fdecec; } .qz-rv small { color: var(--muted); } .qz-ex { color: var(--ink) !important; }
+  .qz-board { display: grid; gap: 6px; } .qz-b { display: grid; grid-template-columns: 36px 1fr auto auto; gap: 10px; align-items: center; padding: 10px 12px; border-radius: 14px; background: var(--surface-2, #f4f5fa); }
+  .qz-b.me { outline: 2px solid #e3367d; } .qz-rank { font-size: 20px; text-align: center; font-weight: 900; } .qz-b span:nth-child(3) { font-weight: 900; } .qz-b small { color: var(--muted); }
+  .qzw-meta, .qzw-q { display: grid; gap: 8px; } .qzw-o { display: flex; align-items: center; gap: 8px; } .qzw-o input[type=radio] { width: 22px; height: 22px; flex: none; accent-color: #1f8a4c; } .qzw-o input:not([type]) , .qzw-o .qzw-i { flex: 1; }
+</style>`); } catch (e) {}
 try { document.head.insertAdjacentHTML("beforeend", `<style>
   .taro-search { display: flex; align-items: center; gap: 10px; background: var(--surface); border: 1.5px solid var(--line); border-radius: 18px; padding: 4px 6px 4px 14px; margin: 10px 0 8px; box-shadow: 0 4px 14px rgba(20,22,60,.06); }
   .taro-search:focus-within { border-color: var(--brand); box-shadow: 0 0 0 4px color-mix(in srgb, var(--brand) 14%, transparent); }
