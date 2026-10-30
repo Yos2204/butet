@@ -1014,7 +1014,7 @@ R.appstatus = () => {
   AS.rows = null;
   Promise.all([api.appStatus(), api.phoneTries ? api.phoneTries().catch(() => []) : []]).then(([r, tr]) => { AS.rows = r || []; AS.tries = tr || []; asFill(); }).catch((e) => { const el = $("#asList"); if (el) el.innerHTML = empty(errMsg(e)); });
   const hc = HYMN.selfTest();
-  return shell("#/more", `<div class="card li"><span class="grow"><b>🎵 Hymn splitter: ${hc.pass}/${hc.total} ${hc.fails.length ? "✗" : "✓"}</b><small>${esc(hc.fails.length ? hc.fails.join(" · ") : "Same rules as the Tata Ibadah workbench: verses, Reff, max 6 lines")}</small></span></div><div id="asList">${skel(4)}</div>`, { back: "#/more", title: t("asShort"), sub: t("asSub") });
+  return shell("#/more", `${hc.fails.length ? `<div class="card li"><span class="grow"><b>🎵 Hymn splitter: ${hc.pass}/${hc.total} ✗</b><small>${esc(hc.fails.join(" · "))}</small></span></div>` : ""}<div id="asList">${skel(4)}</div>`, { back: "#/more", title: t("asShort"), sub: t("asSub") });
 };
 R.notFound = () => shell("#/home", empty(t("notFound")), { back: "#/home" });
 
@@ -1073,6 +1073,86 @@ window.addEventListener("hashchange", () => { window.scrollTo(0, 0); render(); }
 const A = {};
 const F = {};
 
+// ---------- Import a songbook PDF (YB 2026-10-30) ----------
+// Song book text → songs (YB 2026-10-30). Used by Sada's "Impor buku lagu"; tested here on the church's KJ.pdf.
+function songsFromText(text, defBook) {
+  const HEAD = /\b(B\.\s*E|BUKU\s*ENDE|BE|PKJ|NKB|KJ|BN|KLB)\b\.?\s*(?:No\.?|Nomor|Nr\.?)?\s*(\d{1,4})/i;
+  let t = String(text || "").replace(/\r/g, "").replace(/[\u00a0\t]+/g, " ");
+  // a heading glued to the end of the line before it (page breaks): put it on its own line
+  t = t.replace(/([^\n])(?=\s*(?:\(\s*[KPJ]\s*\+\s*[KPJ]\s*\)|\d{1,2}\.\s*(?:\(\s*[KPJ]\s*\+\s*[KPJ]\s*\)\s*)?(?:Bernyanyi|Nyanyi(?:an)?\s+[Bb]ersama|Nyanyian\s+Sambutan|Nyanyan)|(?:Bernyanyi|Nyanyian\s+[Bb]ersama|Nyanyian\s+Sambutan|Nyanyan\s+Bersama)\b))/g, "$1\n");
+  const lines = t.split("\n").map((l) => l.trim());
+  const songs = []; let cur = null, mode = "v", vn = 0;
+  const isCue = (l) => /^[.…·_\s]{4,}/.test(l) || /^\(?\s*(Jemaat|Persembahan|persembahan)/.test(l) || /^[.…]+\s*\(.*\)\s*$/.test(l) || /^`$/.test(l);
+  const finish = () => { if (!cur) return; const vs = cur.blocks.filter((b) => b.lines.length);
+    // no verse numbers printed, but the heading names several verses and the lines divide evenly: one stanza each
+    if (vs.length === 1 && !vs[0].n && cur.nums.length > 1 && vs[0].lines.length % cur.nums.length === 0) { const per = vs[0].lines.length / cur.nums.length; const all = vs[0].lines; vs.splice(0, 1, ...cur.nums.map((n, k) => ({ n, lines: all.slice(k * per, (k + 1) * per) }))); }
+    if (vs.length) { const verses = {}; vs.forEach((b, i) => { let n = b.n || (cur.nums.length === vs.length ? cur.nums[i] : (cur.nums[0] || 1) + i); while (verses[n]) n++; verses[n] = b.lines; }); songs.push({ book: cur.book, num: cur.num, title: cur.title, verses, reff: cur.reff }); } cur = null; };
+  for (let i = 0; i < lines.length; i++) {
+    let l = lines[i]; if (!l) continue;
+    const h = l.match(HEAD);
+    if (h && /(Bernyanyi|Nyanyi|Nyanyan|Sambutan|\bNo\b|\(\s*[KPJ])/i.test(l.slice(0, h.index + 3)) || (h && h.index < 4)) {
+      finish(); let book = h[1].toUpperCase().replace(/[\s.]/g, ""); if (book === "BUKUENDE") book = "BE";
+      const rest = l.slice(h.index + h[0].length); const vs = (rest.match(/^\s*[:.]\s*([\d\s,\-–+dst]+)/) || [])[1] || "";
+      const nums = []; vs.replace(/dst/g, "").split(/[,+]/).forEach((p) => { const r = p.split(/[-–]/).map((x) => parseInt(x, 10)).filter((x) => x > 0); if (r.length === 2 && r[1] >= r[0] && r[1] - r[0] < 30) for (let k = r[0]; k <= r[1]; k++) nums.push(k); else if (r.length === 1) nums.push(r[0]); });
+      let title = (rest.match(/[“"”]\s*([^“"”]+?)\s*[”"“]/) || [])[1] || "";
+      if (!title && lines[i + 1] && /^[“"”]/.test(lines[i + 1])) { title = lines[i + 1].replace(/[“"”]/g, "").trim(); i++; }
+      cur = { book: book || defBook, num: +h[2], nums, title: title.replace(/\s+/g, " ").trim(), blocks: [], reff: [] }; mode = "v"; vn = 0; continue;
+    }
+    if (!cur || isCue(l)) continue;
+    l = l.replace(/\s*[.…]{3,}\s*\((?:Jemaat|Persembahan|persembahan)[^)]*\)\s*$/, "").trim(); if (!l) continue;
+    if (/^\(\s*[KPJ]\s*\+\s*[KPJ]\s*\)\s*:?$/.test(l)) continue;   // a lone "(K+J)" left over from a split heading
+    const nextL = (lines.slice(i + 1).find((x) => x) || "");
+    if (/^\d{1,2}\s*[.)]\s*(\(\s*[KPJ]\s*\+\s*[KPJ]\s*\))?\s*:?$/.test(l) && (HEAD.test(nextL) || /^\(\s*[KPJ]/.test(nextL))) continue;   // "2." numbering of the next heading
+    const vm = l.match(/^(\d{1,2})\s*[).]\s*\.?\s*(.*)$/) || (/^\d\s+[A-Z‘'’]/.test(l) && +l[0] === vn + 1 ? [l, l[0], l.slice(2)] : null);
+    if (vm && +vm[1] <= 12) { vn = +vm[1]; cur.blocks.push({ n: vn, lines: [] }); mode = "v"; l = vm[2].trim(); if (!l) continue; }
+    const rm = l.match(/^Reff?\s*:?\s*(.*)$/i);
+    if (rm) { const rest = rm[1].trim(); if (cur.reff.length || /^[.…\s]*$/.test(rest) || /(\.\.\.|…)\s*$/.test(rest)) { mode = "skip"; continue; } mode = "r"; if (rest) cur.reff.push(rest); continue; }
+    if (mode === "skip") continue;
+    if (mode === "r") { cur.reff.push(l); continue; }
+    if (!cur.blocks.length) cur.blocks.push({ n: 0, lines: [] });
+    cur.blocks[cur.blocks.length - 1].lines.push(l);
+  }
+  finish();
+  // songs printed with no verse numbers but several verses in the heading (e.g. 1 – 3): split evenly when the lines divide exactly
+  return songs;
+}
+
+// Makers pick a PDF (or .txt) of songs; Sada reads its text in the app (pdf.js), finds every song (book, number, title, verses, Reff),
+// shows what it found, and saves it to the library. Scanned books (pictures only) and sheet-music layouts can't be read this way.
+const PDFJS = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/";
+function pdfjsLoad() { if (window.pdfjsLib) return Promise.resolve(window.pdfjsLib); return new Promise((ok, no) => { const sc = document.createElement("script"); sc.src = PDFJS + "pdf.min.js"; sc.onload = () => { window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS + "pdf.worker.min.js"; ok(window.pdfjsLib); }; sc.onerror = () => no(new Error("pdf.js")); document.head.appendChild(sc); }); }
+async function pdfText(file, onPage) {
+  const lib = await pdfjsLoad(); const doc = await lib.getDocument({ data: await file.arrayBuffer() }).promise; let out = "";
+  for (let p = 1; p <= doc.numPages; p++) { const tc = await (await doc.getPage(p)).getTextContent(); out += tc.items.map((it) => it.str + (it.hasEOL ? "\n" : "")).join("") + "\n"; if (onPage) onPage(p, doc.numPages); }
+  return out;
+}
+const SIMP = { songs: [] };
+A.songImport = (d) => {
+  const inp = document.createElement("input"); inp.type = "file"; inp.accept = ".pdf,.txt,application/pdf,text/plain";
+  inp.onchange = async () => {
+    const file = inp.files && inp.files[0]; if (!file) return;
+    sheet("📥 " + L3("Membaca berkas", "Manjaha", "Reading the file"), `<p class="small muted">${esc(file.name)}</p><div class="rec-bar"><i id="impBar"></i></div><p class="small" id="impPct"></p>`);
+    try {
+      const text = /\.txt$/i.test(file.name) ? await file.text() : await pdfText(file, (p, n) => { const b = document.getElementById("impBar"); if (b) b.style.width = Math.round((p / n) * 100) + "%"; const e = document.getElementById("impPct"); if (e) e.textContent = `${p} / ${n}`; });
+      const songs = songsFromText(text, d.book || "KJ").filter((x) => ["KJ", "BE", "BN"].includes(x.book));
+      if (!songs.length) { sheet("📥 " + L3("Tidak ada lagu terbaca", "Ndang adong", "No songs could be read"), `<p>${esc(text.replace(/\s/g, "").length < 200 ? L3("Berkas ini berupa gambar hasil scan, jadi teksnya tidak bisa dibaca.", "Gambar scan.", "This file is scanned pictures, so its text can't be read.") : L3("Judul lagu (mis. “KJ No. 363 : 1 – 2”) tidak ditemukan. Berkas notasi/partitur juga tidak bisa dibaca.", "Ndang dapot judul.", "No song headings (e.g. “KJ No. 363 : 1 – 2”) were found. Sheet-music layouts can't be read either."))}</p><button class="btn block" data-act="closeSheet">OK</button>`); return; }
+      SIMP.songs = songs; const have = new Set((SONGS.list || []).map((x) => x.k));
+      const fresh = songs.filter((x) => !have.has(`${x.book}:${x.num}`)).length;
+      sheet("📥 " + L3(`${songs.length} lagu ditemukan`, `${songs.length} ende`, `${songs.length} songs found`), `<p class="small muted">${esc(file.name)} · ${fresh} ${esc(L3("baru", "baru", "new"))}, ${songs.length - fresh} ${esc(L3("melengkapi lagu yang sudah ada", "manggenaphon", "add to existing songs"))}</p>
+        <div class="chips imp-chips">${songs.map((x) => `<span class="chip${have.has(`${x.book}:${x.num}`) ? "" : " on"}">${esc(x.book)} ${x.num} · ${Object.keys(x.verses).length}${x.reff.length ? "+R" : ""}</span>`).join("")}</div>
+        <button class="btn primary block" data-act="songImportSave">💾 ${esc(L3(`Simpan ${songs.length} lagu ke Sada`, "Simpan", `Save ${songs.length} songs to Sada`))}</button><button class="btn ghost block" data-act="closeSheet">${esc(t("cancel"))}</button>`);
+    } catch (e) { closeSheet(); toast(L3("Berkas tidak bisa dibaca.", "Ndang boi dibaca.", "The file couldn't be read.") + " " + (e.message || ""), true); }
+  };
+  inp.click();
+};
+A.songImportSave = async (d, btn) => {
+  const all = SIMP.songs.map((x) => ({ book: x.book, num: x.num, title: x.title, lang: (SONG_BOOKS[x.book] || [])[1] || "", verses: x.verses, reff: x.reff, source: "import" })); let saved = 0;
+  try { await busy(btn, async () => { for (let i = 0; i < all.length; i += 25) { const r = await api.save("songs_upsert", { songs: all.slice(i, i + 25) }); saved += (r && r.saved) || 0; } });
+    closeSheet(); await songsLoad(true); render(); toast(L3(`${saved} lagu tersimpan di Sada.`, `${saved} ende tarsimpan.`, `${saved} songs saved to Sada.`)); }
+  catch (e) { toast(errMsg(e), true); }
+};
+try { document.head.insertAdjacentHTML("beforeend", `<style>.imp-chips { max-height: 40vh; overflow-y: auto; flex-wrap: wrap; margin: 8px 0 12px; } .imp-chips .chip { font-size: 12px; }</style>`); } catch (e) {}
+
 // Passage search and the shared Sada library (YB 2026-10-30): a reference typed here is looked up once online (SABDA, through
 // hkbp-bible) and then kept in Sada for everyone; Sada's collected chapters can be saved onto the phone in one go.
 async function bibLibPaint(ver) {
@@ -1091,7 +1171,7 @@ F.bibSearch = async (f) => {
   const q = f.q.value.trim(); if (!q) return; const ver = LS.get("bibVer", "tb"); const box = document.getElementById("bibHit"); if (!box) return;
   box.innerHTML = skel(2); const show = (html) => { BIB.hit = html; const el = document.getElementById("bibHit"); if (el) el.innerHTML = html; };
   try {
-    const fn = BIB_VERS[ver].kjv ? "en" : BIB_VERS[ver].fn;
+    const fn = BIB_VERS[ver].kjv ? "id" : BIB_VERS[ver].fn;   // KJV: the reference is read by the server, the text comes from the phone
     const url = `${BIB_FN}?ref=${encodeURIComponent(q)}&lang=${fn}`;
     let j; const cache = await bibCache();
     try { const r = await fetch(url, { headers: { apikey: BIB_CFG.supabaseKey || "", authorization: "Bearer " + (BIB_CFG.supabaseKey || "") } }); j = await r.json(); if (!r.ok || !j.verses) throw Object.assign(new Error(j.error || "error"), { code: j.error });
@@ -1128,7 +1208,7 @@ const BIB_ID = ["Kejadian", "Keluaran", "Imamat", "Bilangan", "Ulangan", "Yosua"
 const BIB_EN = ["Genesis", "Exodus", "Leviticus", "Numbers", "Deuteronomy", "Joshua", "Judges", "Ruth", "1 Samuel", "2 Samuel", "1 Kings", "2 Kings", "1 Chronicles", "2 Chronicles", "Ezra", "Nehemiah", "Esther", "Job", "Psalms", "Proverbs", "Ecclesiastes", "Song of Songs", "Isaiah", "Jeremiah", "Lamentations", "Ezekiel", "Daniel", "Hosea", "Joel", "Amos", "Obadiah", "Jonah", "Micah", "Nahum", "Habakkuk", "Zephaniah", "Haggai", "Zechariah", "Malachi",
   "Matthew", "Mark", "Luke", "John", "Acts", "Romans", "1 Corinthians", "2 Corinthians", "Galatians", "Ephesians", "Philippians", "Colossians", "1 Thessalonians", "2 Thessalonians", "1 Timothy", "2 Timothy", "Titus", "Philemon", "Hebrews", "James", "1 Peter", "2 Peter", "1 John", "2 John", "3 John", "Jude", "Revelation"];
 const BIB_CH = [50, 40, 27, 36, 34, 24, 21, 4, 31, 24, 22, 25, 29, 36, 10, 13, 10, 42, 150, 31, 12, 8, 66, 52, 5, 48, 12, 14, 3, 9, 1, 4, 7, 3, 3, 3, 2, 14, 4, 28, 16, 24, 21, 28, 16, 16, 13, 6, 6, 4, 4, 5, 3, 6, 4, 3, 1, 13, 5, 5, 3, 5, 1, 1, 1, 22];
-const BIB_VERS = { tb: { name: "Terjemahan Baru", short: "TB", fn: "id", en: false }, toba: { name: "Bibel Toba", short: "Toba", fn: "bbc", en: false }, esv: { name: "English Standard Version", short: "ESV", fn: "en", en: true }, kjv: { name: "King James Version", short: "KJV", kjv: true, en: true } };
+const BIB_VERS = { tb: { name: "Terjemahan Baru", short: "TB", fn: "id", en: false }, toba: { name: "Bibel Toba", short: "Toba", fn: "bbc", en: false }, kjv: { name: "King James Version", short: "KJV", kjv: true, en: true } };
 const BIB = { kjv: null };
 const bibName = (ver, b) => (BIB_VERS[ver].en ? BIB_EN : BIB_ID)[b - 1];
 const bibUrl = (ver, b, c) => `${BIB_FN}?ref=${encodeURIComponent(BIB_ID[b - 1] + " " + c)}&lang=${BIB_VERS[ver].fn}`;
@@ -1196,23 +1276,26 @@ async function songsCollect(quiet) {
 }
 // Page
 R.library = () => {
-  const q = new URLSearchParams(location.hash.split("?")[1] || ""); const sec = q.get("s") || LS.get("libSec", "bible"); LS.set("libSec", sec);
+  const q = new URLSearchParams(location.hash.split("?")[1] || ""); let sec = q.get("s") || LS.get("libSec", "bible"); if (!["bible", "KJ", "BE", "BN"].includes(sec)) sec = "bible"; LS.set("libSec", sec);
   const seg = (k, label) => `<a role="tab" aria-selected="${sec === k}" href="#/library?s=${k}">${esc(label)}</a>`;
-  const head = `<div class="seg lib-seg" role="tablist" style="--gc:var(--brand)">${seg("bible", L3("Alkitab", "Bibel", "Bible"))}${seg("KJ", "Kidung Jemaat")}${seg("BE", "Buku Ende")}${seg("other", L3("Lainnya", "Na asing", "Others"))}</div>`;
+  const head = `<div class="seg lib-seg" role="tablist" style="--gc:var(--brand)">${seg("bible", L3("Alkitab", "Bibel", "Bible"))}${seg("KJ", "Kidung Jemaat")}${seg("BE", "Buku Ende")}${seg("BN", "Buku Nyanyian")}</div>`;
   if (sec === "bible") { setTimeout(bibPaint, 0); return shell("#/library", `${head}<div id="bibBox">${skel(3)}</div>`, {}); }
   setTimeout(async () => { await songsLoad(false); songListPaint(sec); songsCollect(true).then((n) => { if (n) songListPaint(sec); }); }, 0);
   return shell("#/library", `${head}
-    <div class="row" style="gap:8px;margin:8px 0"><input type="search" id="songFind" placeholder="${esc(L3("Nomor atau judul lagu…", "Nomor manang goar ni ende…", "Song number or title…"))}" inputmode="search" autocomplete="off" style="flex:1">${canSongs() ? `<button class="btn" data-act="songEdit" data-book="${sec === "other" ? "PKJ" : sec}">${ic("plus")}</button>` : ""}</div>
+    <div class="row" style="gap:8px;margin:8px 0"><input type="search" id="songFind" placeholder="${esc(L3("Nomor atau judul lagu…", "Nomor manang goar ni ende…", "Song number or title…"))}" inputmode="search" autocomplete="off" style="flex:1">${canSongs() ? `<button class="btn" data-act="songImport" data-book="${sec}" aria-label="${esc(L3("Impor PDF", "Impor", "Import PDF"))}">📥</button><button class="btn" data-act="songEdit" data-book="${sec}" aria-label="${esc(L3("Tambah lagu", "Tambah", "Add a song"))}">${ic("plus")}</button>` : ""}</div>
     <div id="songList">${skel(4)}</div>
     <p class="small muted">${esc(L3("Lagu-lagu dikumpulkan dari Tata Ibadah dan slide Sekolah Minggu yang diterbitkan gereja, dan bertambah setiap minggu. Semua tersimpan di HP untuk offline.", "Ende sian Tata Ibadah.", "Songs are collected from the church's published Tata Ibadah and Sunday School slides and grow every week. All are kept on your phone for offline use."))}</p>`, {});
 };
 function songListPaint(sec) {
   const box = document.getElementById("songList"); if (!box) return;
   const qv = norm((document.getElementById("songFind") || {}).value || "");
-  const list = (SONGS.list || []).filter((x) => (sec === "other" ? !["KJ", "BE"].includes(x.b) : x.b === sec)).filter((x) => !qv || String(x.n) === qv || norm((x.t || "") + " " + Object.values(x.v || {}).flat().slice(0, 4).join(" ")).includes(qv));
-  box.innerHTML = list.length ? `<div class="card song-list">${list.map((x) => { const first = (Object.values(x.v || {})[0] || [])[0] || "";
-    return `<a class="li" href="#/song/${encodeURIComponent(x.k)}"><span class="song-no">${x.n != null ? x.n : "♪"}</span><span class="grow"><b>${esc(x.t || first || x.k)}</b><small>${sec === "other" ? esc((SONG_BOOKS[x.b] || [x.b])[0]) + " · " : ""}${esc(first)}</small></span>${ic("chev", "chev")}</a>`; }).join("")}</div>`
-    : empty(qv ? L3("Tidak ditemukan.", "Ndang dapot.", "Nothing found.") : L3("Belum ada lagu di buku ini. Lagu muncul setelah dicetak di Tata Ibadah.", "Dang adong dope.", "No songs in this book yet. Songs appear once they are printed in a Tata Ibadah."), "book");
+  const list = (SONGS.list || []).filter((x) => x.b === sec).filter((x) => !qv || String(x.n) === qv || norm((x.t || "") + " " + Object.values(x.v || {}).flat().slice(0, 4).join(" ")).includes(qv));
+  const numQ = /^\d{1,4}$/.test(qv) && !list.some((x) => String(x.n) === qv);
+  const ask = numQ ? `<div class="card song-miss"><b>${esc((SONG_BOOKS[sec] || [sec])[0])} ${qv} ${esc(L3("belum ada di Sada", "dang adong di Sada", "isn't in Sada yet"))}</b>
+    <div class="row two"><a class="btn" href="https://www.google.com/search?q=${encodeURIComponent((SONG_BOOKS[sec] || [sec])[0] + " " + qv)}" target="_blank" rel="noopener">🔎 ${esc(L3("Cari di internet", "Bilang di internet", "Search the internet"))}</a>${canSongs() ? `<button class="btn primary" data-act="songEdit" data-book="${sec}" data-num="${qv}">➕ ${esc(L3("Tambahkan ke Sada", "Tambahkon", "Add to Sada"))}</button>` : ""}</div></div>` : "";
+  box.innerHTML = ask + (list.length ? `<div class="card song-list">${list.map((x) => { const first = (Object.values(x.v || {})[0] || [])[0] || "";
+    return `<a class="li" href="#/song/${encodeURIComponent(x.k)}"><span class="song-no">${x.n != null ? x.n : "♪"}</span><span class="grow"><b>${esc(x.t || first || x.k)}</b><small>${esc(first)}</small></span>${ic("chev", "chev")}</a>`; }).join("")}</div>`
+    : numQ ? "" : empty(qv ? L3("Tidak ditemukan.", "Ndang dapot.", "Nothing found.") : L3("Belum ada lagu di buku ini. Lagu muncul setelah dicetak di Tata Ibadah.", "Dang adong dope.", "No songs in this book yet. Songs appear once they are printed in a Tata Ibadah."), "book"));
 }
 document.addEventListener("input", (e) => { if (e.target && e.target.id === "songFind") songListPaint(LS.get("libSec", "KJ")); });
 R.song = (key) => {
@@ -1234,8 +1317,8 @@ A.songEdit = (d) => {
   const x = d.k ? (SONGS.list || []).find((y) => y.k === d.k) : null; const book = x ? x.b : d.book || "KJ";
   const text = x ? Object.keys(x.v || {}).map(Number).sort((a, b) => a - b).map((n, i) => x.v[n].join("\n") + (i === 0 && (x.r || []).length ? "\n\nReff:\n" + x.r.join("\n") : "")).join("\n\n") : "";
   sheet(x ? "✏️ " + L3("Ubah lagu", "Ubah", "Edit song") : "➕ " + L3("Tambah lagu", "Tambah", "Add a song"), `<form class="form" data-form="song" data-k="${esc(x ? x.k : "")}">
-    <div class="row two"><label>${esc(L3("Buku", "Buku", "Book"))}<select name="book">${Object.entries(SONG_BOOKS).map(([k, v]) => `<option value="${k}"${k === book ? " selected" : ""}>${esc(v[0])}</option>`).join("")}</select></label>
-      <label>${esc(L3("Nomor", "Nomor", "Number"))}<input name="num" inputmode="numeric" value="${x && x.n != null ? x.n : ""}"></label></div>
+    <div class="row two"><label>${esc(L3("Buku", "Buku", "Book"))}<select name="book">${["KJ", "BE", "BN"].map((k) => `<option value="${k}"${k === book ? " selected" : ""}>${esc(SONG_BOOKS[k][0])}</option>`).join("")}</select></label>
+      <label>${esc(L3("Nomor", "Nomor", "Number"))}<input name="num" inputmode="numeric" value="${x && x.n != null ? x.n : d.num || ""}"></label></div>
     <label>${esc(L3("Judul", "Judul", "Title"))}<input name="title" value="${esc(x ? x.t || "" : "")}"></label>
     <label>${esc(L3("Lirik (baris kosong = bait baru, “Reff:” untuk reff, bait dimulai dari 1)", "Lirik", "Lyrics (blank line = new verse, “Reff:” for the refrain, verses start at 1)"))}<textarea name="text" rows="12">${esc(text)}</textarea></label>
     <button class="btn primary block">${esc(t("save"))}</button>${x ? `<button type="button" class="btn danger block" data-act="songDel" data-k="${esc(x.k)}">${ic("trash")} ${esc(t("delete"))}</button>` : ""}</form>`);
@@ -1252,7 +1335,8 @@ A.songDel = async (d) => { await api.save("song_delete", { key: d.k }); closeShe
 // Bible view
 async function bibPaint() {
   const box = document.getElementById("bibBox"); if (!box) return;
-  const ver = LS.get("bibVer", lang === "en" ? "esv" : lang === "bt" ? "toba" : "tb"), b = LS.get("bibB", 19), c = LS.get("bibC", 23), fs = LS.get("bibFs", 19);
+  let ver = LS.get("bibVer", lang === "en" ? "kjv" : lang === "bt" ? "toba" : "tb"); if (!BIB_VERS[ver]) { ver = lang === "en" ? "kjv" : "tb"; LS.set("bibVer", ver); }
+  const b = LS.get("bibB", 19), c = LS.get("bibC", 23), fs = LS.get("bibFs", 19);
   const kjvReady = !!(await bibCache() && await (await bibCache()).match(KJV_URL));
   box.innerHTML = `<div class="chips bib-vers">${Object.entries(BIB_VERS).map(([k, v]) => `<button class="chip${k === ver ? " on" : ""}" data-act="bibVer" data-v="${k}">${esc(v.short)}${v.kjv ? (kjvReady ? " ✓" : " ⬇") : ""}</button>`).join("")}</div>
     <form class="bib-search" data-form="bibSearch"><input name="q" type="search" placeholder="${esc(L3("Cari ayat: Yoh 3:16, Mazmur 23, Roma 8:28-39", "Bilang ayat: Joh 3:16", "Find a passage: John 3:16, Psalm 23, Romans 8:28-39"))}" autocomplete="off" enterkeyhint="search"><button class="btn primary" aria-label="${esc(t("search"))}">${ic("search")}</button></form>
@@ -1291,7 +1375,7 @@ try { document.head.insertAdjacentHTML("beforeend", `<style>
   .bib-text { line-height: 1.65; } .bib-text p { margin: 0 0 .55em; } .bib-text sup { font-size: .6em; font-weight: 800; color: var(--brand); margin-right: .3em; } .bib-h { font-size: 1.15em; margin: 10px 0 12px; }
   .bib-books { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 6px; } .bib-bk { min-height: 40px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); font-size: 13.5px; font-weight: 700; padding: 4px 6px; }
   .bib-chs { display: grid; grid-template-columns: repeat(auto-fill, minmax(48px, 1fr)); gap: 6px; } .bib-ch { height: 46px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); font-weight: 800; }
-  .song-no { min-width: 44px; height: 36px; border-radius: 10px; background: var(--brand-soft); color: var(--brand); font-weight: 900; display: grid; place-items: center; flex: none; }
+  .song-miss { display: grid; gap: 10px; border-left: 4px solid var(--gold); } .song-no { min-width: 44px; height: 36px; border-radius: 10px; background: var(--brand-soft); color: var(--brand); font-weight: 900; display: grid; place-items: center; flex: none; }
   .song-head { margin: 8px 0 12px; } .song-book { font-size: 12.5px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--brand); } .song-head h2 { margin: 2px 0 0; font-size: 24px; }
   .song-text .sv { display: flex; gap: 14px; margin: 0 0 18px; } .song-text .svn { min-width: 30px; font-weight: 900; color: var(--brand); font-size: .9em; padding-top: .1em; }
   .song-text .sv p { margin: 0; line-height: 1.45; } .song-text .reff { background: var(--brand-soft); border-radius: 14px; padding: 12px 14px; } .song-text .reff .svn { font-size: .7em; letter-spacing: .1em; text-transform: uppercase; }
