@@ -1063,6 +1063,10 @@ window.addEventListener("hashchange", () => { window.scrollTo(0, 0); render(); }
 // ---------- actions ----------
 const A = {};
 const F = {};
+// Live code for the downloaded Tata Ibadah file (YB 2026-10-30): Multimedia makers see it on the Tata Ibadah page.
+async function liveCodePaint(kind) { const el = document.getElementById("liveCode"); if (!el) return; try { const r = await api.save(kind || "live_code_get", {}); el.textContent = r.code; } catch (e) { el.textContent = "–"; } }
+A.liveCodeNew = async (d, btn) => { if (!confirm(L3("Buat kode live baru? Kode lama berhenti berlaku di laptop gereja.", "Kode baru?", "Make a new live code? The old one stops working on the church laptop."))) return; await busy(btn, () => liveCodePaint("live_code_new")); toast(L3("Kode live baru dibuat.", "Kode baru.", "New live code made.")); };
+try { document.head.insertAdjacentHTML("beforeend", `<style>.live-code { display: flex; align-items: center; gap: 10px; } .live-code small { display: block; color: var(--muted); margin-top: 2px; } #liveCode { letter-spacing: .18em; font-variant-numeric: tabular-nums; color: var(--brand); }</style>`); } catch (e) {}
 // ---------- Weekly quiz (YB 2026-10-30): Remaja makers write it, teens play once on Sunday, leaderboard; scored on the server ----------
 const QZ = { list: [], gid: "", play: null, ed: null };
 const qzMaker = (gid) => !!D && (D.me.is_admin || ["tmaker", "teacher", "chair", "maker"].includes((D.me.groups || {})[gid]));
@@ -4511,10 +4515,12 @@ R.tata = (id) => {
   if (!id) return shell("#/serve", `<div class="card">${(D.services || []).map((v) => `<a class="li" href="#/tata/${v.id}"><span class="grow"><b>${esc(v.title || t("tataTitle"))}</b><small>${esc(v.service_date ? fmtDay(v.service_date) : "")} · ${esc(v.author_name || "")}</small></span>${ic("chev", "chev")}</a>`).join("") || `<p class="muted small">${esc(t("noTata"))}</p>`}</div>`, { back: "#/s/multimedia", title: t("tataTitle"), sub: "HKBP Singapore" });
   const v = (D.services || []).find((x) => x.id === id); if (!v) return R.notFound();
   const canRm = mmRole() === "maker" && isMMMaker();
+  if (isMMMaker()) setTimeout(() => liveCodePaint(), 0);
   return shell("#/serve", `
     <div class="tata-view"><div class="tata-frame" data-tata="${v.id}"><span class="spin"></span></div></div>
     <p class="small muted center">${esc(t("tataRotate"))}</p>
     ${isMMMaker() ? `<button class="btn block${LIVE.on === v.id ? " primary" : ""}" data-act="liveToggle" data-id="${v.id}">📡 ${esc(LIVE.on === v.id ? L3("Siaran live aktif · ketuk untuk berhenti", "Siaran live · ketuk asa mansai", "Live to members' phones · tap to stop") : L3("Siarkan slide ke HP jemaat", "Siarhon slide tu HP ruas", "Broadcast slides to members' phones"))}</button>` : ""}
+    ${isMMMaker() ? `<div class="card live-code"><span class="grow"><b>📡 ${esc(L3("Kode live untuk file HTML", "Kode live tu file HTML", "Live code for the HTML file"))}: <span id="liveCode">······</span></b><small>${esc(L3("Di laptop gereja, buka file Tata Ibadah, tekan 📡 Live (atau tombol L) dan masukkan kode ini. Slide akan tampil di HP jemaat.", "Di laptop gareja: bukka file, tekan 📡 Live, masukhon kode on.", "On the church laptop, open the Tata Ibadah file, press 📡 Live (or the L key) and enter this code. Slides appear on members' phones."))}</small></span><button class="btn sm" data-act="liveCodeNew">${esc(L3("Ganti", "Ganti", "Change"))}</button></div>` : ""}
     <div class="row two"><button class="btn" data-act="tataFull" data-id="${v.id}">${ic("screen")} ${esc(t("fullScreen"))}</button>${canRm ? `<button class="btn danger" data-act="del" data-kind="service" data-id="${v.id}">${ic("trash")} ${esc(t("delete"))}</button>` : ""}</div>`,
     { back: "#/s/multimedia", title: v.title || t("tataTitle"), sub: v.service_date ? fmtDay(v.service_date) : t("tataTitle") });
 };
