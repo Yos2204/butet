@@ -1427,6 +1427,13 @@ try { document.head.insertAdjacentHTML("beforeend", `<style>
   .taro-x[hidden] { display: none; }
   .taro-tools { display: flex; gap: 8px; margin-bottom: 12px; } .taro-tools .btn { flex: 1; }
   .taro-tree .taro-n { border-radius: 16px; margin: 6px 0; background: var(--surface); box-shadow: 0 2px 10px rgba(20,22,60,.05); border: 1px solid var(--line); overflow: hidden; }
+  /* The page-wide rule "details[open] summary { display: none }" hid every branch name inside an open branch, leaving empty striped boxes (YB 2026-10-31). */
+  .taro-n[open] > summary, .taro-n > summary { display: flex !important; margin-top: 0; color: inherit; }
+  /* Batak Toba ulos colours (red, black, white, with a gold thread) as a woven band down the main branches. */
+  .taro-tree .taro-n.d0, .taro-tree .taro-n.d1 { position: relative; }
+  .taro-tree .taro-n.d0::before, .taro-tree .taro-n.d1::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 6px; z-index: 1;
+    background: repeating-linear-gradient(180deg, #b3202a 0 12px, #1a1a1a 12px 15px, #f4ead5 15px 17px, #d8b25e 17px 19px, #f4ead5 19px 21px, #1a1a1a 21px 24px); }
+  .taro-tree .taro-n.d1 { padding-left: 6px; } .taro-tree .taro-n.d0::before { width: 0; }
   .taro-tree .taro-n .taro-n { box-shadow: none; } .taro-n.d1 { background: color-mix(in srgb, var(--brand) 3%, var(--surface)); } .taro-n.d2 { background: color-mix(in srgb, var(--brand) 5%, var(--surface)); } .taro-n.d3, .taro-n.d4 { background: color-mix(in srgb, var(--brand) 7%, var(--surface)); }
   .taro-n > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 10px; padding: 12px 14px; } .taro-n > summary::-webkit-details-marker { display: none; }
   .taro-t { flex: 1; min-width: 0; display: grid; gap: 2px; } .taro-t b { font-size: 15.5px; } .taro-t small { color: var(--muted); font-size: 12.5px; line-height: 1.35; }
