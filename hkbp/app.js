@@ -3466,7 +3466,7 @@ const CALL_SVG = {
 const cic = (n) => `<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${CALL_SVG[n]}</svg>`;
 let CALL_SRV = null;   // false while the server has no hk_call yet: the buttons stay hidden
 const callOk = () => CALL_SRV !== false && !!D && !isGuest() && api.mode === "remote" && !!api.call && !!window.RTCPeerConnection && !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
-const callRoomOf = () => { const m = location.hash.match(/^#\/chat\/((dm:[0-9a-f-]{36}:[0-9a-f-]{36})|makers|all)(?:$|[?/])/); return m ? m[1] : null; };
+const callRoomOf = () => { const m = location.hash.match(/^#\/chat\/((dm:[0-9a-f-]{36}:[0-9a-f-]{36})|makers|all|g:[\w-]+)(?:$|[?/])/); return m ? m[1] : null; };
 let CALL = null;       // the call this phone is in
 let RING = null;       // an incoming call on screen: { id, room, name, caller_id, video, group }
 const RING_SKIP = new Set();   // calls this phone already declined or answered
@@ -5018,7 +5018,17 @@ const isChatMaker = () => !!D && !isGuest() && (D.me.is_admin || Object.values(D
 const chatRooms = () => [
   ...(isChatMaker() ? [{ id: "makers", name: L3("Makers", "Makers", "Makers"), sub: L3("Makers semua kategorial dan seksi", "Makers sude kategorial dohot seksi", "Makers of every category and section") }] : []),
   { id: "all", name: L3("Jemaat", "Ruas", "Everyone"), sub: L3("Makers dan seluruh jemaat", "Makers dohot sude ruas", "Makers and all members") },
+  ...chatGroupRooms(),
 ];
+// Category chats (YB 2026-10-31): one room per category or section you belong to (the admin sees all).
+// The server decides who may use which: hk_data lists them in chat_last as "g:<group id>".
+function chatGroupRooms() {
+  if (!D || !D.chat_last || isGuest()) return [];
+  const KO = { sermon: 1, service: 2, office: 3 };
+  return Object.keys(D.chat_last).filter((k) => k.startsWith("g:")).map((k) => G(k.slice(2))).filter(Boolean)
+    .sort((x, y) => (KO[x.kind] || 9) - (KO[y.kind] || 9) || (x.sort || 0) - (y.sort || 0))
+    .map((g) => ({ id: "g:" + g.id, name: gname(g), sub: g.kind === "sermon" ? L3("Kategorial", "Kategorial", "Category") : g.kind === "office" ? L3("Kantor", "Kantor", "Office") : L3("Seksi pelayanan", "Seksi", "Service section"), color: g.color, icon: g.icon, group: true }));
+}
 const REACTS = ["🙏", "❤️", "👍", "😂", "🎉"];
 let CH = { room: null, msgs: [], last: 0, timer: null, sending: false, reacts: {}, sel: null, reply: null, image: null };
 // Unread: the newest message id per room (from the app data) against the last one this phone showed.
@@ -5072,7 +5082,7 @@ R.chat = (room) => {
   if (isGuest()) return R.home();
   const rooms = chatRooms();
   if (!room) return shell("#/chat", `<h2 class="page-h">💬 Chat</h2><p class="lead">${esc(L3("Percakapan dua arah. Ketuk salah satu ruang untuk membukanya.", "Marhata dua arah. Ketuk sada ruang asa terbuka.", "Two-way conversations. Tap a room to open it."))}</p>
-    <div class="glist">${rooms.map((r) => `<a class="gtile" href="#/chat/${r.id}" style="--gc:${r.id === "makers" ? "var(--gold)" : "var(--brand)"}"><span class="gicon">${ic(r.id === "makers" ? "gear" : "people")}</span><span class="gname"><b>${esc(r.name)}</b><small>${esc(r.sub)}</small></span>${newBadge(chatUnread(r.id))}${ic("chev", "chev")}</a>`).join("")}</div>
+    <div class="glist">${rooms.map((r, i) => `${r.group && !rooms[i - 1].group ? `</div><h3 class="sec-h">${esc(L3("Kategorial & seksi", "Kategorial & seksi", "Categories & sections"))}</h3><div class="glist">` : ""}<a class="gtile" href="#/chat/${r.id}" style="--gc:${r.color || (r.id === "makers" ? "var(--gold)" : "var(--brand)")}"><span class="gicon">${ic(r.icon || (r.id === "makers" ? "gear" : "people"))}</span><span class="gname"><b>${esc(r.name)}</b><small>${esc(r.sub)}</small></span>${newBadge(chatUnread(r.id))}${ic("chev", "chev")}</a>`).join("")}</div>
     <div class="row between" style="margin:18px 0 6px"><h3 class="sec-h" style="margin:0">${esc(L3("Pesan pribadi", "Pesan pribadi", "Private messages"))}</h3><button class="btn sm primary" data-act="dmNew">✏️ ${esc(L3("Pesan baru", "Pesan baru", "New message"))}</button></div>
     ${(D.dms || []).length ? `<div class="card dm-list">${D.dms.map((x) => { const p = (D.people || []).find((q) => q.id === x.other) || { id: x.other, name: x.name };
       return `<a class="li${x.unread ? " unread" : ""}" href="#/chat/${esc(x.room)}">${avatarOf(p)}<span class="grow"><b>${esc(x.name || "")}</b><small>${x.last_mine ? esc(L3("Anda: ", "Ho: ", "You: ")) : ""}${esc(x.last || "")}</small></span><span class="dm-meta"><small>${esc(sgParts(x.at).date === today() ? fmtTime(x.at) : fmt(x.at, { day: "numeric", month: "short" }))}</small>${x.unread ? `<b class="dm-n">${x.unread}</b>` : ""}</span></a>`; }).join("")}</div>`
