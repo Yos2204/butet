@@ -1329,8 +1329,8 @@ A.qzwAdd = () => { QZ.ed.questions.push({ q: "", options: ["", "", "", ""], answ
 A.qzwDel = (d) => { QZ.ed.questions.splice(+d.i, 1); qzwRe(); };
 A.qzwMove = (d) => { const a = QZ.ed.questions, i = +d.i, j = i + +d.d; if (j < 0 || j >= a.length) return; [a[i], a[j]] = [a[j], a[i]]; qzwRe(); };
 // Teens Quiz Workbench (YB 2026-10-31): the teacher adds this week's lesson materials (PDF, Word, PowerPoint, text, photos of handouts)
-// or pastes the lesson text; Claude writes the questions on the server (hkbp-quiz, the church's key) into this draft, the teacher
-// checks and edits them, then Save & open. "↻" rewrites one question from the same materials.
+// or pastes the lesson text; Sada makes the questions on the phone, free (YB 2026-10-31: no Claude key), into this draft, the teacher
+// checks and edits them, then Save & open. "↻" makes another question from the same materials.
 const QZW_SET = { n: 10, lang: "auto", diff: "mixed", types: "both" };
 const qzMat = () => QZ.mat || (QZ.mat = { files: [], paste: "", text: "", ...QZW_SET, ...LS.get("qzw-set", {}) });
 const qzWords = (t) => { const k = (String(t || "").match(/\S+/g) || []).length; return k.toLocaleString() + " " + L3("kata", "hata", "words"); };
@@ -1338,7 +1338,7 @@ function qzwMatCard() {
   const m = qzMat(); const ready = m.files.some((f) => f.state === "ready") || m.paste.trim().length > 40; const reading = m.files.some((f) => f.state === "reading");
   const opt = (k, list) => list.map(([v, l]) => `<option value="${v}"${String(m[k]) === String(v) ? " selected" : ""}>${esc(l)}</option>`).join("");
   return `<div class="card qzw-mat"><b>📚 ${esc(L3("Dari bahan pelajaran minggu ini", "Sian bahan parsiajaran minggu on", "From this week's lesson materials"))}</b>
-    <p class="small muted" style="margin:0">${esc(L3("Masukkan PDF, Word, PowerPoint, teks, atau foto handout pelajaran. Claude menulis soalnya, Anda memeriksa dan mengubahnya, lalu Simpan & buka.", "Pamasuk PDF, Word, PowerPoint, teks, manang foto. Claude manurat soal, hamu mamareso, dung i Simpan & bukka.", "Add the lesson PDF, Word, PowerPoint, text or photos of handouts. Claude writes the questions, you check and edit them, then Save & open."))}</p>
+    <p class="small muted" style="margin:0">${esc(L3("Masukkan PDF, Word, PowerPoint, teks, atau foto handout pelajaran. Sada membuat soal dari bahan itu (gratis, di HP Anda); Anda memeriksa dan mengubahnya, lalu Simpan & buka.", "Pamasuk PDF, Word, PowerPoint, teks, manang foto. Sada mambahen soal (gratis); hamu mamareso, dung i Simpan & bukka.", "Add the lesson PDF, Word, PowerPoint, text or photos of handouts. Sada makes the questions from them (free, on your phone); you check and edit them, then Save & open."))}</p>
     <button class="btn block" data-act="qzwFiles">📎 ${esc(L3("Pilih file pelajaran", "Pillit file", "Choose lesson files"))}</button>
     ${m.files.map((f, i) => `<div class="qzw-f"><span class="grow"><b>${esc(f.name)}</b><small${f.state === "error" ? ' class="err"' : ""}>${esc(f.state === "reading" ? L3("Membaca…", "Manjaha…", "Reading…") : f.state === "error" ? f.error : f.note)}</small></span><button class="icon-btn" data-act="qzwRmFile" data-i="${i}" aria-label="${esc(t("delete"))}">✕</button></div>`).join("")}
     <textarea class="qzw-s" data-k="paste" rows="3" placeholder="${esc(L3("Atau tempel teks pelajaran / nas Alkitab di sini", "Manang tempel teks parsiajaran dison", "Or paste the lesson text / Bible passage here"))}">${esc(m.paste)}</textarea>
@@ -1348,16 +1348,21 @@ function qzwMatCard() {
       <label class="small">${esc(L3("Tingkat", "Tingkat", "Difficulty"))}<select class="qzw-s" data-k="diff">${opt("diff", [["easy", L3("Mudah", "Mura", "Easy")], ["mixed", L3("Campur", "Campur", "Mixed")], ["hard", L3("Menantang", "Maol", "Challenging")]])}</select></label>
       <label class="small">${esc(L3("Jenis soal", "Jenis", "Question types"))}<select class="qzw-s" data-k="types">${opt("types", [["both", L3("Pilihan ganda + Benar/Salah", "PG + Benar/Salah", "Multiple choice + True/False")], ["mcq", L3("Pilihan ganda", "Pilihan ganda", "Multiple choice")], ["tf", L3("Benar / Salah", "Benar / Salah", "True / False")]])}</select></label>
     </div>
-    <button class="btn primary block" data-act="qzwWrite"${ready && !reading ? "" : " disabled"}>✨ ${esc(L3("Tulis kuis dengan Claude", "Surat kuis dohot Claude", "Write the quiz with Claude"))}</button></div>`;
+    <button class="btn primary block" data-act="qzwWrite"${ready && !reading ? "" : " disabled"}>✨ ${esc(L3("Buat soal dari bahan", "Bahen soal sian bahan", "Make questions from the materials"))}</button></div>`;
 }
 document.addEventListener("input", (ev) => { const el = ev.target; if (!el || !el.classList || !el.classList.contains("qzw-s") || !QZ.ed) return;
   const m = qzMat(); if (el.dataset.k === "paste") { m.paste = el.value; const b = document.querySelector('[data-act="qzwWrite"]'); if (b) b.disabled = !(m.files.some((f) => f.state === "ready") || m.paste.trim().length > 40) || m.files.some((f) => f.state === "reading"); }
   else { m[el.dataset.k] = el.dataset.k === "n" ? +el.value : el.value; LS.set("qzw-set", { n: m.n, lang: m.lang, diff: m.diff, types: m.types }); } });
 document.addEventListener("change", (ev) => { const el = ev.target; if (el && el.classList && el.classList.contains("qzw-s") && el.tagName === "SELECT") el.dispatchEvent(new Event("input", { bubbles: true })); });
-// One lesson file → text (or a photo, made smaller) for Claude.
+// One lesson file → text. Photos of handouts are read on the phone (Tesseract, free, Indonesian + English).
 async function qzwRead(f) {
   const name = f.name.toLowerCase();
-  if (/^image\//.test(f.type)) { const url = await resizeImage(f, 1400, 0.85); return { image: url.split(",")[1], mime: "image/jpeg", note: L3("Foto handout", "Foto", "Photo of a handout") }; }
+  if (/^image\//.test(f.type)) {
+    const url = await resizeImage(f, 1800, 0.9);
+    if (!window.Tesseract) await P.load("https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js");
+    const { data } = await window.Tesseract.recognize(url, "ind+eng"); const text = String(data.text || "").replace(/[ \t]+/g, " ").trim();
+    if (text.length < 20) throw new Error("empty"); return { text, note: L3("Foto handout", "Foto", "Photo of a handout") + " · " + qzWords(text) };
+  }
   if (/\.(txt|md|csv)$/.test(name)) { const text = (await f.text()).trim(); if (!text) throw new Error("empty"); return { text, note: qzWords(text) }; }
   if (/\.pptx$/.test(name)) {
     await P.load("https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js");
@@ -1381,30 +1386,86 @@ A.qzwFiles = () => {
   inp.click();
 };
 A.qzwRmFile = (d) => { qzMat().files.splice(+d.i, 1); qzwRe(); };
-const qzwFromAi = (x) => ({ q: x.q, options: (x.options || []).slice(0, 4), answer: +x.answer || 0, explain: x.explain || "", type: x.type || "" });
+// ---- the free question maker: sentences from the materials become fill-in-the-blank and true/false questions ----
+const QZ_STOP = new Set(("yang dan di ke dari itu ini untuk dengan dalam pada adalah akan tidak juga oleh karena sebagai atau kita kami mereka ia dia " +
+  "kamu anda saya aku nya pun lah kah tetapi tapi jika kalau agar supaya maka sudah telah sedang masih lebih sangat bisa dapat harus ada para " +
+  "the and of to in is are was were be been a an that this it for on with as by at from or not but his her their they he she we you i " +
+  "na do ni tu jala dohot di sian ma ndang dang ibana hita nasida ho ahu tahe ba asa songon on i").split(" "));
+function qzLangOf(text) {
+  const w = String(text).toLowerCase().match(/[a-z]+/g) || []; const c = { id: 0, en: 0, bt: 0 };
+  w.forEach((x) => { if (/^(yang|dan|itu|dengan|untuk|adalah|tidak)$/.test(x)) c.id++; else if (/^(the|and|of|is|that|with|was)$/.test(x)) c.en++; else if (/^(do|ni|jala|dohot|ndang|songon|ibana)$/.test(x)) c.bt++; });
+  return c.en > c.id && c.en > c.bt ? "en" : c.bt > c.id ? "bt" : "id";
+}
+function qzSentences(text) {
+  const clean = String(text || "").replace(/^=== .* ===$/gm, "").replace(/^\[slide \d+\]$/gm, "").replace(/^Catatan:\s*/gm, "");
+  const out = [];
+  clean.split(/\n+/).forEach((para) => para.split(/(?<=[.!?;])\s+/).forEach((x) => {
+    const t = x.replace(/\s+/g, " ").replace(/^[\-•*\d.)\s]+(?=[A-Za-z"“])/, "").trim(); const n = (t.match(/\S+/g) || []).length;
+    if (n >= 6 && n <= 40 && /[a-z]/.test(t) && t.replace(/[^A-Za-z]/g, "").length > t.length * 0.55 && !out.includes(t)) out.push(t);
+  }));
+  return out;
+}
+// The word to ask about in a sentence: a name (capitalised, not first), a number, or a long word; with its kind.
+function qzKeys(sent) {
+  const toks = sent.split(/\s+/); const keys = [];
+  toks.forEach((raw, i) => { const w = raw.replace(/^[^\wÀ-ÿ]+|[^\wÀ-ÿ]+$/g, ""); if (!w) return; const lw = w.toLowerCase();
+    if (/^\d{1,4}$/.test(w)) keys.push({ w, kind: "num" });
+    else if (i > 0 && /^[A-Z][a-zà-ÿ]{2,}$/.test(w) && !QZ_STOP.has(lw)) keys.push({ w, kind: "name" });
+    else if (w.length >= 6 && /^[a-zà-ÿ]+$/.test(w) && !QZ_STOP.has(lw)) keys.push({ w, kind: "word" }); });
+  return keys;
+}
+function qzMake(text, opt, k, used) {
+  const sents = qzSentences(text).filter((x) => !(used || []).includes(x)); if (!sents.length) return [];
+  const lg = opt.lang && opt.lang !== "auto" ? opt.lang : qzLangOf(text);
+  const T = { fill: { id: "Lengkapi kalimat ini:", bt: "Gohi hata on:", en: "Fill in the blank:" }, tf: { id: "Benar atau salah?", bt: "Tutu manang ndang?", en: "True or false?" },
+    yes: { id: "Benar", bt: "Tutu", en: "True" }, no: { id: "Salah", bt: "Ndang tutu", en: "False" }, right: { id: "Yang benar", bt: "Na tutu", en: "Correct" } };
+  const pool = { name: new Set(), num: new Set(), word: new Set() };
+  qzSentences(text).forEach((x) => qzKeys(x).forEach((kk) => pool[kk.kind].add(kk.w)));
+  const pick = (keys) => { const pref = opt.diff === "easy" ? ["name", "num", "word"] : opt.diff === "hard" ? ["word", "name", "num"] : qzShuffle(["name", "num", "word"]);
+    for (const kind of pref) { const c = keys.filter((x) => x.kind === kind); if (c.length) return c.sort((a, b) => b.w.length - a.w.length)[Math.floor(Math.random() * Math.min(2, c.length))]; } return null; };
+  const wrong = (key, nW) => { let c = [...pool[key.kind]].filter((x) => x.toLowerCase() !== key.w.toLowerCase());
+    if (key.kind === "num") { const v = +key.w; [1, 2, 3, 5, 7, 10, 12].forEach((d) => { if (v + d > 0) c.push(String(v + d)); if (v - d > 0) c.push(String(v - d)); }); c = [...new Set(c)]; }
+    if (c.length < nW) c.push(...[...pool.word, ...pool.name].filter((x) => x.toLowerCase() !== key.w.toLowerCase() && !c.includes(x)));
+    // look-alike words first (same beginning / ending, e.g. me-…, ber-…, …nya, …ed), so a wrong option is not obvious from its form
+    const kw = key.w.toLowerCase(), sim = (x) => { x = x.toLowerCase(); return (x.slice(0, 2) === kw.slice(0, 2) ? 2 : 0) + (x.slice(-2) === kw.slice(-2) ? 2 : 0) + (Math.abs(x.length - kw.length) < 3 ? 1 : 0); };
+    if (key.kind === "word") c = qzShuffle(c).sort((p, q) => sim(q) - sim(p)).slice(0, Math.max(nW + 2, 5));
+    return qzShuffle(c).slice(0, nW); };
+  const blank = (sent, w, by) => sent.replace(new RegExp("(^|[^\\wÀ-ÿ])" + w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(?=[^\\wÀ-ÿ]|$)"), (m0, p) => p + by);
+  const out = []; let tfTurn = opt.types === "tf";
+  for (const sent of qzShuffle(sents.slice())) {
+    if (out.length >= k) break;
+    const key = pick(qzKeys(sent)); if (!key) continue;
+    const type = opt.types === "mcq" ? "mcq" : opt.types === "tf" ? "tf" : (tfTurn = !tfTurn) ? "tf" : "mcq";
+    if (type === "mcq") { const ws = wrong(key, 3); if (ws.length < 2) continue;
+      const options = qzShuffle([key.w, ...ws]); out.push({ q: `${T.fill[lg]}\n“${blank(sent, key.w, "_____")}”`, options, answer: options.indexOf(key.w), explain: sent, type: "mcq", src: sent }); }
+    else { const truth = Math.random() < 0.5; let shown = sent;
+      if (!truth) { const ws = wrong(key, 1); if (!ws.length) continue; shown = blank(sent, key.w, ws[0]); }
+      out.push({ q: `${T.tf[lg]}\n“${shown}”`, options: [T.yes[lg], T.no[lg]], answer: truth ? 0 : 1, explain: truth ? sent : `${T.right[lg]}: ${sent}`, type: "tf", src: sent }); }
+  }
+  return out;
+}
+const qzwText = (m) => [...m.files.filter((f) => f.state === "ready" && f.text).map((f) => f.text), m.paste.trim()].filter(Boolean).join("\n\n");
 A.qzwWrite = async () => {
-  const e = QZ.ed, m = qzMat(); const ready = m.files.filter((f) => f.state === "ready");
-  const text = [...ready.filter((f) => f.text).map((f) => `=== File: ${f.name} ===\n${f.text}`), m.paste.trim() ? `=== Teks ===\n${m.paste.trim()}` : ""].filter(Boolean).join("\n\n").slice(0, 120000);
-  const images = ready.filter((f) => f.image).slice(0, 3).map((f) => ({ mime: f.mime, data: f.image }));
-  if (!text && !images.length) { toast(L3("Tambahkan file atau tempel teks pelajaran dulu.", "Tambah file jolo.", "Add a file or paste the lesson text first."), true); return; }
+  const e = QZ.ed, m = qzMat(); const text = qzwText(m);
+  if (!text) { toast(L3("Tambahkan file atau tempel teks pelajaran dulu.", "Tambah file jolo.", "Add a file or paste the lesson text first."), true); return; }
+  const used = e.questions.map((q) => q.src).filter(Boolean);
+  const qs = qzMake(text, m, m.n, used);
+  if (!qs.length) { toast(L3("Belum ada kalimat yang bisa dijadikan soal. Tambahkan bahan yang lebih lengkap.", "Ndang adong hata na boi gabe soal.", "No sentences could be turned into questions. Add fuller materials."), true); return; }
   const def = L3("Kuis Minggu Ini", "Kuis Minggu On", "This week's quiz");
-  busySheet("✨ " + L3("Claude menulis kuis", "Claude manurat kuis", "Claude is writing the quiz"), L3(`Membaca bahan dan menulis ${m.n} soal… sekitar satu menit.`, `Manjaha bahan jala manurat ${m.n} soal…`, `Reading the materials and writing ${m.n} questions… about a minute.`));
-  try {
-    const r = await aiRun("quiz", { group_id: e.gid, day: e.day, topic: e.title && e.title !== def ? e.title : "", n: m.n, lang: m.lang, diff: m.diff, types: m.types, text, images });
-    const qs = (r.questions || []).map(qzwFromAi); if (!qs.length) throw new Error("empty_reply");
-    closeSheet(); m.text = text || "(foto)";
-    if (e.questions.every((q) => !String(q.q || "").trim())) e.questions = qs; else e.questions.push(...qs);
-    if (r.title && (!e.title || e.title === def)) e.title = r.title;
-    if (r.summary) m.summary = r.summary;
-    qzwRe(); toast(L3(`${qs.length} soal ditulis. Periksa dan ubah bila perlu, lalu Simpan & buka.`, `${qs.length} soal nunga disurat. Pareso jolo.`, `${qs.length} questions written. Check and edit them, then Save & open.`));
-  } catch (er) { closeSheet(); toast(er && er.message === "empty_reply" ? L3("Claude tidak menghasilkan soal. Coba lagi.", "Coba muse.", "No questions came back. Try again.") : errMsg(er), true); }
+  m.text = text;
+  if (e.questions.every((q) => !String(q.q || "").trim())) e.questions = qs; else e.questions.push(...qs);
+  if (!e.title || e.title === def) { const first = (text.split("\n").map((x) => x.trim()).find((x) => x.length >= 4 && x.length <= 60 && !/^===|^\[slide/.test(x)) || ""); if (first) e.title = first.replace(/[.:;,]+$/, ""); }
+  qzwRe(); toast(qs.length < m.n
+    ? L3(`${qs.length} soal dibuat (bahannya cukup untuk segitu). Periksa dan ubah bila perlu.`, `${qs.length} soal nunga dibahen. Pareso jolo.`, `${qs.length} questions made (that's what the materials allow). Check and edit them.`)
+    : L3(`${qs.length} soal dibuat. Periksa dan ubah bila perlu, lalu Simpan & buka.`, `${qs.length} soal nunga dibahen. Pareso jolo.`, `${qs.length} questions made. Check and edit them, then Save & open.`));
 };
-A.qzwRedo = async (d, btn) => {
-  const e = QZ.ed, m = qzMat(), i = +d.i, q = e.questions[i]; if (!q || !m.text) return;
-  try { await busy(btn, async () => {
-    const r = await aiRun("quiz", { group_id: e.gid, lang: m.lang, text: m.text, one: { type: q.type || ((q.options || []).filter(Boolean).length === 2 ? "tf" : "mcq"), old: q.q || "", others: e.questions.filter((x, k) => k !== i).map((x) => x.q || "").filter(Boolean) } });
-    if (!r.question) throw new Error("empty_reply"); e.questions[i] = qzwFromAi(r.question); });
-    qzwRe(); } catch (er) { toast(er && er.message === "empty_reply" ? L3("Claude tidak menghasilkan soal. Coba lagi.", "Coba muse.", "No question came back. Try again.") : errMsg(er), true); }
+A.qzwRedo = (d) => {
+  const e = QZ.ed, m = qzMat(), i = +d.i, q = e.questions[i]; const text = m.text || qzwText(m); if (!q || !text) return;
+  const type = q.type || ((q.options || []).filter(Boolean).length === 2 ? "tf" : "mcq");
+  const used = e.questions.map((x) => x.src).filter(Boolean);
+  const [nq] = qzMake(text, { ...m, types: type }, 1, used.length < qzSentences(text).length ? used : []);
+  if (!nq) { toast(L3("Tidak ada kalimat lain untuk soal baru.", "Ndang adong hata na asing.", "No other sentence left for a new question."), true); return; }
+  e.questions[i] = nq; qzwRe();
 };
 A.qzwAuto = async (d, btn) => {
   const e = QZ.ed; const out = [];
@@ -4679,7 +4740,7 @@ function wishBtn(p) {
   return `<button class="btn sm${sent ? " ghost" : " primary"}" data-act="wishSend" data-id="${esc(p.id)}" data-name="${esc(firstName(p.name))}">${sent ? "✓ " + esc(L3("Terkirim", "Tarkirim", "Sent")) : "💌 " + esc(L3("Ucapan", "Ucapan", "Wish"))}</button>`;
 }
 A.wishSend = (d) => sheet(`💌 ${d.name}`, `<form class="form" data-form="wish" data-id="${esc(d.id)}">
-  <label>${esc(L3("Ucapan Anda", "Ucapanmu", "Your wish"))}<textarea name="body" rows="3" maxlength="300" required>${esc(L3(`Selamat ulang tahun, ${d.name}! Tuhan memberkati.`, `Selamat ari tubu, ${d.name}! Horas!`, `Happy birthday, ${d.name}! God bless you.`))}</textarea></label>
+  <label>${esc(L3("Ucapan Anda", "Ucapanmu", "Your wish"))}<textarea name="body" rows="3" maxlength="300" required>${esc(L3(`Selamat ulang tahun, ${d.name}! Tuhan Yesus memberkati.`, `Selamat ari tubu, ${d.name}! Tuhanta mangaramoti.`, `Happy birthday, ${d.name}! God bless us.`))}</textarea></label>
   <p class="small muted">${esc(L3("Semua ucapan sampai jam 19.00 dalam satu notifikasi.", "Sude ucapan sahat jam 19.00.", "All wishes reach them together at 7 pm in one notification."))}</p>
   <button class="btn primary block">💌 ${esc(L3("Kirim ucapan", "Kirim ucapan", "Send wish"))}</button></form>`);
 F.wish = async (f) => { await api.save("wish", { to: f.dataset.id, body: f.body.value.trim() }); closeSheet(); D.wished = [...new Set([...(D.wished || []), f.dataset.id])]; toast(L3("Ucapan terkirim 💌", "Ucapan tarkirim 💌", "Wish sent 💌")); };
@@ -5524,7 +5585,6 @@ A.genOne = async (d, btn) => {
   });
 };
 A.genWeek = async (d, btn) => {
-  if (!LS.get("claudeKey")) { toast(t("needClaudeKey"), true); return A.settings(); }
   await busy(btn, async () => {
     let n = 0; const recent = D.bread.slice(0, 30).map((b) => b.verse).filter(Boolean);
     for (let i = 0; i < 7; i++) {
@@ -5685,11 +5745,9 @@ A.password = () => sheet(t("changePw"), `<form class="form" data-form="password"
   <button class="btn primary block">${esc(t("save"))}</button></form>`);
 A.install = () => sheet(t("installTitle"), `<div class="steps"><h4>iPhone</h4><p>${esc(t("installIos"))}</p><h4>Android</h4><p>${esc(t("installAndroid"))}</p><p class="small muted">${esc(t("installWhy"))}</p></div>`);
 A.settings = () => {
-  if (!isYB()) { toast(t("needClaudeKey"), true); return; } // Settings is for YB only (YB 2026-10-28)
+  if (!isYB()) return; // Settings is for YB only (YB 2026-10-28)
   const o = LS.get("cfg.override", {}) || {};
   sheet(t("settings"), `<form class="form" data-form="settings">
-    <h4>${ic("ai")} Claude</h4><p class="small muted">${esc(t("claudeKeyLead"))}</p>
-    <label>${esc(t("f_claudeKey"))}<input type="password" name="claudeKey" value="${esc(LS.get("claudeKey", ""))}" placeholder="sk-ant-…" autocomplete="off"></label>
     ${isAdmin() ? `<h4>${ic("globe")} ${esc(t("connection"))}</h4><p class="small muted">${esc(api.mode === "remote" ? t("modeRemote") : t("modeLocal"))}. ${esc(t("connLead"))}</p>
     <label>Supabase URL<input name="supabaseUrl" value="${esc(o.supabaseUrl || "")}" placeholder="${esc((window.HKBP_CONFIG || {}).supabaseUrl || "https://xxxx.supabase.co")}"></label>
     <label>Supabase anon key<input name="supabaseKey" value="${esc(o.supabaseKey || "")}" placeholder="eyJ…"></label>
@@ -5914,7 +5972,7 @@ F.group = async (f) => {
 };
 F.password = async (f) => { if (pwIsPhone(f.pw.value, (D && D.me && D.me.phone) || "")) throw new S.AppError("pw_is_phone"); await api.setPassword(f.old.value, f.pw.value); closeSheet(); toast(t("saved")); };
 F.settings = async (f) => {
-  LS.set("claudeKey", f.claudeKey.value.trim());
+  LS.set("claudeKey", null);   // no Claude key any more (YB 2026-10-31: free versions only)
   if (f.supabaseUrl) {
     const o = { supabaseUrl: f.supabaseUrl.value.trim(), supabaseKey: f.supabaseKey.value.trim(), vapidPublicKey: f.vapidPublicKey.value.trim() };
     const before = api.mode; LS.set("cfg.override", o); api = S.pick();
