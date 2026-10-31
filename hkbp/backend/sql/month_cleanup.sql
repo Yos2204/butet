@@ -5,7 +5,8 @@
 --   Sunday School decks                             -> by deck day, hidden from the list
 --   roster files                                    -> by roster month; the roster entry itself stays
 --   chat photos and voice notes                     -> by send month; the message text stays
--- Kept forever: profile pictures, group photos (until removed or replaced) and Turi-turian stories.
+--   Turi-turian story recordings                    -> by recording month, hidden from the list
+-- Kept until removed or replaced: profile pictures and group photos.
 -- Rows are never dropped, only their file is emptied (no row removal statements, so Supabase approval works).
 -- Paste into Supabase > SQL Editor (project tbicfofdorwrupzlqgdm) and press Run.
 
@@ -13,7 +14,7 @@ create or replace function hk_month_cleanup() returns jsonb language plpgsql sec
 declare
   m0 date := date_trunc('month', (now() at time zone 'Asia/Singapore'))::date;  -- first day of the current month, Singapore time
   ym text := to_char(m0, 'YYYY-MM');
-  n_files int; n_tata int; n_decks int; n_rost int; n_chat int;
+  n_files int; n_tata int; n_decks int; n_rost int; n_chat int; n_story int;
 begin
   update hk_files set file_b64 = null, removed_at = coalesce(removed_at, now())
     where file_b64 is not null and (created_at at time zone 'Asia/Singapore')::date < m0;
@@ -35,7 +36,11 @@ begin
     where (image is not null or audio is not null) and (created_at at time zone 'Asia/Singapore')::date < m0;
   get diagnostics n_chat = row_count;
 
-  return jsonb_build_object('month', ym, 'office_files', n_files, 'tata_ibadah', n_tata, 'ss_decks', n_decks, 'roster_files', n_rost, 'chat_files', n_chat);
+  update hk_stories set audio_b64 = '', removed_at = coalesce(removed_at, now())
+    where audio_b64 <> '' and (created_at at time zone 'Asia/Singapore')::date < m0;
+  get diagnostics n_story = row_count;
+
+  return jsonb_build_object('month', ym, 'office_files', n_files, 'tata_ibadah', n_tata, 'ss_decks', n_decks, 'roster_files', n_rost, 'chat_files', n_chat, 'stories', n_story);
 end $$;
 revoke all on function hk_month_cleanup() from public, anon, authenticated;
 
