@@ -30,6 +30,7 @@ const standalone = () => matchMedia("(display-mode: standalone)").matches || nav
 
 // ---------- icons (24px line icons) ----------
 const IC = {
+  gallery: '<rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-9 9"/>',
   redo: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>',
   home: '<path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/>',
   groups: '<circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><path d="M15 14.5c3 0 6 1.8 6 5.5"/>',
@@ -4209,14 +4210,20 @@ async function resizeImage(file, max, q, square) {
 }
 
 // Profile photo: tap your picture on More.
+// YB 2026-10-31: pick one from the phone's photo library or take a new one with the camera. Stored (square, small JPEG) on the member's row.
 A.photoPick = () => {
-  if (!(D.photos && D.photos[D.me.id])) return A.photoNew();
-  sheet(L3("Foto profil", "Foto profil", "Profile photo"), `<div class="stack"><button class="opt-card" data-act="photoNew">${ic("camera")}<span><b>${esc(L3("Ganti foto", "Ganti foto", "Change photo"))}</b></span>${ic("chev", "chev")}</button>
-    <button class="opt-card" data-act="photoRemove">${ic("trash")}<span><b>${esc(L3("Hapus foto", "Hapus foto", "Remove photo"))}</b></span>${ic("chev", "chev")}</button></div>`);
+  const has = !!(D.photos && D.photos[D.me.id]);
+  sheet(L3("Foto profil", "Foto profil", "Profile photo"), `<div class="pf-prev">${avatarOf(D.me, "xl")}</div><div class="stack">
+    <button class="opt-card" data-act="photoNew" data-src="camera">${ic("camera")}<span><b>${esc(L3("Ambil foto", "Buat foto", "Take a photo"))}</b><small>${esc(L3("Pakai kamera ponsel", "Pake kamera", "Use the phone's camera"))}</small></span>${ic("chev", "chev")}</button>
+    <button class="opt-card" data-act="photoNew" data-src="library">${ic("gallery")}<span><b>${esc(L3("Pilih dari galeri", "Pilih sian galeri", "Choose from library"))}</b><small>${esc(L3("Foto yang sudah ada di ponsel", "Foto na adong di ponsel", "A photo already on your phone"))}</small></span>${ic("chev", "chev")}</button>
+    ${has ? `<button class="opt-card" data-act="photoRemove">${ic("trash")}<span><b>${esc(L3("Hapus foto", "Hapus foto", "Remove photo"))}</b></span>${ic("chev", "chev")}</button>` : ""}</div>`);
 };
-A.photoNew = () => {
+A.photoNew = (d) => {
   closeSheet(); const inp = document.createElement("input"); inp.type = "file"; inp.accept = "image/*";
-  inp.onchange = async () => { const f = inp.files[0]; if (!f) return; try { const data = await resizeImage(f, 192, 0.8, true); await api.save("photo", { photo: data }); D.photos = { ...(D.photos || {}), [D.me.id]: data }; toast(t("saved")); render(); } catch (e) { toast(errMsg(e), true); } };
+  if (d && d.src === "camera") inp.setAttribute("capture", "user");
+  inp.onchange = async () => { const f = inp.files[0]; if (!f) return;
+    try { let data = await resizeImage(f, 256, 0.82, true); if (data.length > 78000) data = await resizeImage(f, 192, 0.7, true);
+      await api.save("photo", { photo: data }); D.photos = { ...(D.photos || {}), [D.me.id]: data }; toast(t("saved")); render(); } catch (e) { toast(errMsg(e), true); } };
   inp.click();
 };
 A.photoRemove = async () => { closeSheet(); try { await api.save("photo", { photo: "" }); if (D.photos) delete D.photos[D.me.id]; render(); } catch (e) { toast(errMsg(e), true); } };
@@ -4464,6 +4471,9 @@ try { document.head.insertAdjacentHTML("beforeend", `<style>
   .ch-av { position: absolute; left: 0; top: 20px; }
   .ch-av .avatar { width: 32px; height: 32px; font-size: 12px; }
   .ch-av .pres { width: 10px; height: 10px; border-width: 2px; }
+  .pf-prev { display: grid; place-items: center; margin: 4px 0 14px; }
+  .avatar.xl { width: 112px; height: 112px; font-size: 36px; }
+  .avatar.xl .pres { display: none; }
   .pf-photo { display: inline-flex; align-items: center; gap: 6px; margin-top: 6px; }
   .pf-photo .ic { width: 15px; height: 15px; }
   .ch-online { display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 12.5px; color: var(--muted); margin: 6px 0 0; min-height: 18px; }
