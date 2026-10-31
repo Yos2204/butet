@@ -1,4 +1,4 @@
-// Face ID / fingerprint for the Sada HKBPS sign-in (YB 2026-10-31): it fills in the member's saved phone number. Passkeys (WebAuthn) kept by the phone itself:
+// Face ID / fingerprint for the Sada HKBPS sign-in (YB 2026-10-31): phone number + Face ID or password. Passkeys (WebAuthn) kept by the phone itself:
 // iPhone uses Face ID or Touch ID, Android uses face unlock or the fingerprint. The phone never sends the face or
 // the fingerprint anywhere; it only signs a one-time challenge with a key that stays on the phone (and its iCloud
 // Keychain / Google Password Manager), and this function checks the signature with the public key saved here.
@@ -7,7 +7,8 @@
 //   reg_options  { token }                 -> { cid, options }   (a signed-in member adds Face ID on this phone)
 //   reg_verify   { token, cid, response, device } -> { ok }
 //   login_options {}                       -> { cid, options }
-//   login_verify { cid, response }         -> { phone }   (the member's saved number; the app fills it in, no session)
+//   login_verify { cid, response }         -> { phone } for members (the app fills it in and signs in as usual),
+//                                             { phone, token } for Makers (Face ID instead of their password)
 //   list         { token }                 -> { keys: [{ id, device, created_at, last_used }] }
 //   remove       { token, id }             -> { ok }
 //   ping         {}                        -> { ok }   (the app shows the button only when this answers)
@@ -101,8 +102,13 @@ async function handle(b: any, origin: string, rpID: string) {
       });
       if (!v.verified) throw new Fail("bad_passkey");
       await db(`hk_passkeys?id=eq.${enc(k.id)}`, { method: "PATCH", body: JSON.stringify({ counter: v.authenticationInfo.newCounter, last_used: new Date().toISOString() }) });
-      // Face ID only fills in the saved phone number (YB 2026-10-31): no session here, sign-in goes on through hk_login.
-      return { phone: m.phone };
+      // Members (no password): Face ID only fills in the saved number and the app signs in through hk_login as usual.
+      // Makers (have a password): Face ID stands in for the password, so a session starts here (YB 2026-10-31).
+      const kind = await db("rpc/hk_phone_check", { method: "POST", body: JSON.stringify({ p_phone: m.phone }) });
+      if (kind !== "maker") return { phone: m.phone };
+      const token = Array.from(crypto.getRandomValues(new Uint8Array(24)), (x) => x.toString(16).padStart(2, "0")).join("");
+      await db("hk_sessions", { method: "POST", body: JSON.stringify({ token, member_id: m.id, expires_at: new Date(Date.now() + 3650 * 864e5).toISOString() }) });
+      return { phone: m.phone, token };
     }
     case "list": {
       const m = await me(b.token);

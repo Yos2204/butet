@@ -406,7 +406,7 @@ R.login = async () => {
         <p class="small muted pc-hint" aria-live="polite"></p>
         <p class="small muted pc-note">${esc(t("pcNotice"))}</p>
         <div class="pc-reg" hidden><label>${esc(t("f_name"))}<input name="rname" maxlength="80" autocomplete="name"></label></div>
-        <div class="pc-pw" hidden><label>${esc(t("f_password"))}<input name="pw" type="password" autocomplete="current-password"></label></div>
+        <div class="pc-pw" hidden><label>${esc(t("f_password"))}<input name="pw" type="password" autocomplete="current-password"></label><button type="button" class="btn block pk-pw" data-act="pkLogin" hidden></button></div>
         <div class="pc-new" hidden>
           <label>${esc(t("f_newPw"))}<input name="npw" type="password" minlength="6" autocomplete="new-password"></label>
           <label>${esc(t("f_pw2"))}<input name="npw2" type="password" minlength="6" autocomplete="new-password"></label>
@@ -5326,7 +5326,7 @@ const pwIsPhone = (pw, phone) => /^[+0-9 ()-]+$/.test(pw || "") && S.phone8(pw) 
 function pcShow(f, kind) {
   f.dataset.kind = kind || ""; f.dataset.kphone = kind ? S.phone8(f.phone.value) : "";
   const q = (c) => f.querySelector(c);
-  q(".pc-pw").hidden = kind !== "maker"; q(".pc-new").hidden = kind !== "maker_new"; q(".pc-forgot").hidden = kind !== "maker"; q(".pc-reg").hidden = q(".pc-browse").hidden = kind !== "unknown"; q(".pc-note").hidden = !!kind;
+  q(".pc-pw").hidden = kind !== "maker"; if (kind === "maker" && typeof pkPwBtn === "function") pkPwBtn(q(".pk-pw"), S.phone8(f.phone.value)); q(".pc-new").hidden = kind !== "maker_new"; q(".pc-forgot").hidden = kind !== "maker"; q(".pc-reg").hidden = q(".pc-browse").hidden = kind !== "unknown"; q(".pc-note").hidden = !!kind;
   q(".pc-hint").textContent = kind ? t("pc_" + kind) : "";
   q(".pc-btn").textContent = t(kind === "maker_new" ? "firstPwBtn" : kind === "unknown" ? "pcRegister" : "signIn");
   q("button").disabled = !kind;
@@ -5337,7 +5337,11 @@ async function pcCheck(f) {
   if (!validPhone(ph)) { pcShow(f, ""); return ""; }
   if (f.dataset.kphone === ph && f.dataset.kind) return f.dataset.kind;
   const kind = await api.phoneCheck(ph);
-  if (S.phone8(f.phone.value) === ph) pcShow(f, kind);
+  if (S.phone8(f.phone.value) === ph) {
+    pcShow(f, kind);
+    // No password needed: sign in straight away once the number is filled in (YB 2026-10-31). Once per number.
+    if (kind === "member" && f.dataset.auto !== ph && f.isConnected) { f.dataset.auto = ph; f.requestSubmit(); }
+  }
   return kind;
 }
 let pcTimer = 0;
@@ -6810,15 +6814,21 @@ document.addEventListener("visibilitychange", async () => { if (document.visibil
       authenticatorAttachment: cred.authenticatorAttachment || undefined,
       response: { clientDataJSON: b64u(r.clientDataJSON), authenticatorData: b64u(r.authenticatorData), signature: b64u(r.signature), userHandle: r.userHandle ? b64u(r.userHandle) : undefined },
     } }));
-    // Face ID fills in the member's saved phone number (YB 2026-10-31); signing in goes on as usual (Makers still type their password).
-    LS.set("pk.on", 1); LS.set("pk.offered", 1);
+    LS.set("pk.on", 1); LS.set("pk.offered", 1); LS.set("pk.phone", res.phone);
+    // A Maker: Face ID stands in for the password, so the service starts the sign-in itself (YB 2026-10-31).
+    if (res.token) { api.setToken(res.token); LS.set("remote.phone", res.phone); D = null; await refresh(); afterSignIn(); backAfterLogin(); localReminders(); return; }
+    // Everyone else: Face ID fills in the saved phone number and signing in goes on as usual.
     const f = document.querySelector('form[data-form="login"]'); if (!f) return;
     f.phone.value = res.phone; f.phone.dispatchEvent(new Event("input", { bubbles: true }));
-    // Then press Sign in for them (YB 2026-10-31). A Maker's password box opens instead, since they still type it.
+    // pcCheck signs a member in straight away; a Maker's password box opens instead, since they still type it.
     const kind = await pcCheck(f).catch(() => "");
-    if (kind === "member") f.requestSubmit();
-    else toast(L3("Nomor HP Anda sudah diisi.", "Nomor HP mu nunga diisi.", "Your phone number is filled in."));
+    if (kind !== "member") toast(L3("Nomor HP Anda sudah diisi.", "Nomor HP mu nunga diisi.", "Your phone number is filled in."));
   }
+  // Next to a Maker's password box: "Use Face ID instead", when this phone's Face ID belongs to the number typed.
+  window.pkPwBtn = (b, ph) => {
+    const on = usable() && LS.get("pk.id") && LS.get("pk.phone") === ph;
+    b.hidden = !on; if (on) b.innerHTML = `${ic("lock")} ${esc(L3("Atau pakai ", "Manang pake ", "Or use ") + bio())}`;
+  };
   A.pkLogin = async (d, btn) => {
     try { await login(btn); }
     catch (e) { toast(msg(e), e.name !== "NotAllowedError"); prefetch("login").catch(() => {}); }
@@ -6857,7 +6867,7 @@ document.addEventListener("visibilitychange", async () => { if (document.visibil
       authenticatorAttachment: cred.authenticatorAttachment || undefined,
       response: { clientDataJSON: b64u(r.clientDataJSON), attestationObject: b64u(r.attestationObject), transports: r.getTransports ? r.getTransports() : undefined },
     } }));
-    LS.set("pk.on", 1); LS.set("pk.offered", 1); LS.set("pk.id", cred.id);
+    LS.set("pk.on", 1); LS.set("pk.offered", 1); LS.set("pk.id", cred.id); try { LS.set("pk.phone", S.phone8(me().phone)); } catch {}
   }
   const cap = (x) => x.charAt(0).toUpperCase() + x.slice(1);
   const doneTxt = () => L3(`${cap(bio())} aktif. Lain kali tekan "${fillTxt()}".`, `${cap(bio())} nunga aktif.`, `${cap(bio())} is on. Next time tap "${fillTxt()}".`);
