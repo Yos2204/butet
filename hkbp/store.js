@@ -84,14 +84,15 @@ function rcDate(c, ym) {
   if (!mo || mo > 12 || d < 1 || d > 31) return null;
   return `${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
 }
-const RC_SKIP = /(tanggal|date|hari|bahasa|language|nama minggu|asal|tema|theme|ayat|nas\b|bacaan|catatan|note|keterangan|pengumuman)/;
+const RC_SKIP = /(tanggal|date|hari|bahasa|language|nama minggu|asal|tema|theme|ayat|nas\b|bacaan|catatan|note|keterangan|pengumuman|latihan|practi[cs]e|rehearsal|gladi)/;
+const RC_PRACTICE = /(latihan|practi[cs]e|rehearsal|gladi)/i;   // practices may overlap other rosters (YB 2026-10-31)
 function rosterSlots(tj, ym) {
   const out = [];
   (Array.isArray(tj) ? tj : []).forEach((tb) => {
-    const rows = (tb && tb.rows) || []; if (rows.length < 2) return;
+    const rows = (tb && tb.rows) || []; if (rows.length < 2 || RC_PRACTICE.test((tb && tb.name) || "")) return;
     const hi = Math.max(0, rows.findIndex((r) => Array.isArray(r) && r.filter((c) => String(c == null ? "" : c).trim()).length >= 2)); const hd = rows[hi] || [];
     rows.slice(hi + 1).forEach((rw) => {
-      if (!Array.isArray(rw)) return; let day = null; for (const c of rw) { day = rcDate(c, ym); if (day) break; } if (!day) return;
+      if (!Array.isArray(rw)) return; let day = null; for (const c of rw) { day = rcDate(c, ym); if (day) break; } if (!day || rw.some((c, k) => RC_PRACTICE.test(String(c == null ? "" : c)) || (String(c == null ? "" : c).trim() && RC_PRACTICE.test(String(hd[k] == null ? "" : hd[k]))))) return;
       rw.forEach((cell, j) => {
         const h = String(hd[j] == null ? "" : hd[j]); cell = String(cell == null ? "" : cell);
         if (!cell.trim() || rcDate(cell, ym) || RC_SKIP.test(h.toLowerCase())) return;
