@@ -5936,7 +5936,7 @@ F.finance = async (f) => {
   if (!f.fdate || !f.fdate.value.trim() || !(secs[0] && secs[0].items.some((r) => r.name && (r.amts || []).some((v) => v.cur && finNum(v.amt))))) throw new S.AppError("fin_parts");
   await api.save("post", { id: f.dataset.id || undefined, group_id: "treasurer", kind: "finance", title: "Warta Keuangan " + f.day.value, body: finBuild(f.fdate.value.trim(), secs), day: f.day.value });
   closeSheet(); await refresh(); toast(t("saved"));
-  const wf = $("#warta-form .wfin"); if (wf) wf.outerHTML = wFinBox($("#warta-form").dataset.day);
+  const wf = $("#warta-form .wfin"); if (wf) { wf.outerHTML = wFinBox($("#warta-form").dataset.day); wFinSync($("#warta-form")); }
 };
 
 // Receipt scan (YB 2026-10-29): the treasurer takes a photo (or picks a screenshot) of the receipt; Claude reads the SGD amounts,
@@ -6045,6 +6045,10 @@ function wartaAutoParts(day, team) {
 function wartaLoad(day) {
   const saved = wartaPosts().find((p) => p.day === day);
   if (saved) return { ...WARTA_BASE, ...parseJSON(saved.body), day, _id: saved.id };
+  return wartaFresh(day);
+}
+// A new Warta: defaults, the parts carried over from the previous one, then everything the app knows.
+function wartaFresh(day) {
   const prev = wartaPosts().find((p) => p.day < day); const P0 = prev ? parseJSON(prev.body) : {};
   const W = { ...WARTA_BASE, day }; CARRY.forEach((k) => { if (P0[k] != null && P0[k] !== "") W[k] = P0[k]; });
   // Last week's "next Sunday" column becomes this week's.
@@ -6099,24 +6103,26 @@ R.warta = (day) => {
     if (m.theme && !f.theme.value) { f.theme.value = (th ? th[1] : m.theme).replace(/^["“]|["”]$/g, ""); if (th && !f.verse.value) f.verse.value = th[2]; }
   });
   if (!W.rosterLink) W.rosterLink = ROSTER_DEFAULT;
-  if (!W._id || !(W.team || []).some((r) => r[1] || r[2])) setTimeout(() => A.wRoster({ quiet: 1 }), 400);
+  // The service team always comes from the online roster, read again each time the page opens.
+  setTimeout(() => A.wRoster({ quiet: 1 }), 400);
   const sec = (title, inner, open) => `<details class="card wsec"${open ? " open" : ""}><summary><b>${esc(title)}</b></summary>${inner}</details>`;
   return shell("#/home", `
     <div class="card"><p class="small muted">${esc(t("wartaFormLead"))}</p>
       ${can ? `<button class="btn primary block" data-act="wImpAll">${ic("upload")} ${esc(t("w_upAll"))}</button>
       <p class="small muted" style="margin:6px 2px 10px">${esc(t("w_upAllHint"))}</p>` : ""}
-      <div class="row two"><button class="btn" data-act="wartaPreview">${ic("screen")} ${esc(t("preview"))}</button><button class="btn" data-act="wartaRefill">${ic("check")} ${esc(t("wartaRefill"))}</button></div></div>
+      <div class="row two"><button class="btn" data-act="wartaPreview">${ic("screen")} ${esc(t("preview"))}</button><button class="btn" data-act="wartaRefill">${ic("check")} ${esc(t("wartaRefill"))}</button></div>
+      ${can ? `<button type="button" class="btn block danger w-clear" data-act="wartaClear" style="margin-top:8px">${ic("trash")} ${esc(t("w_clear"))}</button>` : ""}</div>
     <form class="form" id="warta-form" data-form="warta" data-day="${day}">
       ${sec(t("w_head"), `${can ? `<div class="row two w-secup"><button type="button" class="btn sm primary" data-act="wImp" data-f="@all">${ic("upload")} ${esc(t("w_upEvery"))}</button></div>` : ""}${wIn0("minggu", "Minggu", W.minggu, "Tata Ibadah")}${wIn0("theme", t("w_theme"), W.theme, "Tata Ibadah")}${wIn0("verse", t("f_verse"), W.verse, "Tata Ibadah")}
         ${wTime("timeThis", t("w_timeThis"), W.timeThis)}${wTime("timeNext", t("w_timeNext"), W.timeNext)}${wTimeList()}`, true)}
       ${sec(t("w_renungan"), `<p class="small muted">${esc(t("w_renHint"))}</p>${can ? wSecUp("@ren", `<button type="button" class="btn sm" data-act="wFromBread">${ic("bread")} ${esc(t("w_fromBread"))}</button>`) : ""}${wIn0("renTitle", t("w_renTitle"), W.renTitle, t("bread"))}${wIn0("renVerse", t("f_verse"), W.renVerse, t("bread"))}${wTa0("renungan", t("w_renunganBody"), W.renungan, 12, t("bread"))}${wIn0("renunganBy", t("w_by"), W.renunganBy)}`, !W.renungan)}
       ${sec(t("birthdays"), `${wTa("bdays", t("w_bdays"), W.bdays, 4, t("src_bdays"))}${wTa("bdayVerse", t("w_verseGift"), W.bdayVerse, 2)}${wTa("anniv", t("w_anniv"), W.anniv, 3)}${wTa("annivVerse", t("w_verseGift"), W.annivVerse, 2)}`)}
-      ${sec("Warta Keuangan", wFinBox(day), !finFor(day))}
+      ${sec("Warta Keuangan", `${wFinBox(day)}${wFinText(W)}`, !wFinVal(W))}
       ${sec(t("w_team"), `<label>${wLab("rosterLink", t("w_rosterLink"))}<input name="rosterLink" type="url" inputmode="url" placeholder="https://docs.google.com/spreadsheets/…" value="${esc(W.rosterLink || "")}"></label>
         <p class="small muted">${esc(t("w_rosterHint"))}</p>
-        <div class="row two"><button type="button" class="btn" data-act="wRoster">${ic("check")} ${esc(t("w_rosterRead"))}</button><button type="button" class="btn" data-act="wImp" data-f="team">${ic("upload")} ${esc(t("w_upload"))}</button></div>
+        <button type="button" class="btn block" data-act="wRoster">${ic("check")} ${esc(t("w_rosterRead"))}</button>
         <div class="tbl-wrap"><table class="tbl wteam"><tr><th></th><th>${esc(fmtID(day))}</th><th>${esc(fmtID(addDays(day, 7)))}</th></tr>
-        ${W.team.map(([r, a, b], i) => `<tr><th><input name="tr${i}" value="${esc(r)}"></th><td><input name="ta${i}" value="${esc(a)}"></td><td><input name="tb${i}" value="${esc(b)}"></td></tr>`).join("")}</table></div>
+        ${W.team.map(([r, a, b], i) => wTeamRow(i, r, a, b)).join("")}</table></div>
         <p class="small muted">${esc(t("w_teamHint"))}</p>`)}
       ${sec(t("w_news"), `${wTa("berita", "Berita Pelayanan", W.berita, 10, t("src_updates"))}${wIn("jadwalTitle", t("w_jadwalTitle"), W.jadwalTitle)}${wTa("jadwal", t("w_jadwal"), W.jadwal, 5, t("src_calendar"))}`)}
       ${sec(t("w_more"), `${wTa("doa", "Pokok Doa", W.doa, 4)}${wTa("info", t("w_info"), W.info, 6)}
@@ -6131,22 +6137,32 @@ R.warta = (day) => {
 // Warta Keuangan is typed by the treasurer only; the secretary sees it here and can ask for it.
 function wFinBox(day) {
   const p = finFor(day);
-  return `<div class="wfin">${p ? `<p class="small"><b>${esc(t("finFrom", p.author_name || t("treasurer")))}</b></p><p class="pre small">${esc(p.body)}</p>` : `<div class="notice warn">${ic("bell")} <span>${esc(t("finMissing", fmtID(day)))}</span></div>`}
+  return `<div class="wfin">${p ? `<p class="small"><b>${esc(t("finFrom", p.author_name || t("treasurer")))}</b></p>` : `<div class="notice warn">${ic("bell")} <span>${esc(t("finMissing", fmtID(day)))}</span></div>`}
     <div class="row two"><button type="button" class="btn" data-act="wAskFin">${ic("wa")} ${esc(t("finAsk"))}</button>${canUpload("treasurer") ? `<button type="button" class="btn" data-act="financeForm" data-day="${day}">${ic("edit")} ${esc(t(p ? "financeEdit" : "financeNew"))}</button>` : `<button type="button" class="btn" data-act="wFinReload">${ic("check")} ${esc(t("finReload"))}</button>`}</div></div>`;
 }
+// The finance text itself: the treasurer's entry, which the secretary can also type or change by hand.
+const wFinVal = (W) => (W.finManual ? W.finance : ((finFor(W.day) || {}).body || W.finance || "")) || "";
+const wFinText = (W) => `<label>${wPlainLab(t("w_finText"))}<textarea name="finance" rows="10" data-auto="${W.finManual ? 0 : 1}">${esc(wFinVal(W))}</textarea></label><p class="small muted">${esc(t("w_finHint"))}</p>`;
+// Treasurer's entry arrived or changed: copy it in, unless the secretary typed their own.
+function wFinSync(f) { const ta = f && f.finance; if (!ta || (ta.dataset.auto === "0" && ta.value.trim())) return; const b = (finFor(f.dataset.day) || {}).body || ""; if (b) { ta.value = b; ta.dataset.auto = "1"; } }
+// Service team rows are read-only: they come from the online roster.
+const wTeamRow = (i, r, a, b) => `<tr><th><input name="tr${i}" value="${esc(r)}" readonly tabindex="-1"></th><td><input name="ta${i}" value="${esc(a)}" readonly tabindex="-1"></td><td><input name="tb${i}" value="${esc(b)}" readonly tabindex="-1"></td></tr>`;
+document.addEventListener("input", (e) => { if (e.target.name === "finance" && e.target.closest && e.target.closest("#warta-form")) e.target.dataset.auto = "0"; });
 A.wAskFin = () => {
   const f = $("#warta-form"); const day = f ? f.dataset.day : nextSunday();
   const tr = holders("treasurer").find((p) => p.phone); const url = location.href.split("#")[0] + "#/o/treasurer";
   window.open(wa(t("finAskMsg", fmtID(day), url), tr && tr.phone), "_blank", "noopener");
 };
-A.wFinReload = async () => { await refresh(); const f = $("#warta-form"); if (!f) return; const box = f.querySelector(".wfin"); if (box) box.outerHTML = wFinBox(f.dataset.day); toast(finFor(f.dataset.day) ? t("finArrived") : t("finStillMissing"), !finFor(f.dataset.day)); };
+A.wFinReload = async () => { await refresh(); const f = $("#warta-form"); if (!f) return; const box = f.querySelector(".wfin"); if (box) box.outerHTML = wFinBox(f.dataset.day); wFinSync(f); toast(finFor(f.dataset.day) ? t("finArrived") : t("finStillMissing"), !finFor(f.dataset.day)); };
 const W_FIELDS = ["minggu", "theme", "verse", "timeThis", "timeNext", "renTitle", "renVerse", "renungan", "renunganBy", "rosterLink", "bdays", "bdayVerse", "anniv", "annivVerse", "berita", "jadwalTitle", "jadwal", "doa", "info", "attDate", "org", "resort", "address", "email", "closing"];
 function wartaCollect(f) {
   const W = { ...R.warta._W }; delete W._id;
   W_FIELDS.forEach((k) => { if (f[k]) W[k] = f[k].value.trim(); });
   W.att = [0, 1, 2, 3, 4].map((i) => (f["att" + i] ? f["att" + i].value.trim() : ""));
   W.team = []; for (let i = 0; f["tr" + i]; i++) if (f["tr" + i].value.trim()) W.team.push([f["tr" + i].value.trim(), f["ta" + i].value.trim(), f["tb" + i].value.trim()]);
-  W.day = f.dataset.day; W.finance = (finFor(W.day) || {}).body || ""; return W;
+  W.day = f.dataset.day;
+  if (f.finance) { W.finance = f.finance.value.trim(); W.finManual = f.finance.dataset.auto === "0"; } else { W.finance = (finFor(W.day) || {}).body || ""; W.finManual = false; }
+  return W;
 }
 async function wartaSaveDraft(W) {
   const res = await api.save("post", { id: R.warta._W._id || undefined, group_id: "secretary", kind: "warta", title: "Warta Jemaat " + fmtID(W.day), body: JSON.stringify(W), day: W.day });
@@ -6169,8 +6185,28 @@ A.wartaRefill = () => {
   const f = $("#warta-form"); const W = wartaCollect(f); const a = wartaAutoParts(W.day, W.team);
   ["bdays", "berita", "jadwalTitle", "jadwal", "renungan", "renTitle", "renVerse"].forEach((k) => { if (a[k]) f[k].value = a[k]; });
   if (a.renungan) f.renunganBy.value = "";
+  // Parts carried over from last week (or the defaults) come back where the box is empty, e.g. after Clear all.
+  const fr = wartaFresh(W.day); W_FIELDS.forEach((k) => { if (f[k] && !f[k].value.trim() && fr[k]) f[k].value = fr[k]; });
+  if (f.attDate && !f.attDate.value.trim()) f.attDate.value = fr.attDate || fmtID(addDays(W.day, -7));
+  (fr.att || []).forEach((n, i) => { if (f["att" + i] && !f["att" + i].value.trim() && n) f["att" + i].value = n; });
+  if (f.finance && a.finance) { f.finance.value = a.finance; f.finance.dataset.auto = "1"; }
+  wTimeSync(f);
   a.team.forEach(([, x, y], i) => { if (f["ta" + i] && x) f["ta" + i].value = x; if (f["tb" + i] && y) f["tb" + i].value = y; });
   toast(t("wartaRefilled"));
+};
+// Clear all (tap twice): empties every box the secretary fills. The service team is read again from the online roster.
+A.wartaClear = (d, btn) => {
+  if (btn.dataset.sure !== "1") { btn.dataset.sure = "1"; btn.classList.add("sure"); btn.innerHTML = `${ic("trash")} ${esc(t("w_clearSure"))}`; setTimeout(() => { if (btn.isConnected) { btn.dataset.sure = ""; btn.classList.remove("sure"); btn.innerHTML = `${ic("trash")} ${esc(t("w_clear"))}`; } }, 4000); return; }
+  btn.dataset.sure = ""; btn.classList.remove("sure"); btn.innerHTML = `${ic("trash")} ${esc(t("w_clear"))}`;
+  const f = $("#warta-form"); if (!f) return;
+  W_FIELDS.filter((k) => k !== "rosterLink").forEach((k) => { if (f[k]) f[k].value = ""; });
+  f.querySelectorAll("[data-tp]").forEach((x) => (x.value = ""));
+  for (let i = 0; i < 5; i++) if (f["att" + i]) f["att" + i].value = "";
+  if (f.finance) { f.finance.value = ""; f.finance.dataset.auto = "0"; }
+  for (let i = 0; f["ta" + i]; i++) { f["ta" + i].value = ""; f["tb" + i].value = ""; }
+  LS.set("draft:warta:" + f.dataset.day, null);
+  wAutoFlush(true); A.wRoster({ quiet: 1 }).then(() => wAutoFlush(true));
+  toast(t("w_cleared"));
 };
 // Preview is the real PDF, page by page, exactly as it will print.
 A.wartaPreview = (d, btn) => busy(btn, async () => {
@@ -6271,7 +6307,7 @@ function wSetTeam(f, team) {
   const tb = f.querySelector(".wteam");
   team.forEach(([r, a, b]) => {
     let i = 0; for (; f["tr" + i]; i++) if (f["tr" + i].value.trim().toLowerCase() === r.toLowerCase()) break;
-    if (!f["tr" + i]) { tb.insertAdjacentHTML("beforeend", `<tr><th><input name="tr${i}" value="${esc(r)}"></th><td><input name="ta${i}"></td><td><input name="tb${i}"></td></tr>`); }
+    if (!f["tr" + i]) { tb.insertAdjacentHTML("beforeend", wTeamRow(i, r, "", "")); }
     if (a) f["ta" + i].value = a; if (b) f["tb" + i].value = b;
   });
   const det = tb.closest("details"); if (det) det.open = true;
@@ -6320,7 +6356,7 @@ function wApplyAll(got, full) {
       if (v == null || v === "" || (Array.isArray(v) && !v.length)) return;
       if (k === "team") { wSetTeam(f, v); done.push(L.team); return; }
       if (k === "att") { v.forEach((n, i) => { if (f["att" + i]) f["att" + i].value = n; }); done.push(L.att); return; }
-      if (k === "finance" || !f[k]) return; f[k].value = v; if (L[k] && !done.includes(L[k])) done.push(L[k]);
+      if (!f[k]) return; f[k].value = v; if (k === "finance") f.finance.dataset.auto = "0"; if (L[k] && !done.includes(L[k])) done.push(L[k]);
     });
     report.push([g.name, done.length ? done.join(", ") : t("w_nothingMatched")]);
   });
