@@ -6749,6 +6749,7 @@ document.addEventListener("visibilitychange", async () => { if (document.visibil
   const ANDROID = /Android/.test(ua);
   // What the phone calls it, in the member's language.
   const bio = () => IOS ? "Face ID" : ANDROID ? L3("sidik jari / wajah", "sidik jari / bohi", "fingerprint / face") : L3("Face ID / sidik jari", "Face ID / sidik jari", "Face ID / fingerprint");
+  const fillTxt = () => L3("Isi nomor HP dengan ", "Isi nomor HP pake ", "Fill in my number with ") + bio();
   const device = () => IOS ? (/iPad/.test(ua) ? "iPad" : "iPhone") : ANDROID ? "Android" : /Mac/.test(ua) ? "Mac" : /Windows/.test(ua) ? "Windows" : "Browser";
 
   let ok = null, srv = false; // does this phone have Face ID / fingerprint for websites? is the sign-in service up?
@@ -6808,8 +6809,14 @@ document.addEventListener("visibilitychange", async () => { if (document.visibil
       authenticatorAttachment: cred.authenticatorAttachment || undefined,
       response: { clientDataJSON: b64u(r.clientDataJSON), authenticatorData: b64u(r.authenticatorData), signature: b64u(r.signature), userHandle: r.userHandle ? b64u(r.userHandle) : undefined },
     } }));
-    api.setToken(res.token); LS.set("remote.phone", res.phone); LS.set("pk.on", 1); LS.set("pk.offered", 1);
-    D = null; await refresh(); afterSignIn(); backAfterLogin(); localReminders();
+    // Face ID fills in the member's saved phone number (YB 2026-10-31); signing in goes on as usual (Makers still type their password).
+    LS.set("pk.on", 1); LS.set("pk.offered", 1);
+    const f = document.querySelector('form[data-form="login"]'); if (!f) return;
+    f.phone.value = res.phone; f.phone.dispatchEvent(new Event("input", { bubbles: true }));
+    // Then press Sign in for them (YB 2026-10-31). A Maker's password box opens instead, since they still type it.
+    const kind = await pcCheck(f).catch(() => "");
+    if (kind === "member") f.requestSubmit();
+    else toast(L3("Nomor HP Anda sudah diisi.", "Nomor HP mu nunga diisi.", "Your phone number is filled in."));
   }
   A.pkLogin = async (d, btn) => {
     try { await login(btn); }
@@ -6821,8 +6828,8 @@ document.addEventListener("visibilitychange", async () => { if (document.visibil
     okP.then(() => {
       if (!usable() || api.hasSession()) return;
       prefetch("login").then(() => {
-        el.innerHTML = `<button type="button" class="btn block pk-btn" data-act="pkLogin">${ic("lock")} ${esc(L3("Masuk dengan ", "Bongot pake ", "Sign in with ") + bio())}</button>
-          <p class="small muted center pk-or">${esc(L3("atau masuk dengan nomor HP", "manang bongot pake nomor HP", "or sign in with your phone number"))}</p>`;
+        el.innerHTML = `<button type="button" class="btn block pk-btn" data-act="pkLogin">${ic("lock")} ${esc(fillTxt())}</button>
+          <p class="small muted center pk-or">${esc(L3("atau ketik nomor HP Anda", "manang ketik nomor HP mu", "or type your phone number"))}</p>`;
         clearInterval(fillSlot.h); fillSlot.h = setInterval(() => { if (!el.isConnected) return clearInterval(fillSlot.h); prefetch("login").catch(() => {}); }, 200e3);
       }).catch(() => {}); // the sign-in service isn't reachable: keep the phone-number sign-in only
     });
@@ -6834,7 +6841,7 @@ document.addEventListener("visibilitychange", async () => { if (document.visibil
   window.pkMenuItem = () => {
     if (!usable() || typeof isGuest === "function" && isGuest()) return "";
     const on = LS.get("pk.on");
-    return `<button class="li" data-act="pkManage">${ic("lock")}<span class="grow"><b>${esc(L3("Masuk dengan ", "Bongot pake ", "Sign in with ") + bio())}</b><small>${esc(on ? L3("Aktif di HP ini", "Aktif di HP on", "On for this phone") : L3("Masuk tanpa mengetik, cukup pakai wajah atau jari", "Bongot ndang pake mangetik", "Sign in without typing, just your face or finger"))}</small></span>${ic("chev", "chev")}</button>`;
+    return `<button class="li" data-act="pkManage">${ic("lock")}<span class="grow"><b>${esc(fillTxt())}</b><small>${esc(on ? L3("Aktif di HP ini", "Aktif di HP on", "On for this phone") : L3("Tidak perlu mengetik nomor HP saat masuk", "Ndang pola mangetik nomor HP", "No need to type your number when signing in"))}</small></span>${ic("chev", "chev")}</button>`;
   };
   async function register(btn) {
     const p = await take("reg");
@@ -6852,19 +6859,19 @@ document.addEventListener("visibilitychange", async () => { if (document.visibil
     LS.set("pk.on", 1); LS.set("pk.offered", 1);
   }
   const cap = (x) => x.charAt(0).toUpperCase() + x.slice(1);
-  const doneTxt = () => L3(`${cap(bio())} aktif. Lain kali tekan "Masuk dengan ${bio()}".`, `${cap(bio())} nunga aktif.`, `${cap(bio())} is on. Next time tap "Sign in with ${bio()}".`);
+  const doneTxt = () => L3(`${cap(bio())} aktif. Lain kali tekan "${fillTxt()}".`, `${cap(bio())} nunga aktif.`, `${cap(bio())} is on. Next time tap "${fillTxt()}".`);
   A.pkAdd = async (d, btn) => {
     try { await register(btn); closeSheet(); toast(doneTxt()); if (d.next) setTimeout(pkNext, 700); else render(); }
     catch (e) { toast(msg(e), e.name !== "NotAllowedError"); prefetch("reg").catch(() => {}); }
   };
   A.pkManage = async () => {
-    sheet(L3("Masuk dengan ", "Bongot pake ", "Sign in with ") + bio(), `<div class="center pad">${skel(2)}</div>`);
+    sheet(fillTxt(), `<div class="center pad">${skel(2)}</div>`);
     let keys = [];
     try { [{ keys }] = await Promise.all([call({ action: "list", token: api.token }), prefetch("reg")]); }
     catch (e) { closeSheet(); toast(msg(e), true); return; }
     const fmtD = (s) => s ? new Date(s).toLocaleDateString(lang === "en" ? "en-GB" : "id-ID", { day: "numeric", month: "short", year: "numeric" }) : "";
-    sheet(L3("Masuk dengan ", "Bongot pake ", "Sign in with ") + bio(), `
-      <p class="muted">${esc(L3(`Masuk ke Sada tanpa mengetik: HP akan meminta ${bio()}. Wajah dan sidik jari Anda tetap di HP, tidak dikirim ke mana pun.`, `Bongot tu Sada ndang pake mangetik: HP mangido ${bio()}. Bohi dohot sidik jarimu tetap di HP.`, `Sign in to Sada without typing: your phone asks for ${bio()}. Your face and fingerprint stay on your phone and are never sent anywhere.`))}</p>
+    sheet(fillTxt(), `
+      <p class="muted">${esc(L3(`Saat masuk, ${bio()} mengisi nomor HP Anda yang tersimpan. Makers tetap mengetik kata sandi. Wajah dan sidik jari Anda tetap di HP, tidak dikirim ke mana pun.`, `Tingki bongot, ${bio()} mangisi nomor HP mu. Makers tetap mangetik kata sandi. Bohi dohot sidik jarimu tetap di HP.`, `When you sign in, ${bio()} fills in your saved phone number. Makers still type their password. Your face and fingerprint stay on your phone and are never sent anywhere.`))}</p>
       <button class="btn primary block" data-act="pkAdd">${ic("lock")} ${esc(L3("Aktifkan di HP ini", "Aktifhon di HP on", "Turn on for this phone"))}</button>
       ${keys.length ? `<h4>${esc(L3("HP yang sudah aktif", "HP na nunga aktif", "Phones that are on"))}</h4><div class="menu card">${keys.map((k) => `<div class="li">${ic("phone")}<span class="grow"><b>${esc(k.device || "—")}</b><small>${esc(L3("Sejak ", "Sian ", "Since ") + fmtD(k.created_at))}${k.last_used ? esc(" · " + L3("terakhir ", "parpudi ", "last used ") + fmtD(k.last_used)) : ""}</small></span><button class="btn sm ghost" data-act="pkDel" data-id="${esc(k.id)}">${esc(L3("Hapus", "Apus", "Remove"))}</button></div>`).join("")}</div>` : ""}`);
   };
@@ -6885,7 +6892,7 @@ document.addEventListener("visibilitychange", async () => { if (document.visibil
     setTimeout(() => {
       if (quiet && (!document.querySelector("#sheet")?.hidden || /^#\/login/.test(location.hash))) return;
       prefetch("reg").then(() => sheet(L3("Masuk lebih cepat?", "Bongot lobi hatop?", "Faster sign-in?"), `
-        <p class="muted">${esc(L3(`Lain kali masuk dengan ${bio()}, tanpa mengetik nomor atau kata sandi.`, `Sogot masuk pake ${bio()}, ndang pake mangetik.`, `Next time, sign in with ${bio()} instead of typing your number or password.`))}</p>
+        <p class="muted">${esc(L3(`Lain kali ${bio()} mengisi nomor HP Anda, tidak perlu mengetik.`, `Sogot ${bio()} mangisi nomor HP mu, ndang pola mangetik.`, `Next time, ${bio()} fills in your phone number so you don't have to type it.`))}</p>
         <button class="btn primary block" data-act="pkAdd"${quiet ? "" : ` data-next="1"`}>${ic("lock")} ${esc(L3("Pakai ", "Pake ", "Use ") + bio())}</button>
         <button class="btn block ghost" data-act="pkLater"${quiet ? "" : ` data-next="1"`}>${esc(L3("Nanti saja", "Annon ma", "Not now"))}</button>`)).catch(() => { if (!quiet) pkNext(); });
     }, quiet ? 0 : 600);
