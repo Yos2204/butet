@@ -6,7 +6,7 @@ const S = window.HKBP_STORE, P = window.HKBP_PARSE, I18N = window.HKBP_I18N;
 const LS = S.LS;
 let api = S.pick();
 let D = null;               // everything the signed-in member may see
-let lang = LS.get("lang", "id");
+let lang = LS.get("lang", "en");   // English unless the member picked another language (YB 2026-10-31)
 const $ = (s, el = document) => el.querySelector(s);
 const view = () => $("#view");
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
