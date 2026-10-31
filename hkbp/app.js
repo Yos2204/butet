@@ -3545,7 +3545,7 @@ async function callOnSig(s) {
   }
 }
 async function callBegin(res, video) {
-  CALL.id = res.call.id; CALL.room = res.call.room; CALL.me = res.me; CALL.ice = res.ice; CALL.answered = !!res.call.answered_at || res.call.caller_id !== res.me;
+  CALL.after = res.after || 0; CALL.id = res.call.id; CALL.room = res.call.room; CALL.me = res.me; CALL.ice = res.ice; CALL.answered = !!res.call.answered_at || res.call.caller_id !== res.me;
   CALL.names = {}; (res.peers || []).forEach((p) => (CALL.names[p.id] = p.name));
   if (CALL.room.startsWith("dm:")) { CALL.dm = CALL.room.slice(3).split(":").find((x) => x !== res.me); CALL.dmName = res.call.caller_id === res.me ? "" : res.call.caller_name; }
   else CALL.title = (chatRooms().find((r) => r.id === CALL.room) || {}).name || "Chat";
