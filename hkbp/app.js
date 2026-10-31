@@ -394,7 +394,7 @@ const langSwitch = () => `<div class="langs" role="group" aria-label="${esc(t("l
 const empty = (msg, icon = "star") => `<div class="empty">${ic(icon)}<p>${esc(msg)}</p></div>`;
 const roleBadge = (gid) => { if (!manage()) return ""; const r = isAdmin() && !roleIn(gid) ? "admin" : roleIn(gid); return r ? `<span class="badge ${MAKERS.includes(r) ? "chair" : r === "teacher" ? "member" : r}">${esc(roleLabel(gid, r))}</span>` : ""; };
 const groupTile = (g, extra = "") => `<a class="gtile" href="#/${({ sermon: "g", office: "o" })[g.kind] || "s"}/${g.id}" style="--gc:${g.color}">
-    <span class="gicon">${ic(g.icon)}</span><span class="gname"><b>${esc(gname(g))}</b><small>${extra}</small></span>${newBadge(g.kind !== "office" && groupNew(g.id))}${roleBadge(g.id)}${ic("chev", "chev")}</a>`;
+    ${gIcon(g)}<span class="gname"><b>${esc(gname(g))}</b><small>${extra}</small></span>${newBadge(g.kind !== "office" && groupNew(g.id))}${roleBadge(g.id)}${ic("chev", "chev")}</a>`;
 
 // ---------- screens ----------
 const R = {};
@@ -543,7 +543,7 @@ R.groups = () => {
     <div class="gcards">${list.map((g) => {
       const n = D.people.filter((p) => g.id in (p.groups || {})).length; const posts = D.posts.filter((p) => p.group_id === g.id).length; const ok = canSee(g);
       return `<a class="gcard ${ok ? "" : "locked"}" href="#/g/${g.id}" style="--gc:${g.color}">
-        <span class="gcard-bg"></span><span class="gicon lg">${ic(g.icon)}</span>
+        <span class="gcard-bg"></span>${gIcon(g, "lg")}
         <span class="gcard-t"><b>${esc(gname(g))}</b><small>${esc(t("motto_" + g.id) !== "motto_" + g.id ? t("motto_" + g.id) : "")}</small></span>
         <span class="gcard-f">${newBadge(ok && groupNew(g.id))}${roleBadge(g.id) || (ok ? "" : `<span class="badge">${ic("lock")} ${esc(t("membersOnly"))}</span>`)}<span class="small">${n} ${esc(t("members"))}${ok ? ` · ${posts} ${esc(t("posts"))}` : ""}</span></span>
       </a>`; }).join("")}</div>`);
@@ -584,7 +584,7 @@ R.group = (gid) => {
   const svc = g.kind === "service";
   return shell(svc ? "#/serve" : "#/groups", `
     <section class="ghero" style="--gc:${g.color}">
-      <span class="gicon xl">${ic(g.icon)}</span>
+      ${heroPic(g)}
       <div><h2>${esc(gname(g))}</h2><p>${esc(t("motto_" + g.id) !== "motto_" + g.id ? t("motto_" + g.id) : t(svc ? "kindService" : "kindSermon"))}</p>${roleBadge(gid) ? `<div class="hero-role">${roleBadge(gid)} <small>${esc(edit ? t("canUpdate") : teach && canRunPoll(gid) ? t("teacherSub") : t("readOnly"))}</small></div>` : ""}</div>
     </section>
     ${ok ? wishCard(g, people) : ""}
@@ -677,11 +677,11 @@ R.serve = () => {
     ${(() => { // Parhalado's roster and polls: its own section, shown only to Parhalado members and the admin (YB 2026-10-28).
       const g = G("parhalado"); if (!g || !(D.me.is_admin || "parhalado" in (D.me.groups || {}))) return "";
       const has = D.rosters.some((r) => r.group_id === g.id && r.month === ym); const open = (D.polls || []).filter((p) => p.group_id === g.id && p.status === "open").length;
-      return `<h3 class="sec-h">${esc(L3("Roster Parhalado", "Roster Parhalado", "Elders' roster"))}</h3><div class="glist"><a class="gtile" href="${rosterHome(g.id, ym)}" style="--gc:${g.color}"><span class="gicon">${ic(g.icon)}</span><span class="gname"><b>${esc(gname(g))}</b><small>${has ? "✓ " : ""}${esc(t(has ? "rosterReady" : "rosterMissing", monthName(ym)))}${open ? " · " + esc(L3(`${open} polling terbuka`, `${open} polling bukka`, `${open} open poll${open > 1 ? "s" : ""}`)) : ""}</small></span>${roleBadge(g.id)}${ic("chev", "chev")}</a></div>`; })()}
+      return `<h3 class="sec-h">${esc(L3("Roster Parhalado", "Roster Parhalado", "Elders' roster"))}</h3><div class="glist"><a class="gtile" href="${rosterHome(g.id, ym)}" style="--gc:${g.color}">${gIcon(g)}<span class="gname"><b>${esc(gname(g))}</b><small>${has ? "✓ " : ""}${esc(t(has ? "rosterReady" : "rosterMissing", monthName(ym)))}${open ? " · " + esc(L3(`${open} polling terbuka`, `${open} polling bukka`, `${open} open poll${open > 1 ? "s" : ""}`)) : ""}</small></span>${roleBadge(g.id)}${ic("chev", "chev")}</a></div>`; })()}
     ${(() => { // Teachers' rosters (Sunday School, Remaja) also listed here for their teachers; they open the class's Roster tab.
       const cls = ROSTER_CATS.map(G).filter((g) => g && isTeacherIn(g.id)); if (!cls.length) return "";
       return `<h3 class="sec-h">${esc(L3("Roster Guru", "Roster Guru", "Teachers' rosters"))}</h3><div class="glist">${cls.map((g) => { const has = D.rosters.some((r) => r.group_id === g.id && r.month === ym);
-        return `<a class="gtile" href="${rosterHome(g.id, ym)}" style="--gc:${g.color}"><span class="gicon">${ic(g.icon)}</span><span class="gname"><b>${esc(gname(g))}</b><small>${has ? "✓ " : ""}${esc(t(has ? "rosterReady" : "rosterMissing", monthName(ym)))}</small></span>${roleBadge(g.id)}${ic("chev", "chev")}</a>`; }).join("")}</div>`; })()}
+        return `<a class="gtile" href="${rosterHome(g.id, ym)}" style="--gc:${g.color}">${gIcon(g)}<span class="gname"><b>${esc(gname(g))}</b><small>${has ? "✓ " : ""}${esc(t(has ? "rosterReady" : "rosterMissing", monthName(ym)))}</small></span>${roleBadge(g.id)}${ic("chev", "chev")}</a>`; }).join("")}</div>`; })()}
     ${isAdmin() ? `<button class="btn block ghost" data-act="newSection">${ic("plus")} ${esc(t("addSection"))}</button>` : ""}`);
 };
 
@@ -694,7 +694,7 @@ R.section = (gid) => {
   const people = D.people.filter((p) => gid in (p.groups || {}));
   return shell("#/serve", `
     <section class="ghero slim" style="--gc:${g.color}">
-      <span class="gicon xl">${ic(g.icon)}</span>
+      ${heroPic(g)}
       <div><h2>${esc(gname(g))}</h2><p>${esc(t("kindService"))}</p>${roleBadge(gid) ? `<div class="hero-role">${roleBadge(gid)} <small>${esc(edit ? t("canUpdate") : t("readOnly"))}</small></div>` : ""}</div>
     </section>
     ${gid === "multimedia" ? tataBlock() : ""}
@@ -2978,7 +2978,7 @@ R.access = () => {
     return `<h3 class="sec-h">${esc(L3(...KIND_NAMES[k]))}</h3><div class="acc-grid">${gs.map((g) => {
       const ms = people.filter((p) => g.id in (p.groups || {})).sort((a, b) => roleOrder(a.groups[g.id]) - roleOrder(b.groups[g.id]) || a.name.localeCompare(b.name));
       const lead = ms.filter((p) => p.groups[g.id] !== "member").length;
-      return `<details class="card acc-g" style="--gc:${g.color || "var(--brand)"}"><summary><span class="gicon">${ic(g.icon || "people")}</span><span class="grow"><b>${esc(gname(g))}</b><small>${ms.length} ${esc(L3("anggota", "ruas", "members"))} · ${lead} ${esc(L3("pengurus/maker", "pengurus", "leaders/makers"))}</small></span></summary>
+      return `<details class="card acc-g" style="--gc:${g.color || "var(--brand)"}"><summary>${gIcon(g)}<span class="grow"><b>${esc(gname(g))}</b><small>${ms.length} ${esc(L3("anggota", "ruas", "members"))} · ${lead} ${esc(L3("pengurus/maker", "pengurus", "leaders/makers"))}</small></span></summary>
         ${ms.length ? ms.map((p) => row(p, p.groups[g.id])).join("") : `<p class="muted small">${esc(L3("Belum ada anggota.", "Ndang adong.", "No members yet."))}</p>`}</details>`; }).join("")}</div>`;
   }).join("");
   const none = people.filter((p) => !Object.keys(p.groups || {}).length);
@@ -4600,24 +4600,47 @@ async function resizeImage(file, max, q, square) {
   } finally { URL.revokeObjectURL(url); }
 }
 
-// Profile photo: tap your picture on More.
-// YB 2026-10-31: pick one from the phone's photo library or take a new one with the camera. Stored (square, small JPEG) on the member's row.
-A.photoPick = () => {
-  const has = !!(D.photos && D.photos[D.me.id]);
-  sheet(L3("Foto profil", "Foto profil", "Profile photo"), `<div class="pf-prev">${avatarOf(D.me, "xl")}</div><div class="stack">
+// Profile photo: tap your picture on More. Category and section pictures: tap the big picture at the top of its page.
+// YB 2026-10-31: pick one from the phone's photo library or take a new one with the camera. Stored (square, small JPEG) on the server.
+// Up to 2 pictures are kept for each member, category and section: the one shown and the one before it. A new picture
+// replaces the older saved one; "Use this" switches back; "Remove" takes the shown one away (the saved one, if any, takes its place).
+const picOk = (gid) => !gid || (!isGuest() && (isAdmin() || canEdit(gid) || canRoster(gid)));
+const picCur = (gid) => (gid ? (D.group_photos || {})[gid] : (D.photos || {})[D.me.id]) || null;
+function picSet(gid, v) { const k = gid ? "group_photos" : "photos", id = gid || D.me.id; D[k] = { ...(D[k] || {}) }; if (v) D[k][id] = v; else delete D[k][id]; }
+const picSave = (gid, d) => api.save(gid ? "group_photo" : "photo", gid ? { group_id: gid, ...d } : d);
+const PIC = { g: null, prev: null };
+const gIcon = (g, cls = "") => { const ph = g && D && D.group_photos && D.group_photos[g.id]; return `<span class="gicon${cls ? " " + cls : ""}${ph ? " has-ph" : ""}">${ph ? `<img src="${esc(ph)}" alt="">` : ic((g && g.icon) || "people")}</span>`; };
+// The big picture at the top of a category or section page: a button for whoever may change it.
+const heroPic = (g) => (picOk(g.id) ? `<button class="gpic-btn" data-act="photoPick" data-g="${esc(g.id)}" aria-label="${esc(L3("Ganti gambar", "Ganti gambar", "Change picture"))}">${gIcon(g, "xl")}<i class="avatar-edit">${ic("camera")}</i></button>` : gIcon(g, "xl"));
+function picSavedHtml() {
+  const gid = PIC.g, cur = picCur(gid), prev = PIC.prev; if (!cur && !prev) return "";
+  const one = (src, shown) => `<div class="pic-saved-i${shown ? " on" : ""}"><img src="${esc(src)}" alt=""><small>${esc(shown ? L3("Ditampilkan", "Ditampilkan", "Shown") : L3("Tersimpan", "Tersimpan", "Saved"))}</small>${shown ? "" : `<span class="row"><button class="btn sm primary" data-act="picUse">${esc(L3("Pakai", "Pake", "Use this"))}</button><button class="btn sm danger" data-act="picDrop" aria-label="${esc(L3("Hapus", "Hapus", "Remove"))}">${ic("trash")}</button></span>`}</div>`;
+  return `<h4 class="sec-h">${esc(L3("Gambar tersimpan (maks. 2)", "Gambar na tersimpan (maks. 2)", "Saved pictures (up to 2)"))}</h4>
+    <div class="pic-saved">${cur ? one(cur, true) : ""}${prev ? one(prev, false) : ""}</div>
+    <p class="small muted">${esc(L3("Sada menyimpan 2 gambar terakhir. Gambar baru menggantikan yang lebih lama.", "Sada manyimpan 2 gambar na parpudi. Gambar na imbaru manggantihon na robi.", "Sada keeps the last 2 pictures. A new one replaces the older saved one."))}</p>`;
+}
+const picPaint = () => { const el = document.getElementById("picSaved"); if (el) el.innerHTML = picSavedHtml(); };
+A.photoPick = async (d) => {
+  const gid = (d && d.g) || null; if (!picOk(gid)) return;
+  const g = gid ? G(gid) : null; PIC.g = gid; PIC.prev = null; const has = !!picCur(gid);
+  sheet(g ? gname(g) : L3("Foto profil", "Foto profil", "Profile photo"), `<div class="pf-prev"${g ? ` style="--gc:${g.color}"` : ""}>${g ? gIcon(g, "xl") : avatarOf(D.me, "xl")}</div><div class="stack">
     <button class="opt-card" data-act="photoNew" data-src="camera">${ic("camera")}<span><b>${esc(L3("Ambil foto", "Buat foto", "Take a photo"))}</b><small>${esc(L3("Pakai kamera ponsel", "Pake kamera", "Use the phone's camera"))}</small></span>${ic("chev", "chev")}</button>
     <button class="opt-card" data-act="photoNew" data-src="library">${ic("gallery")}<span><b>${esc(L3("Pilih dari galeri", "Pilih sian galeri", "Choose from library"))}</b><small>${esc(L3("Foto yang sudah ada di ponsel", "Foto na adong di ponsel", "A photo already on your phone"))}</small></span>${ic("chev", "chev")}</button>
-    ${has ? `<button class="opt-card" data-act="photoRemove">${ic("trash")}<span><b>${esc(L3("Hapus foto", "Hapus foto", "Remove photo"))}</b></span>${ic("chev", "chev")}</button>` : ""}</div>`);
+    ${has ? `<button class="opt-card" data-act="photoRemove">${ic("trash")}<span><b>${esc(L3("Hapus foto", "Hapus foto", "Remove photo"))}</b></span>${ic("chev", "chev")}</button>` : ""}</div><div id="picSaved">${picSavedHtml()}</div>`);
+  try { const r = await api.save("photo_saved", gid ? { group_id: gid } : {}); if (PIC.g === gid) { PIC.prev = (r && r.prev) || null; picPaint(); } } catch (e) { /* older server or demo: only the shown picture */ }
 };
 A.photoNew = (d) => {
-  closeSheet(); const inp = document.createElement("input"); inp.type = "file"; inp.accept = "image/*";
-  if (d && d.src === "camera") inp.setAttribute("capture", "user");
+  const gid = PIC.g; closeSheet(); const inp = document.createElement("input"); inp.type = "file"; inp.accept = "image/*";
+  if (d && d.src === "camera") inp.setAttribute("capture", gid ? "environment" : "user");
   inp.onchange = async () => { const f = inp.files[0]; if (!f) return;
     try { let data = await resizeImage(f, 256, 0.82, true); if (data.length > 78000) data = await resizeImage(f, 192, 0.7, true);
-      await api.save("photo", { photo: data }); D.photos = { ...(D.photos || {}), [D.me.id]: data }; toast(t("saved")); render(); } catch (e) { toast(errMsg(e), true); } };
+      await picSave(gid, { photo: data }); picSet(gid, data); toast(t("saved")); render(); } catch (e) { toast(errMsg(e), true); } };
   inp.click();
 };
-A.photoRemove = async () => { closeSheet(); try { await api.save("photo", { photo: "" }); if (D.photos) delete D.photos[D.me.id]; render(); } catch (e) { toast(errMsg(e), true); } };
+A.photoRemove = async () => { const gid = PIC.g, prev = PIC.prev; closeSheet(); try { await picSave(gid, { photo: "" }); picSet(gid, prev); render(); } catch (e) { toast(errMsg(e), true); } };
+A.picUse = async () => { const gid = PIC.g, prev = PIC.prev, cur = picCur(gid); if (!prev) return;
+  try { await picSave(gid, { use: "prev" }); picSet(gid, prev); PIC.prev = cur; closeSheet(); toast(t("saved")); render(); } catch (e) { toast(errMsg(e), true); } };
+A.picDrop = async () => { const gid = PIC.g; try { await picSave(gid, { drop: "prev" }); PIC.prev = null; picPaint(); } catch (e) { toast(errMsg(e), true); } };
 
 // Unread: groups with posts this phone has not opened yet, and chat rooms with new messages.
 function groupSeen() { let s = LS.get("seenG", null); if (!s) { s = {}; (D.groups || []).forEach((g) => (s[g.id] = new Date().toISOString())); LS.set("seenG", s); } return s; }
@@ -4964,6 +4987,19 @@ try { document.head.insertAdjacentHTML("beforeend", `<style>
   .avatar.xl .pres { display: none; }
   .pf-photo { display: inline-flex; align-items: center; gap: 6px; margin-top: 6px; }
   .pf-photo .ic { width: 15px; height: 15px; }
+  .gicon.has-ph { overflow: hidden; padding: 0; background: var(--surface); }
+  .gicon.has-ph img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .gpic-btn { position: relative; border: 0; background: none; padding: 0; border-radius: 20px; flex: none; cursor: pointer; }
+  .gpic-btn .avatar-edit { right: -4px; bottom: -4px; }
+  .pf-prev .gicon.xl { width: 112px; height: 112px; border-radius: 28px; background: color-mix(in srgb, var(--gc, var(--brand)) 14%, var(--surface)); color: var(--gc, var(--brand)); }
+  .pf-prev .gicon.xl .ic { width: 52px; height: 52px; }
+  .pic-saved { display: flex; gap: 14px; flex-wrap: wrap; margin: 6px 0; }
+  .pic-saved-i { display: grid; gap: 6px; justify-items: center; align-content: start; }
+  .pic-saved-i img { width: 84px; height: 84px; border-radius: 18px; object-fit: cover; border: 2px solid var(--line); }
+  .pic-saved-i.on img { border-color: var(--brand); }
+  .pic-saved-i .row { gap: 6px; }
+  .ch-ghead { display: flex; align-items: center; justify-content: center; gap: 10px; margin: 8px 0 0; }
+  .ch-ghead .gicon { width: 36px; height: 36px; border-radius: 12px; }
   .ch-online { display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 12.5px; color: var(--muted); margin: 6px 0 0; min-height: 18px; }
   .ch-online i { width: 9px; height: 9px; border-radius: 50%; background: #22c55e; display: inline-block; }
   .ch-bar { position: fixed; left: 0; right: 0; bottom: calc(66px + env(safe-area-inset-bottom)); z-index: 19; display: grid; gap: 6px; padding: 8px max(12px, env(safe-area-inset-left)); background: color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-top: 1px solid var(--line); }
@@ -5027,7 +5063,7 @@ function chatGroupRooms() {
   const KO = { sermon: 1, service: 2, office: 3 };
   return Object.keys(D.chat_last).filter((k) => k.startsWith("g:")).map((k) => G(k.slice(2))).filter(Boolean)
     .sort((x, y) => (KO[x.kind] || 9) - (KO[y.kind] || 9) || (x.sort || 0) - (y.sort || 0))
-    .map((g) => ({ id: "g:" + g.id, name: gname(g), sub: g.kind === "sermon" ? L3("Kategorial", "Kategorial", "Category") : g.kind === "office" ? L3("Kantor", "Kantor", "Office") : L3("Seksi pelayanan", "Seksi", "Service section"), color: g.color, icon: g.icon, group: true }));
+    .map((g) => ({ id: "g:" + g.id, name: gname(g), sub: g.kind === "sermon" ? L3("Kategorial", "Kategorial", "Category") : g.kind === "office" ? L3("Kantor", "Kantor", "Office") : L3("Seksi pelayanan", "Seksi", "Service section"), color: g.color, icon: g.icon, gid: g.id, group: true }));
 }
 const REACTS = ["🙏", "❤️", "👍", "😂", "🎉"];
 let CH = { room: null, msgs: [], last: 0, timer: null, sending: false, reacts: {}, sel: null, reply: null, image: null };
@@ -5082,7 +5118,7 @@ R.chat = (room) => {
   if (isGuest()) return R.home();
   const rooms = chatRooms();
   if (!room) return shell("#/chat", `<h2 class="page-h">💬 Chat</h2><p class="lead">${esc(L3("Percakapan dua arah. Ketuk salah satu ruang untuk membukanya.", "Marhata dua arah. Ketuk sada ruang asa terbuka.", "Two-way conversations. Tap a room to open it."))}</p>
-    <div class="glist">${rooms.map((r, i) => `${r.group && !rooms[i - 1].group ? `</div><h3 class="sec-h">${esc(L3("Kategorial & seksi", "Kategorial & seksi", "Categories & sections"))}</h3><div class="glist">` : ""}<a class="gtile" href="#/chat/${r.id}" style="--gc:${r.color || (r.id === "makers" ? "var(--gold)" : "var(--brand)")}"><span class="gicon">${ic(r.icon || (r.id === "makers" ? "gear" : "people"))}</span><span class="gname"><b>${esc(r.name)}</b><small>${esc(r.sub)}</small></span>${newBadge(chatUnread(r.id))}${ic("chev", "chev")}</a>`).join("")}</div>
+    <div class="glist">${rooms.map((r, i) => `${r.group && !rooms[i - 1].group ? `</div><h3 class="sec-h">${esc(L3("Kategorial & seksi", "Kategorial & seksi", "Categories & sections"))}</h3><div class="glist">` : ""}<a class="gtile" href="#/chat/${r.id}" style="--gc:${r.color || (r.id === "makers" ? "var(--gold)" : "var(--brand)")}">${r.gid ? gIcon(G(r.gid)) : `<span class="gicon">${ic(r.icon || (r.id === "makers" ? "gear" : "people"))}</span>`}<span class="gname"><b>${esc(r.name)}</b><small>${esc(r.sub)}</small></span>${newBadge(chatUnread(r.id))}${ic("chev", "chev")}</a>`).join("")}</div>
     <div class="row between" style="margin:18px 0 6px"><h3 class="sec-h" style="margin:0">${esc(L3("Pesan pribadi", "Pesan pribadi", "Private messages"))}</h3><button class="btn sm primary" data-act="dmNew">✏️ ${esc(L3("Pesan baru", "Pesan baru", "New message"))}</button></div>
     ${(D.dms || []).length ? `<div class="card dm-list">${D.dms.map((x) => { const p = (D.people || []).find((q) => q.id === x.other) || { id: x.other, name: x.name };
       return `<a class="li${x.unread ? " unread" : ""}" href="#/chat/${esc(x.room)}">${avatarOf(p)}<span class="grow"><b>${esc(x.name || "")}</b><small>${x.last_mine ? esc(L3("Anda: ", "Ho: ", "You: ")) : ""}${esc(x.last || "")}</small></span><span class="dm-meta"><small>${esc(sgParts(x.at).date === today() ? fmtTime(x.at) : fmt(x.at, { day: "numeric", month: "short" }))}</small>${x.unread ? `<b class="dm-n">${x.unread}</b>` : ""}</span></a>`; }).join("")}</div>`
@@ -5095,7 +5131,7 @@ R.chat = (room) => {
   clearInterval(CH.timer);
   CH.timer = setInterval(() => { if (!new RegExp("^#/chat/" + CH.room + "\\b").test(location.hash)) { clearInterval(CH.timer); return; } if (!document.hidden) chatLoad(false).catch(() => {}); }, 4000);
   setTimeout(() => { chatPending(); chatLoad(true).catch((e) => toast(errMsg(e), true)); }, 0);
-  return shell("#/chat", `<p class="ch-online" id="chOnline"></p><div id="chatBox" class="chat">${CH.msgs.length ? chatHtml() : skel(4)}</div>
+  return shell("#/chat", `${rm.gid && G(rm.gid) ? `<div class="ch-ghead" style="--gc:${G(rm.gid).color}">${gIcon(G(rm.gid))}<b>${esc(rm.name)}</b></div>` : ""}<p class="ch-online" id="chOnline"></p><div id="chatBox" class="chat">${CH.msgs.length ? chatHtml() : skel(4)}</div>
     <div class="ch-bar"><div class="ch-pend" id="chReply" hidden></div><div class="ch-rec" id="chRec" hidden></div><div class="ch-row"><button class="icon-btn" data-act="chatPhoto" aria-label="${esc(L3("Kirim foto", "Kirim foto", "Send a photo"))}">${ic("camera")}</button>
       <textarea id="chatIn" rows="1" maxlength="1000" placeholder="${esc(L3("Tulis pesan…", "Surathon pesan…", "Write a message…"))}"></textarea>${canVoice() ? `<button class="icon-btn ch-mic" data-act="chatMic" aria-label="${esc(L3("Rekam pesan suara", "Rekam pesan suara", "Record a voice note"))}">${ic("mic")}</button>` : ""}<button class="btn primary" data-act="chatSend" aria-label="${esc(L3("Kirim", "Kirim", "Send"))}">➤</button></div></div>`,
     { back: "#/chat", title: "💬 " + rm.name, sub: rm.sub });
@@ -5312,7 +5348,7 @@ function servePrompt(blank) {
   const sv = blank ? [] : (me().profile || {}).serve || [];
   sheet(t("svTitle"), `<form class="form" data-form="serve">
     <p class="muted">${esc(t("svLead"))}</p>
-    <div class="pick-list">${D.groups.filter((g) => g.kind === "service").map((g) => `<label class="pick" style="--gc:${g.color}"><input type="checkbox" name="sv" value="${esc(g.id)}" ${sv.includes(g.id) ? "checked" : ""}><span class="gicon">${ic(g.icon)}</span><b>${esc(gname(g))}</b><i class="tick">${ic("check")}</i></label>`).join("")}</div>
+    <div class="pick-list">${D.groups.filter((g) => g.kind === "service").map((g) => `<label class="pick" style="--gc:${g.color}"><input type="checkbox" name="sv" value="${esc(g.id)}" ${sv.includes(g.id) ? "checked" : ""}>${gIcon(g)}<b>${esc(gname(g))}</b><i class="tick">${ic("check")}</i></label>`).join("")}</div>
     <button class="btn primary block">${esc(t("save"))}</button></form>`);
 }
 A.servePick = () => servePrompt();
@@ -5617,7 +5653,7 @@ A.newEvent = (d) => {
 };
 A.evSpecific = () => {
   const cats = canEvents() ? D.groups.filter((g) => g.kind !== "office") : [];
-  const list = (kind) => cats.filter((g) => g.kind === kind).map((g) => `<button class="gtile" data-act="evPick" data-g="${g.id}" style="--gc:${g.color}"><span class="gicon">${ic(g.icon)}</span><span class="gname"><b>${esc(gname(g))}</b></span>${ic("chev", "chev")}</button>`).join("");
+  const list = (kind) => cats.filter((g) => g.kind === kind).map((g) => `<button class="gtile" data-act="evPick" data-g="${g.id}" style="--gc:${g.color}">${gIcon(g)}<span class="gname"><b>${esc(gname(g))}</b></span>${ic("chev", "chev")}</button>`).join("");
   sheet(t("evPickCat"), `${list("sermon") ? `<h4>${esc(t("kindSermon"))}</h4><div class="glist">${list("sermon")}</div>` : ""}${list("service") ? `<h4>${esc(t("kindService"))}</h4><div class="glist">${list("service")}</div>` : ""}`);
 };
 A.evPick = (d) => eventForm({ group_id: d.g || null });
@@ -6355,7 +6391,7 @@ R.office = (gid) => {
   const files = (D.files || []).filter((f) => f.group_id === gid);
   const hs = holders(gid);
   return shell("#/home", `
-    <section class="ghero slim" style="--gc:${g.color}"><span class="gicon xl">${ic(g.icon)}</span>
+    <section class="ghero slim" style="--gc:${g.color}">${heroPic(g)}
       <div><h2>${esc(gname(g))}</h2><p>${esc(t("officeLead"))}</p></div></section>
     <div class="chips office-tabs">${officeGroups().map((o) => `<a class="chip ${o.id === gid ? "on" : ""}" href="#/o/${o.id}" style="--gc:${o.color}">${esc(gname(o))}</a>`).join("")}</div>
     ${gid === "secretary" ? wartaBlock() : ""}
