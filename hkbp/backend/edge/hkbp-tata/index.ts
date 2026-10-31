@@ -1,5 +1,7 @@
 // Tata Ibadah watcher (YB 2026-10-27): "keep a lookout at my Google Drive for the coming Sunday's Tata Ibadah; every time it changes,
 // make the HTML slides from the workbench, send the file to the chairman on WhatsApp, and push-notify all Multimedia makers."
+// YB 2026-10-29: a new Drive timestamp also counts as a change (not only new content), and the push goes to that Sunday's
+// slide maker(s) from the Multimedia roster (the "Slides" column); with no roster for that Sunday, to all Multimedia makers as before.
 //
 // The slides are made by the real workbench page in a headless browser, which runs in GitHub Actions every 15 minutes
 // (.github/workflows/tata-watch.yml + tools/tata-watch/watch.mjs). That job talks to this function:
@@ -7,7 +9,7 @@
 //                                                                                          downloaded and hashed; changed = not the hash we published last
 //   POST {op: "file", id}                               -> the file itself (header x-name)
 //   POST {op: "publish", id, hash, name, sunday, html}  -> publishes the slides in Sada (hk_services, shown at #/tata), asks hkbp-wa to send the
-//                                                          file to the chairman, queues a push to the Multimedia makers, remembers the hash
+//                                                          file to the chairman, queues a push to the slide maker(s), remembers the hash
 // Who may call: the GitHub Actions job, proven by GitHub's own signed job token (OIDC, header x-github-token, audience "hkbp-tata",
 // repository Yos2204/butet on main), or the database / another function with x-cron-key = hk_settings cron_key. No secret is copied anywhere.
 // The watcher's state is hk_settings tata_watch = {key, id, name, hash, sunday, service_id, at}; every step is logged in hk_wa_log.
@@ -77,6 +79,8 @@ function sgToday(): Date {
 }
 function nextSunday(): Date { const d = sgToday(); d.setUTCDate(d.getUTCDate() + (7 - d.getUTCDay()) % 7); return d; }
 const iso = (d: Date) => d.toISOString().slice(0, 10);
+// The push is in English (YB 2026-10-31); the service title in Sada keeps the Indonesian date.
+const enLabel = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s) ? new Intl.DateTimeFormat("en-GB", { timeZone: "UTC", weekday: "long", day: "numeric", month: "long", year: "numeric" }).format(new Date(s + "T00:00:00Z")) : "";
 const label = (d: Date) => `Minggu, ${d.getUTCDate()} ${MONTHS_ID[d.getUTCMonth()].replace(/^./, (c) => c.toUpperCase())} ${d.getUTCFullYear()}`;
 function sundayScore(name: string, sun: Date): number {
   const n = name.toLowerCase().replace(/[_]+/g, " "), d = sun.getUTCDate(), m = sun.getUTCMonth() + 1, y = sun.getUTCFullYear();
@@ -108,17 +112,66 @@ async function sha256(b: Uint8Array): Promise<string> {
   return [...new Uint8Array(await crypto.subtle.digest("SHA-256", b))].map((x) => x.toString(16).padStart(2, "0")).join("");
 }
 
+// --- that Sunday's slide maker(s) from the Multimedia roster (same reading rules as the app) ---------------------------------------
+const normN = (s: string) => String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
+const RMONTHS: Record<string, number> = { jan: 1, feb: 2, mar: 3, apr: 4, mei: 5, may: 5, jun: 6, jul: 7, agu: 8, aug: 8, sep: 9, okt: 10, oct: 10, nov: 11, des: 12, dec: 12 };
+const DATE_RE = /\b(\d{1,2})[\s\/.-]+(\d{1,2}|jan\w*|feb\w*|mar\w*|apr\w*|mei|may|jun\w*|jul\w*|agu\w*|aug\w*|sep\w*|okt\w*|oct\w*|nov\w*|des\w*|dec\w*)(?:[\s\/.-]+(\d{2,4}))?/i;
+function rowDate(row: string[], ym: string) {
+  for (const c of row) {
+    const isoM = String(c).match(/\b(20\d{2})-(\d{2})-(\d{2})\b/); if (isoM) return isoM[0];
+    const m = String(c).match(DATE_RE); if (!m) continue;
+    const day = +m[1]; const mon = /^\d+$/.test(m[2]) ? +m[2] : RMONTHS[m[2].slice(0, 3).toLowerCase()];
+    if (!mon || day < 1 || day > 31 || mon > 12) continue;
+    let y = m[3] ? +m[3] : +ym.slice(0, 4); if (y < 100) y += 2000;
+    return `${y}-${String(mon).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  }
+  return null;
+}
+function namesOf(p: { name: string; alias?: string }, all: { name: string }[]) {
+  const out = new Set<string>(); const full = normN(p.name); if (full) out.add(full);
+  const toks = full.split(" ").filter((x) => !/^(pdt|st|sintua|bapak|ibu|kak|bang|ev|dr|br)$/.test(x));
+  if (toks.length >= 2) out.add(toks.slice(0, 2).join(" "));
+  const uniq = (w: string) => all.filter((q) => normN(q.name).split(" ").includes(w)).length <= 1;
+  if (toks[0] && toks[0].length >= 3 && uniq(toks[0])) out.add(toks[0]);
+  const last = toks[toks.length - 1]; if (toks.length >= 2 && last.length >= 3 && uniq(last)) out.add(last);
+  String(p.alias || "").split(/[,;\/]/).map(normN).filter((x) => x.length >= 3).forEach((a) => out.add(a));
+  return [...out];
+}
+const hitN = (cell: string, names: string[]) => { const c = " " + normN(cell) + " "; return names.some((n) => c.includes(" " + n + " ")); };
+async function slideMakers(sundayIso: string): Promise<{ id: string; name: string }[]> {
+  const rs = await fetch(`${BASE}/rest/v1/hk_rosters?select=month,table_json&group_id=eq.multimedia&month=eq.${sundayIso.slice(0, 7)}&removed_at=is.null`, { headers: H });
+  const rosters = rs.ok ? await rs.json() : [];
+  const ms = await fetch(`${BASE}/rest/v1/hk_members?select=id,name,alias&removed_at=is.null`, { headers: H });
+  const members = ms.ok ? await ms.json() : [];
+  const out = new Map<string, string>();
+  for (const r of rosters) for (const tb of r.table_json || []) {
+    const rows: string[][] = tb.rows || []; const hi = Math.max(0, rows.findIndex((x) => x.filter(Boolean).length >= 2)); const head = rows[hi] || [];
+    const cols = head.map((h, j) => (j && /slide/i.test(String(h || "")) ? j : -1)).filter((j) => j > 0);
+    if (!cols.length) continue;
+    rows.forEach((row, i) => {
+      if (i <= hi || rowDate(row, r.month) !== sundayIso) return;
+      for (const m of members) { const names = namesOf(m, members); if (cols.some((j) => hitN(row[j] || "", names))) out.set(m.id, m.name); }
+    });
+  }
+  return [...out.entries()].map(([id, name]) => ({ id, name }));
+}
+
 // --- the three operations ---------------------------------------------------------------------------------------------------------
-type Watch = { key?: string; id?: string; name?: string; hash?: string; sunday?: string; service_id?: string; at?: string };
+type Watch = { key?: string; id?: string; name?: string; hash?: string; sunday?: string; service_id?: string; at?: string; modified?: string };
 
 async function poll() {
   const { sun, f } = await pick();
   const sunday = { iso: iso(sun), label: label(sun) };
   if (!f) return json({ changed: false, reason: "no_file_for_sunday", sunday });
   const { bytes } = await download(f);
-  const hash = await sha256(bytes);
+  const content = await sha256(bytes);
+  // The Drive timestamp is part of the version: saving the file again (a new timestamp) also makes new slides.
+  const stamp = f.modified ? (await sha256(new TextEncoder().encode(f.modified))).slice(0, 8) : "";
+  const hash = stamp ? `${content}.${stamp}` : content;
   const key = `${f.id}:${hash}`;
   const w = ((await setting("tata_watch")) || {}) as Watch;
+  // One-time switch-over: the file published before timestamps counted is not re-sent, only remembered with its timestamp.
+  if (w.key === `${f.id}:${content}` && !w.modified) { await setSetting("tata_watch", { ...w, key, hash, modified: f.modified }); return json({ changed: false, reason: "switched_to_timestamps", sunday }); }
   const changed = w.key !== key;
   if (changed) await log(true, "tata_poll", { id: f.id, name: f.name, modified: f.modified, hash: hash.slice(0, 12), was: (w.key || "").slice(-12) }, fileName(f));
   return json({ changed, file: { id: f.id, name: fileName(f), kind: f.kind, modified: f.modified }, sunday, hash, size: bytes.length });
@@ -154,7 +207,8 @@ async function publish(b: Record<string, unknown>, who: string) {
     if (!r.ok) { const t = await r.text(); await log(false, "tata_publish", t.slice(0, 300), name); return json({ error: "publish_" + r.status, detail: t.slice(0, 300) }, 502); }
     serviceId = (await r.json())[0].id;
   }
-  await setSetting("tata_watch", { key, id, name, hash, sunday: sunday.iso, service_id: serviceId, at: new Date().toISOString(), by: who });
+  const modified = (b.file && (b.file as { modified?: string }).modified) || w.modified || "";
+  await setSetting("tata_watch", { key, id, name, hash, sunday: sunday.iso, service_id: serviceId, at: new Date().toISOString(), by: who, modified: modified || "seen" });
   await log(true, "tata_publish", { service_id: serviceId, sunday: sunday.iso, bytes: html.length, by: who }, name);
   // 2. the file to the chairman (hkbp-wa does the WhatsApp part and logs its own result); force = a changed file goes again even on the same day
   let wa: unknown = null;
@@ -162,14 +216,19 @@ async function publish(b: Record<string, unknown>, who: string) {
     const r = await fetch(`${BASE}/functions/v1/hkbp-wa`, { method: "POST", headers: { ...H, "x-cron-key": String((await setting("cron_key")) || "") }, body: JSON.stringify({ id, sunday: sunday.label, force: true }) });
     wa = { status: r.status, ...(await r.json().catch(() => ({}))) };
   } catch (e) { wa = { error: String((e as Error).message || e) }; }
-  // 3. one push to the Multimedia makers, sent by hkbp-notify (now, not at its next quarter-hour)
+  // 3. the push: to that Sunday's slide maker(s) on the Multimedia roster; with no roster for that Sunday, to all Multimedia makers
   const sendTo = (await setting("tata_send_to")) as { name?: string } | null;
   const waOk = !!(wa && (wa as { ok?: boolean }).ok);
-  const body = `${name}\n${waOk ? "Dikirim ke " + ((sendTo && sendTo.name) || "ketua") + " di WhatsApp ✓" : "Belum terkirim ke WhatsApp (lihat log)"} · ketuk untuk melihat slide.`;
-  await fetch(`${BASE}/rest/v1/hk_outbox`, { method: "POST", headers: H, body: JSON.stringify({ audience: "makers:multimedia", title: `⛪ Tata Ibadah baru · ${sunday.label || sunday.iso}`, body, url: `#/tata/${serviceId}` }) });
-  let push: unknown = null;
-  try { const r = await fetch(`${BASE}/functions/v1/hkbp-notify`, { method: "POST", headers: { "content-type": "application/json", "x-cron-key": String((await setting("cron_key")) || "") }, body: "{}" }); push = { status: r.status }; } catch (e) { push = { error: String((e as Error).message || e) }; }
-  return json({ ok: true, service_id: serviceId, wa, push });
+  const waLine = waOk ? "Sent to " + ((sendTo && sendTo.name) || "the chairman") + " on WhatsApp ✓" : "Not sent on WhatsApp yet (see the log)";
+  const title2 = `⛪ New Tata Ibadah · ${enLabel(sunday.iso) || sunday.label}`;
+  let makers: { id: string; name: string }[] = [];
+  try { makers = await slideMakers(sunday.iso); } catch (e) { console.warn("roster", e); }
+  const rows = makers.length
+    ? makers.map((p) => ({ audience: "member:" + p.id, title: title2, body: `You're on Slides this Sunday. The slides are ready, tap to view them.\n${name}\n${waLine}`, url: `#/tata/${serviceId}` }))
+    : [{ audience: "makers:multimedia", title: title2, body: `${name}\n${waLine} · tap to view the slides.`, url: `#/tata/${serviceId}` }];
+  await fetch(`${BASE}/rest/v1/hk_outbox`, { method: "POST", headers: H, body: JSON.stringify(rows) });
+  await log(true, "tata_push", { to: makers.length ? makers.map((p) => p.name) : "all Multimedia makers (no roster for that Sunday)" }, name);
+  return json({ ok: true, service_id: serviceId, wa, push_to: makers.length ? makers.map((p) => p.name) : "makers:multimedia" });
 }
 
 Deno.serve(async (req) => {
@@ -182,6 +241,7 @@ Deno.serve(async (req) => {
     if (op === "poll") return await poll();
     if (op === "file") return await file(String(b.id || ""));
     if (op === "publish") return await publish(b, who);
+    if (op === "who") return json({ sunday: String(b.sunday || ""), slide_makers: await slideMakers(String(b.sunday || "")) });
     return json({ error: "unknown_op" }, 400);
   } catch (e) { console.error(e); await log(false, "tata_error", String((e as Error).message || e)); return json({ error: String((e as Error).message || e) }, 500); }
 });
