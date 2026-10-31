@@ -194,7 +194,9 @@ const wa = (text, phone) => `https://wa.me/${phone ? "65" + S.phone8(phone) : ""
 const BREAD_LANGS = ["id", "bt", "en"];
 function breadLangs(b) { return b && b.langs && b.author_name === "Ayat Harian" ? BREAD_LANGS.filter((l) => b.langs[l] && b.langs[l].body) : []; }
 function breadPick(b) { const ls = breadLangs(b); const want = LS.get("breadLang", lang); return ls.includes(want) ? want : ls.includes(lang) ? lang : ls[0] || ""; }
-function breadOf(b) { const l = breadPick(b); return l ? { ...b, ...b.langs[l], lang: l } : b; }
+// A one-verse reading shows no verse number (YB 2026-10-31): "1 For everything…" reads "For everything…".
+const breadOne = (o) => (o && o.author_name === "Ayat Harian" && o.verse && !/[-–,;]/.test(o.verse.split(":").slice(1).join(":")) && /^\d+\s/.test(o.body || "") ? { ...o, body: o.body.replace(/^\d+\s+/, "") } : o);
+function breadOf(b) { const l = breadPick(b); return breadOne(l ? { ...b, ...b.langs[l], lang: l } : b); }
 function breadText(b) { b = breadOf(b); return `📖 *${t("breadTitle")} · HKBP Singapore*\n${fmtDay(b.day)}\n\n*${b.title || ""}*\n${b.verse || ""}\n\n${b.body || ""}\n\n${appUrl()}#/bread/${b.day}`; }
 function ics(events) {
   const z = (d) => new Date(d).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
@@ -362,7 +364,7 @@ async function claudeBread(day, langCode, recent) {
   const ref = L.filter((r) => !recent.includes(r))[Math.floor(Math.random() * L.length) % Math.max(1, L.filter((r) => !recent.includes(r)).length)] || L[0];
   const vs = await litPassage(ref, langCode === "bt" ? "toba" : "tb");
   const pray = { id: "Doa: Tuhan, terima kasih untuk firman-Mu hari ini. Tolonglah kami hidup menurut firman-Mu. Amin.", bt: "Tangiang: Ale Tuhan, mauliate di hata-Mu sadarion. Urupi ma hami mangolu hombar tu hata-Mu. Amen.", en: "Prayer: Lord, thank you for your word today. Help us to live by it. Amen." }[langCode] || "";
-  return { verse: ref, title: langCode === "bt" ? "Ayat Siganup Ari" : langCode === "en" ? "Verse of the Day" : "Ayat Harian", body: vs.map((v) => `${v.v} ${v.t}`).join(" ") + "\n\n" + pray };
+  return { verse: ref, title: langCode === "bt" ? "Ayat Siganup Ari" : langCode === "en" ? "Verse of the Day" : "Ayat Harian", body: (vs.length === 1 ? vs[0].t : vs.map((v) => `${v.v} ${v.t}`).join(" ")) + "\n\n" + pray };
 }
 
 // ---------- data refresh ----------
@@ -486,7 +488,7 @@ R.home = () => {
       ${b ? `
         <p class="verse-ref">${esc(breadOf(b).verse || "")}</p>
         <h2>${esc(breadOf(b).title || "")}</h2>
-        <p class="clamp">${esc(breadOf(b).body || "")}</p>
+        <p class="clamp pre">${esc(breadOf(b).body || "")}</p>
         ${isGuest() ? `<div class="row"><a class="btn primary" href="#/bread/${b.day}">${esc(t("seeMore"))}</a></div>` : `<div class="row"><a class="btn primary" href="#/bread/${b.day}">${esc(t("readMore"))}</a><a class="btn wa" href="${wa(breadText(b))}" target="_blank" rel="noopener">${ic("wa")} WhatsApp</a></div>`}` : `
         <p class="muted">${esc(t("noBread"))}</p>
         ${isGuest() ? `<a class="btn" href="#/bread">${esc(t("seeMore"))}</a>` : isBreadMaker() ? `<a class="btn primary" href="#/bread/new">${ic("edit")} ${esc(t("writeBread"))}</a>` : `<a class="btn" href="#/bread">${esc(t("breadArchive"))}</a>`}`}

@@ -111,6 +111,7 @@ async function sabda(ref: string, l: string) {
   const out: string[] = []; const vre = /<verse>\s*<number>(\d+)<\/number>(?:\s*<title>[\s\S]*?<\/title>)?\s*<text>([\s\S]*?)<\/text>/g;
   let v; while ((v = vre.exec(xml))) { const t = clean(v[2]); if (t) out.push(`${v[1]} ${t}`); }
   if (!out.length) throw new Error("sabda empty " + l);
+  if (out.length === 1) out[0] = out[0].replace(/^\d+\s+/, "");   // one verse: no verse number (YB 2026-10-31)
   const title = clean((xml.match(/<bible>\s*<title>([\s\S]*?)<\/title>/) || [])[1] || "");
   return { verse: title || ref, title: BREAD_TITLE[l], body: `${out.join(" ")}\n\n${PRAYER[l]}` };
 }
