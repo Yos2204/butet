@@ -3388,7 +3388,8 @@ const CALL_SVG = {
   end: '<path d="M2.5 13.5c5.4-4.6 13.6-4.6 19 0l-2.3 2.8-3.7-1.4v-2.6a10 10 0 0 0-7 0v2.6l-3.7 1.4z"/>',
 };
 const cic = (n) => `<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${CALL_SVG[n]}</svg>`;
-const callOk = () => !!D && !isGuest() && api.mode === "remote" && !!api.call && !!window.RTCPeerConnection && !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+let CALL_SRV = null;   // false while the server has no hk_call yet: the buttons stay hidden
+const callOk = () => CALL_SRV !== false && !!D && !isGuest() && api.mode === "remote" && !!api.call && !!window.RTCPeerConnection && !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
 const callRoomOf = () => { const m = location.hash.match(/^#\/chat\/((dm:[0-9a-f-]{36}:[0-9a-f-]{36})|makers|all)(?:$|[?/])/); return m ? m[1] : null; };
 let CALL = null;       // the call this phone is in
 let RING = null;       // an incoming call on screen: { id, room, name, caller_id, video, group }
@@ -3599,14 +3600,15 @@ A.callFlip = async () => {
 // ---- ringing and the "group call going on" bar ----
 async function callRing() {
   if (!callOk() || document.hidden) return;
-  let r; try { r = await api.call("ring", {}); } catch (e) { return; }
+  let r; try { r = await api.call("ring", {}); } catch (e) { if (e && e.code === "server" && CALL_SRV === null) { CALL_SRV = false; document.querySelectorAll(".call-hd").forEach((x) => x.remove()); } return; }
+  if (!CALL_SRV) { CALL_SRV = true; if (callRoomOf() && !document.querySelector(".call-hd")) { const h = document.querySelector("header.top .langs"); if (h) h.insertAdjacentHTML("beforebegin", callHead()); } }
   CALL_LIVE = r.live || []; callBar();
   const inc = (r.ring || []).find((x) => !RING_SKIP.has(x.id));
   if (CALL) return;
   if (inc && (!RING || RING.id !== inc.id)) { RING = inc; callPaint(); callTone("ring"); }
   else if (!inc && RING && !RING.group) { RING = null; callToneStop(); callPaint(); }
 }
-setInterval(() => { callRing().catch(() => {}); }, 4000);
+setInterval(() => { callRing().catch(() => {}); }, 4000); setTimeout(() => callRing().catch(() => {}), 1500);
 document.addEventListener("visibilitychange", () => { if (!document.hidden) callRing().catch(() => {}); });
 function callBar() {
   let el = document.getElementById("callBar"); const room = callRoomOf();
