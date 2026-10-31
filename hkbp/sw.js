@@ -1,6 +1,6 @@
 // HKBP Singapore service worker: offline shell, push notifications, and opening the app from a notification.
-const CACHE = "hkbp-v74";
-const SHELL = ["./", "index.html", "config.js?v=60", "i18n.js?v=62", "store.js?v=60", "parse.js?v=60", "app.js?v=125", "manifest.webmanifest", "logo.png", "icon-192.png", "icon-512.png", "apple-touch-icon.png", "warta/head.jpg", "warta/banner.png", "warta/badan.png", "warta/corsiva.png", "warta/samb.png", "warta/wa.png", "fonts/LiberationSansNarrow-Regular.woff2", "fonts/LiberationSansNarrow-Bold.woff2", "fonts/LiberationSansNarrow-Italic.woff2", "fonts/LiberationSansNarrow-BoldItalic.woff2", "fonts/LiberationSans-Regular.woff2", "fonts/LiberationSans-Bold.woff2"];
+const CACHE = "hkbp-v75";
+const SHELL = ["./", "index.html", "config.js?v=60", "i18n.js?v=62", "store.js?v=60", "parse.js?v=60", "app.js?v=126", "manifest.webmanifest", "logo.png", "icon-192.png", "icon-512.png", "apple-touch-icon.png", "warta/head.jpg", "warta/banner.png", "warta/badan.png", "warta/corsiva.png", "warta/samb.png", "warta/wa.png", "fonts/LiberationSansNarrow-Regular.woff2", "fonts/LiberationSansNarrow-Bold.woff2", "fonts/LiberationSansNarrow-Italic.woff2", "fonts/LiberationSansNarrow-BoldItalic.woff2", "fonts/LiberationSans-Regular.woff2", "fonts/LiberationSans-Bold.woff2"];
 self.addEventListener("install", (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener("activate", (e) => { e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k.startsWith("hkbp-") && k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim())); });
 self.addEventListener("fetch", (e) => {
