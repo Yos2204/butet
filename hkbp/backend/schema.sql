@@ -855,3 +855,26 @@ begin
   return coalesce(m.is_admin, false) or coalesce(m.groups ->> 'multimedia', '') in ('maker', 'chair');
 end $$;
 grant execute on function hk_wb_access(text) to anon;
+
+-- Face ID / fingerprint sign-in (YB 2026-10-31): passkeys checked by the edge function hkbp-passkey (service role only).
+create table if not exists hk_passkeys (
+  id text primary key,                 -- credential id (base64url)
+  member_id uuid not null references hk_members on delete cascade,
+  public_key text not null,            -- COSE public key (base64url)
+  counter bigint not null default 0,
+  transports jsonb,
+  device text,                         -- "iPhone", "Android" … shown in the member's list
+  created_at timestamptz not null default now(),
+  last_used timestamptz
+);
+create index if not exists hk_passkeys_member on hk_passkeys (member_id);
+create table if not exists hk_passkey_challenges (
+  id uuid primary key default gen_random_uuid(),
+  kind text not null,                  -- reg | login
+  challenge text not null,
+  member_id uuid references hk_members on delete cascade,
+  created_at timestamptz not null default now()
+);
+alter table hk_passkeys enable row level security;
+alter table hk_passkey_challenges enable row level security;
+revoke all on hk_passkeys, hk_passkey_challenges from anon, authenticated;
