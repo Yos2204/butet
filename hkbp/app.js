@@ -362,7 +362,7 @@ function shell(active, inner, opts = {}) {
   const nav = tabs.map(([i, h, k]) => `<a href="${h}" class="${act === h ? "on" : ""}" ${act === h ? 'aria-current="page"' : ""}>${ic(i)}${tabBadge(h)}<span>${esc(label(k))}</span></a>`).join("")
     + (isGuest() ? `<a href="#/login" data-act="signIn">${ic("lock")}<span>${esc(t("signIn"))}</span></a>` : "");
   return `
-  <header class="top">
+  <header class="top${opts.back || opts.title ? "" : " plain"}">
     ${opts.back ? `<a class="icon-btn" href="${opts.back}" aria-label="${esc(t("back"))}">${ic("back")}</a>` : `<img class="logo-sm" src="logo.png" alt="">`}
     <div class="brand"><b>${esc(opts.title || "Sada HKBPS")}</b>${opts.sub ? `<small>${esc(opts.sub)}</small>` : `<small>${esc(t("tagline"))}</small>`}</div>
     ${langSwitch()}
@@ -370,7 +370,7 @@ function shell(active, inner, opts = {}) {
   ${D && D.offline ? `<div class="banner">${esc(t("offline"))}</div>` : ""}
   ${api.mode === "local" ? `<div class="banner soft">${ic("phone")} ${esc(t("demoBanner"))}</div>` : ""}
   <main${opts.cols ? ' class="cols"' : ""}>${inner}</main>
-  <nav class="tabs"><div class="in" style="grid-template-columns:repeat(${tabs.length + (isGuest() ? 1 : 0)},1fr)">${nav}</div></nav>
+  <nav class="tabs"><div class="in" style="grid-template-columns:repeat(${tabs.length + (isGuest() ? 1 : 0)},1fr)"><a class="nav-brand" href="#/home"><img src="logo.png" alt=""><span><b>Sada HKBPS</b><small>${esc(t("tagline"))}</small></span></a>${nav}${!isGuest() ? `<a href="#/chat" class="nav-chat${act === "#/chat" ? " on" : ""}">${ic("chat")}${tabBadge("#/chat")}<span>Chat</span></a>` : ""}<div class="nav-foot">${langSwitch()}</div></div></nav>
   ${!isGuest() && act !== "#/chat" && !/^#\/search/.test(location.hash) ? `<a id="chatFab" class="chat-fab" href="#/chat" aria-label="Chat" draggable="false" style="${chatFabPos()}">${ic("chat")}${tabBadge("#/chat")}</a>` : ""}`;
 }
 const langSwitch = () => `<div class="langs" role="group" aria-label="${esc(t("language"))}">${["id", "bt", "en"].map((l) => `<button data-act="lang" data-l="${l}" aria-pressed="${lang === l}">${l.toUpperCase()}</button>`).join("")}</div>`;
@@ -4140,8 +4140,8 @@ try { document.head.insertAdjacentHTML("beforeend", `<style>
   try { new MutationObserver(() => { const m = document.querySelector("#view > main"); if (m && SLIDE_IN) { m.classList.add(SLIDE_IN); SLIDE_IN = ""; } })
     .observe(document.getElementById("view") || document.body, { childList: true }); } catch (e) {}
   try { document.head.insertAdjacentHTML("beforeend", `<style>
-    #view > main.from-right { animation: slideFromRight .24s ease-out both; }
-    #view > main.from-left { animation: slideFromLeft .24s ease-out both; }
+    #view > main.from-right { animation: slideFromRight .24s ease-out backwards; }
+    #view > main.from-left { animation: slideFromLeft .24s ease-out backwards; }
     @keyframes slideFromRight { from { opacity: 0; transform: translateX(48px); } to { opacity: 1; transform: none; } }
     @keyframes slideFromLeft { from { opacity: 0; transform: translateX(-48px); } to { opacity: 1; transform: none; } }
     @media (prefers-reduced-motion: reduce) { #view > main.from-right, #view > main.from-left { animation: none; } }
@@ -4372,7 +4372,7 @@ A.printPage = () => window.print();
 
 // Look of all of the above (kept here so only app.js needs updating). Dark mode uses the same colour tokens.
 try { document.head.insertAdjacentHTML("beforeend", `<style>
-  #view > main { animation: pageIn .22s ease-out both; }
+  #view > main { animation: pageIn .22s ease-out backwards; }
   @keyframes pageIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
   .skel-list { display: grid; gap: 12px; padding: 8px 0; }
   .skel { display: flex; gap: 12px; align-items: center; }
