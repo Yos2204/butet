@@ -4760,6 +4760,17 @@ try { document.head.insertAdjacentHTML("beforeend", `<style>
   .ch-quote { display: block; font-size: 13px; padding: 5px 9px; border-left: 3px solid var(--gold); border-radius: 6px; background: color-mix(in srgb, currentColor 8%, transparent); opacity: .9; }
   .ch-quote b { display: block; font-size: 12px; }
   .ch-img { max-width: 100%; max-height: 300px; border-radius: 12px; display: block; }
+  .ch-voice { display: flex; align-items: center; gap: 10px; min-width: 190px; }
+  .ch-voice button { width: 38px; height: 38px; flex: none; border-radius: 50%; border: 0; display: grid; place-items: center; background: var(--brand); color: #fff; font-size: 15px; }
+  .ch-msg.mine .ch-voice button { background: #fff; color: var(--brand); }
+  .ch-vbar { flex: 1; height: 6px; border-radius: 99px; background: color-mix(in srgb, currentColor 22%, transparent); overflow: hidden; }
+  .ch-vbar i { display: block; height: 100%; width: 0; background: currentColor; border-radius: 99px; }
+  .ch-voice small { font-variant-numeric: tabular-nums; font-size: 12.5px; opacity: .85; min-width: 34px; text-align: right; }
+  .ch-rec { display: flex; align-items: center; gap: 10px; padding: 4px 4px 4px 12px; border-radius: 24px; background: var(--surface); border: 1px solid var(--line); }
+  .ch-rec[hidden], .ch-pend[hidden] { display: none; } .ch-bar textarea, .ch-bar .ch-row { min-width: 0; }
+  .ch-rec .dot { width: 12px; height: 12px; border-radius: 50%; background: #e5484d; animation: chRec 1s infinite; }
+  .ch-rec b { font-variant-numeric: tabular-nums; } .ch-rec .grow { color: var(--muted); font-size: 13px; }
+  @keyframes chRec { 50% { opacity: .25; } }
   .ch-rxs { display: flex; gap: 4px; flex-wrap: wrap; }
   .ch-rx { border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 1px 8px; font-size: 13px; font-weight: 700; color: var(--ink); }
   .ch-rx.me { border-color: var(--brand); background: color-mix(in srgb, var(--brand) 12%, var(--surface)); }
@@ -4853,7 +4864,7 @@ function chatHtml() {
     const prev = CH.msgs[CH.msgs.indexOf(m) - 1]; const head = !!sep || !prev || prev.member_id !== m.member_id;
     const av = !mine && !dm; const who = (D.people || []).find((q) => q.id === m.member_id) || { id: m.member_id, name: m.name };
     return `${sep}<div class="ch-msg${mine ? " mine" : ""}${sel ? " sel" : ""}${av ? " has-av" : ""}${av && head ? " ch-head" : ""}">${av && head ? `<span class="ch-av">${avatarOf(who)}</span><b class="ch-name">${esc(m.name || "")}</b>` : ""}
-      <div class="ch-bubble" data-act="chatMsg" data-id="${m.id}">${m.reply ? `<span class="ch-quote"><b>${esc(m.reply.name || "")}</b>${esc(m.reply.body || "")}</span>` : ""}${m.image ? `<img class="ch-img" src="${esc(m.image)}" alt="" data-act="chatImg" data-id="${m.id}">` : ""}${m.body ? `<span>${esc(m.body).replace(/\n/g, "<br>")}</span>` : ""}</div>
+      <div class="ch-bubble" data-act="chatMsg" data-id="${m.id}">${m.reply ? `<span class="ch-quote"><b>${esc(m.reply.name || "")}</b>${esc(m.reply.body || "")}</span>` : ""}${m.image ? `<img class="ch-img" src="${esc(m.image)}" alt="" data-act="chatImg" data-id="${m.id}">` : ""}${m.has_audio ? chatVoiceHtml(m) : ""}${m.body ? `<span>${esc(m.body).replace(/\n/g, "<br>")}</span>` : ""}</div>
       ${chips ? `<div class="ch-rxs">${chips}</div>` : ""}
       ${sel ? `<div class="ch-acts">${REACTS.map((e) => `<button data-act="chatReact" data-id="${m.id}" data-e="${e}">${e}</button>`).join("")}<button data-act="chatReply" data-id="${m.id}">↩︎ ${esc(L3("Balas", "Balas", "Reply"))}</button>${mine || D.me.is_admin ? `<button data-act="chatDel" data-id="${m.id}">${esc(t("delete"))}</button>` : ""}</div>` : ""}
       <small class="ch-time">${esc(fmtTime(m.at))}</small>${seen}</div>`;
@@ -4863,7 +4874,7 @@ function chatPaint(scroll) { const box = document.getElementById("chatBox"); if 
 function chatPending() {
   const el = document.getElementById("chReply"); if (!el) return;
   const bits = [];
-  if (CH.reply) bits.push(`<span class="grow">↩︎ <b>${esc(CH.reply.name || "")}</b> ${esc(String(CH.reply.body || "📷").slice(0, 60))}</span>`);
+  if (CH.reply) bits.push(`<span class="grow">↩︎ <b>${esc(CH.reply.name || "")}</b> ${esc(String(CH.reply.body || (CH.reply.has_audio ? "🎤 " + L3("Pesan suara", "Pesan suara", "Voice note") : "📷")).slice(0, 60))}</span>`);
   if (CH.image) bits.push(`<img src="${esc(CH.image)}" alt=""><span class="grow">${esc(L3("Foto siap dikirim", "Foto siap", "Photo ready to send"))}</span>`);
   el.hidden = !bits.length; el.innerHTML = bits.join("") + (bits.length ? `<button class="icon-btn" data-act="chatCancel" aria-label="${esc(t("cancel"))}">${ic("x")}</button>` : "");
 }
@@ -4894,13 +4905,13 @@ R.chat = (room) => {
   if (!rm && String(room).startsWith("dm:")) { const oid = room.slice(3).split(":").find((x) => x !== D.me.id); const op = (D.people || []).find((p) => p.id === oid);
     if (op && room === dmRoom(oid)) rm = { id: room, name: op.name, sub: seenText(oid), dm: oid }; }
   if (!rm) return R.notFound();
-  if (CH.room !== room) { CH.room = room; CH.msgs = []; CH.last = 0; CH.reacts = {}; CH.sel = null; CH.reply = null; CH.image = null; CH.otherRead = 0; }
+  if (CH.room !== room) { CH.room = room; CH.msgs = []; CH.last = 0; CH.reacts = {}; CH.sel = null; CH.reply = null; CH.image = null; CH.otherRead = 0; voiceStop(); }
   clearInterval(CH.timer);
   CH.timer = setInterval(() => { if (!new RegExp("^#/chat/" + CH.room + "\\b").test(location.hash)) { clearInterval(CH.timer); return; } if (!document.hidden) chatLoad(false).catch(() => {}); }, 4000);
   setTimeout(() => { chatPending(); chatLoad(true).catch((e) => toast(errMsg(e), true)); }, 0);
   return shell("#/chat", `<p class="ch-online" id="chOnline"></p><div id="chatBox" class="chat">${CH.msgs.length ? chatHtml() : skel(4)}</div>
-    <div class="ch-bar"><div class="ch-pend" id="chReply" hidden></div><div class="ch-row"><button class="icon-btn" data-act="chatPhoto" aria-label="${esc(L3("Kirim foto", "Kirim foto", "Send a photo"))}">${ic("camera")}</button>
-      <textarea id="chatIn" rows="1" maxlength="1000" placeholder="${esc(L3("Tulis pesan…", "Surathon pesan…", "Write a message…"))}"></textarea><button class="btn primary" data-act="chatSend" aria-label="${esc(L3("Kirim", "Kirim", "Send"))}">➤</button></div></div>`,
+    <div class="ch-bar"><div class="ch-pend" id="chReply" hidden></div><div class="ch-rec" id="chRec" hidden></div><div class="ch-row"><button class="icon-btn" data-act="chatPhoto" aria-label="${esc(L3("Kirim foto", "Kirim foto", "Send a photo"))}">${ic("camera")}</button>
+      <textarea id="chatIn" rows="1" maxlength="1000" placeholder="${esc(L3("Tulis pesan…", "Surathon pesan…", "Write a message…"))}"></textarea>${canVoice() ? `<button class="icon-btn ch-mic" data-act="chatMic" aria-label="${esc(L3("Rekam pesan suara", "Rekam pesan suara", "Record a voice note"))}">${ic("mic")}</button>` : ""}<button class="btn primary" data-act="chatSend" aria-label="${esc(L3("Kirim", "Kirim", "Send"))}">➤</button></div></div>`,
     { back: "#/chat", title: "💬 " + rm.name, sub: rm.sub });
 };
 A.chatMsg = (d) => { CH.sel = CH.sel === +d.id ? null : +d.id; chatPaint(false); };
@@ -4932,6 +4943,99 @@ A.chatSend = async (d, btn) => {
 A.chatDel = (d, btn) => {
   const host = btn.closest(".ch-msg"); if (host) host.style.display = "none"; CH.sel = null;
   undoBar(t("deleted"), async () => { try { await api.del("chat", d.id); CH.msgs = CH.msgs.filter((m) => String(m.id) !== String(d.id)); chatPaint(false); } catch (e) { if (host) host.style.display = ""; toast(errMsg(e), true); } }, () => { if (host) host.style.display = ""; });
+};
+// ---------- Voice notes in chat (YB 2026-10-31) ----------
+// Tap 🎤 to record (up to 2 minutes), ➤ sends, ✕ throws it away. The note is saved on the server with the message, so it can be
+// played later; the sound itself is only downloaded when someone taps ▶. Phones record AAC (.m4a) where they can,
+// because every iPhone and Android plays it; older Androids fall back to Opus.
+const VOICE_MAX = 120000;
+const canVoice = () => !!(window.MediaRecorder && navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+const voiceTime = (ms) => { const s = Math.max(0, Math.round((ms || 0) / 1000)); return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); };
+const VOICE = { rec: null, stream: null, chunks: [], start: 0, tick: null, audio: null, playing: null, cache: {}, raf: null };
+function chatVoiceHtml(m) {
+  const on = VOICE.playing === m.id;
+  return `<span class="ch-voice" data-vid="${m.id}"><button data-act="chatPlay" data-id="${m.id}" aria-label="${esc(on ? L3("Jeda", "Jeda", "Pause") : L3("Putar pesan suara", "Putar pesan suara", "Play voice note"))}">${on ? "❚❚" : "▶"}</button><span class="ch-vbar"><i></i></span><small>${esc(voiceTime(m.audio_ms))}</small></span>`;
+}
+function voiceStrip() {
+  const rec = document.getElementById("chRec"), row = document.querySelector(".ch-bar .ch-row"); if (!rec || !row) return;
+  const on = !!VOICE.rec; rec.hidden = !on; row.style.display = on ? "none" : "";
+  if (on) rec.innerHTML = `<i class="dot"></i><b id="chRecT">0:00</b><span class="grow">${esc(L3("Merekam… maks. 2 menit", "Mangrekam… maks. 2 menit", "Recording… up to 2 min"))}</span>
+    <button class="icon-btn" data-act="chatMicCancel" aria-label="${esc(t("cancel"))}">${ic("x")}</button><button class="btn primary" data-act="chatMicSend" aria-label="${esc(L3("Kirim", "Kirim", "Send"))}">➤</button>`;
+}
+function voiceStop() {   // stops recording (nothing is sent) and playback
+  if (VOICE.rec) { VOICE.rec.onstop = null; try { VOICE.rec.stop(); } catch (e) {} }
+  if (VOICE.stream) VOICE.stream.getTracks().forEach((tr) => tr.stop());
+  clearInterval(VOICE.tick); VOICE.rec = null; VOICE.stream = null; VOICE.chunks = [];
+  if (VOICE.audio) { VOICE.audio.pause(); } VOICE.playing = null; cancelAnimationFrame(VOICE.raf);
+  voiceStrip();
+}
+A.chatMic = async () => {
+  if (VOICE.rec || !canVoice()) return;
+  if (VOICE.audio) { VOICE.audio.pause(); VOICE.playing = null; chatPaint(false); }
+  let stream;
+  try { stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } }); }
+  catch (e) { toast(L3("Izinkan mikrofon untuk Sada di pengaturan HP.", "Loas mikrofon tu Sada di pengaturan HP.", "Allow the microphone for Sada in your phone's settings."), true); return; }
+  const type = ["audio/mp4;codecs=mp4a.40.2", "audio/mp4", "audio/aac", "audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus"].find((x) => MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(x));
+  let rec; try { rec = new MediaRecorder(stream, type ? { mimeType: type, audioBitsPerSecond: 48000 } : { audioBitsPerSecond: 48000 }); } catch (e) { rec = new MediaRecorder(stream); }
+  VOICE.rec = rec; VOICE.stream = stream; VOICE.chunks = []; VOICE.start = Date.now();
+  rec.ondataavailable = (e) => { if (e.data && e.data.size) VOICE.chunks.push(e.data); };
+  rec.start(); voiceStrip();
+  VOICE.tick = setInterval(() => { const ms = Date.now() - VOICE.start; const el = document.getElementById("chRecT"); if (el) el.textContent = voiceTime(ms);
+    if (ms >= VOICE_MAX) { const b = document.querySelector('[data-act="chatMicSend"]'); if (b) A.chatMicSend(b.dataset, b); }
+    if (!/^#\/chat\//.test(location.hash)) voiceStop(); }, 250);
+};
+A.chatMicCancel = () => voiceStop();
+A.chatMicSend = (d, btn) => {
+  const rec = VOICE.rec; if (!rec || CH.sending) return;
+  const ms = Math.min(VOICE_MAX, Date.now() - VOICE.start); const room = CH.room; if (btn) btn.disabled = true;
+  rec.onstop = async () => {
+    const chunks = VOICE.chunks; const type = (rec.mimeType || (chunks[0] && chunks[0].type) || "audio/mp4");
+    if (VOICE.stream) VOICE.stream.getTracks().forEach((tr) => tr.stop()); clearInterval(VOICE.tick); VOICE.rec = null; VOICE.stream = null; VOICE.chunks = []; voiceStrip();
+    if (ms < 700 || !chunks.length) { toast(L3("Terlalu pendek. Ketuk 🎤 lalu bicara.", "Pandok hian.", "Too short. Tap 🎤 and speak."), true); return; }
+    const blob = new Blob(chunks, { type: type.split(";")[0] });
+    const data = await new Promise((ok, no) => { const fr = new FileReader(); fr.onload = () => ok(String(fr.result)); fr.onerror = no; fr.readAsDataURL(blob); });
+    const audio = data.replace(/^data:[^;,]*/, "data:" + type.split(";")[0]);
+    if (audio.length > 2900000) { toast(L3("Pesan suara terlalu besar.", "Balga hian.", "The voice note is too big."), true); return; }
+    CH.sending = true;
+    try {
+      const m = await api.save("chat", { room, body: "", reply_to: CH.reply ? CH.reply.id : null, audio, audio_ms: ms });
+      CH.reply = null; chatPending();
+      if (m && m.id) { VOICE.cache[m.id] = URL.createObjectURL(blob); if (CH.room === room && !CH.msgs.some((x) => x.id === m.id)) { CH.msgs.push(m); CH.last = Math.max(CH.last, m.id); markChatSeen(CH.room, CH.last); } }
+      chatPaint(true);
+    } catch (e) { toast(e && /too_fast/.test(e.message || e.code || "") ? L3("Terlalu cepat, tunggu sebentar.", "Hatop hian, paima jolo.", "Too fast, wait a moment.") : errMsg(e), true); }
+    finally { CH.sending = false; }
+  };
+  rec.stop();
+};
+// Playing: the <audio> is started inside the tap (iPhones only allow sound that starts from a tap), then gets the sound once it has downloaded.
+const SILENT = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=";
+window.addEventListener("hashchange", () => { if (!/^#\/chat\//.test(location.hash) && (VOICE.rec || VOICE.playing != null)) voiceStop(); });
+function voicePaintPos() {
+  const a = VOICE.audio, id = VOICE.playing; if (!a || id == null) return;
+  const m = CH.msgs.find((x) => x.id === id); const box = document.querySelector(`.ch-voice[data-vid="${id}"]`);
+  if (box) { const dur = isFinite(a.duration) && a.duration > 0 ? a.duration * 1000 : (m && m.audio_ms) || 1; const at = a.currentTime * 1000;
+    box.querySelector("i").style.width = Math.min(100, (at / dur) * 100) + "%"; box.querySelector("small").textContent = voiceTime(at); }
+  VOICE.raf = requestAnimationFrame(voicePaintPos);
+}
+A.chatPlay = async (d) => {
+  const id = +d.id; const room = CH.room;
+  if (!VOICE.audio) { VOICE.audio = new Audio(); VOICE.audio.preload = "auto"; VOICE.audio.setAttribute("playsinline", ""); VOICE.audio.onended = () => { VOICE.playing = null; cancelAnimationFrame(VOICE.raf); chatPaint(false); }; }
+  const a = VOICE.audio;
+  if (VOICE.playing === id) { a.pause(); VOICE.playing = null; cancelAnimationFrame(VOICE.raf); chatPaint(false); return; }
+  a.pause(); cancelAnimationFrame(VOICE.raf); VOICE.playing = id; chatPaint(false);
+  if (!VOICE.cache[id]) { a.src = SILENT; a.play().catch(() => {}); }   // unlocks sound on iPhone while the note downloads
+  try {
+    if (!VOICE.cache[id]) {
+      const r = await api.save("chat_audio", { room, id }); if (!r || !r.audio) throw new Error(L3("Pesan suara tidak ditemukan.", "Ndang dapot.", "Voice note not found."));
+      const bin = atob(r.audio.split(",")[1]); const u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+      VOICE.cache[id] = URL.createObjectURL(new Blob([u8], { type: r.audio.slice(5, r.audio.search(/[;,]/)) }));
+    }
+    if (VOICE.playing !== id) return;
+    a.src = VOICE.cache[id]; await a.play(); voicePaintPos();
+  } catch (e) {
+    if (VOICE.playing === id) { VOICE.playing = null; chatPaint(false); }
+    toast(e && e.name === "NotSupportedError" ? L3("HP ini tidak bisa memutar pesan suara ini. Perbarui iOS/Android.", "HP on ndang boi mamutar.", "This phone can't play this voice note. Please update iOS/Android.") : errMsg(e), true);
+  }
 };
 // Enter sends, Shift+Enter makes a new line; the box grows with the text.
 document.addEventListener("keydown", (e) => { if (e.target && e.target.id === "chatIn" && e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); const b = document.querySelector('[data-act="chatSend"]'); if (b) A.chatSend(b.dataset, b); } });
