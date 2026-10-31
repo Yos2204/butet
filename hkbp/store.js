@@ -366,7 +366,7 @@ const Remote = {
     } catch { throw new AppError("offline"); }
     const txt = await res.text(); let j = null; try { j = txt ? JSON.parse(txt) : null; } catch {}
     if (!res.ok) {
-      const code = ((j && j.message) || "").match(/not_signed_in|bad_login|needs_password|not_allowed|short_password|pw_is_phone|file_too_big|unknown_kind|bad_phone|need_name/);
+      const code = ((j && j.message) || "").match(/not_signed_in|bad_login|needs_password|not_allowed|short_password|pw_is_phone|file_too_big|unknown_kind|bad_phone|need_name|call_ended|call_full|too_fast/);
       if (code && code[0] === "not_signed_in") {
         this.setToken(null);
         // Session gone (expired or cleared): sign the remembered number in again without asking when the account needs no password, then retry once.
@@ -422,6 +422,7 @@ const Remote = {
   profileSave(p) { return this.rpc("hk_profile_save", { p_token: this.token, p }); },
   calUrl(tok) { return `${this.cfg.supabaseUrl}/functions/v1/hkbp-cal?t=${tok}`; },
   pushSave(sub) { return this.rpc("hk_push_save", { p_token: this.token, p_sub: sub }); },
+  call(op, d) { return this.rpc("hk_call", { p_token: this.token, p_op: op, p_data: d || {} }); },
   ping(installed) { return this.rpc("hk_ping", { p_token: this.token, p_installed: !!installed }); },
   appStatus() { return this.rpc("hk_app_status", { p_token: this.token }); },
   phoneTries() { return this.rpc("hk_phone_tries_list", { p_token: this.token }); },
