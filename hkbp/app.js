@@ -962,6 +962,7 @@ R.more = () => {
       <button class="avatar-btn" data-act="photoPick" aria-label="${esc(L3("Foto profil", "Foto profil", "Profile photo"))}">${avatarOf(m, "lg")}<i class="avatar-edit">${ic("camera")}</i></button>
       <div class="grow"><h3>${esc(m.name)}</h3><p class="small muted">${esc(fmtPhone(m.phone))}${m.dob ? " · " + esc(fmt(m.dob, { day: "numeric", month: "long" })) : ""}</p>
         <div class="chips">${m.is_admin && manage() ? `<span class="badge admin">${esc(t("role_admin"))}</span>` : ""}${roles.map(([g, r]) => `<span class="chip" style="--gc:${(G(g) || {}).color}">${esc(gname(G(g)))}${r === "chair" && manage() ? " · " + esc(t("role_chair")) : ""}</span>`).join("")}</div>
+        <button class="btn sm pf-photo" data-act="photoPick">${ic("camera")} ${esc(D.photos && D.photos[m.id] ? L3("Ganti foto profil", "Ganti foto profil", "Change profile photo") : L3("Tambah foto profil", "Tambah foto profil", "Add a profile photo"))}</button>
         <button class="btn sm pf-reset" data-act="pfReset">${ic("redo")} ${esc(t("pfReset"))}</button></div>
     </section>
     <div class="menu card">
@@ -4458,6 +4459,13 @@ try { document.head.insertAdjacentHTML("beforeend", `<style>
   .ch-acts button { border: 0; background: transparent; font-size: 18px; padding: 4px 6px; border-radius: 10px; }
   .ch-acts button:nth-last-child(-n+2) { font-size: 13px; font-weight: 700; color: var(--brand); }
   .ch-time { font-size: 11.5px; color: var(--muted); padding: 0 8px; }
+  .ch-msg.has-av { position: relative; padding-left: 40px; max-width: calc(82% + 40px); }
+  .ch-msg.ch-head { margin-top: 6px; }
+  .ch-av { position: absolute; left: 0; top: 20px; }
+  .ch-av .avatar { width: 32px; height: 32px; font-size: 12px; }
+  .ch-av .pres { width: 10px; height: 10px; border-width: 2px; }
+  .pf-photo { display: inline-flex; align-items: center; gap: 6px; margin-top: 6px; }
+  .pf-photo .ic { width: 15px; height: 15px; }
   .ch-online { display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 12.5px; color: var(--muted); margin: 6px 0 0; min-height: 18px; }
   .ch-online i { width: 9px; height: 9px; border-radius: 50%; background: #22c55e; display: inline-block; }
   .ch-bar { position: fixed; left: 0; right: 0; bottom: calc(66px + env(safe-area-inset-bottom)); z-index: 19; display: grid; gap: 6px; padding: 8px max(12px, env(safe-area-inset-left)); background: color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-top: 1px solid var(--line); }
@@ -4530,7 +4538,10 @@ function chatHtml() {
     const chips = Object.keys(rx).map((e) => `<button class="ch-rx${rx[e].includes(me) ? " me" : ""}" data-act="chatReact" data-id="${m.id}" data-e="${e}" title="${esc(rx[e].join(", "))}">${e} ${rx[e].length}</button>`).join("");
     const dm = String(CH.room || "").startsWith("dm:"); const lastMine = dm && mine && !CH.msgs.slice(CH.msgs.indexOf(m) + 1).some((x) => x.member_id === D.me.id);
     const seen = lastMine ? `<small class="ch-seen">${CH.otherRead >= m.id ? "✓✓ " + esc(L3("Dilihat", "Dibereng", "Seen")) : "✓ " + esc(L3("Terkirim", "Tarkirim", "Sent"))}</small>` : "";
-    return `${sep}<div class="ch-msg${mine ? " mine" : ""}${sel ? " sel" : ""}">${mine || dm ? "" : `<b class="ch-name">${presDot(m.member_id)}${esc(m.name || "")}</b>`}
+    // Profile photo beside other people's messages (YB 2026-10-31): photo + name on the first message of a run, a gap under it after that.
+    const prev = CH.msgs[CH.msgs.indexOf(m) - 1]; const head = !!sep || !prev || prev.member_id !== m.member_id;
+    const av = !mine && !dm; const who = (D.people || []).find((q) => q.id === m.member_id) || { id: m.member_id, name: m.name };
+    return `${sep}<div class="ch-msg${mine ? " mine" : ""}${sel ? " sel" : ""}${av ? " has-av" : ""}${av && head ? " ch-head" : ""}">${av && head ? `<span class="ch-av">${avatarOf(who)}</span><b class="ch-name">${esc(m.name || "")}</b>` : ""}
       <div class="ch-bubble" data-act="chatMsg" data-id="${m.id}">${m.reply ? `<span class="ch-quote"><b>${esc(m.reply.name || "")}</b>${esc(m.reply.body || "")}</span>` : ""}${m.image ? `<img class="ch-img" src="${esc(m.image)}" alt="" data-act="chatImg" data-id="${m.id}">` : ""}${m.body ? `<span>${esc(m.body).replace(/\n/g, "<br>")}</span>` : ""}</div>
       ${chips ? `<div class="ch-rxs">${chips}</div>` : ""}
       ${sel ? `<div class="ch-acts">${REACTS.map((e) => `<button data-act="chatReact" data-id="${m.id}" data-e="${e}">${e}</button>`).join("")}<button data-act="chatReply" data-id="${m.id}">↩︎ ${esc(L3("Balas", "Balas", "Reply"))}</button>${mine || D.me.is_admin ? `<button data-act="chatDel" data-id="${m.id}">${esc(t("delete"))}</button>` : ""}</div>` : ""}
