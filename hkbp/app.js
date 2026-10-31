@@ -324,23 +324,8 @@ async function ensurePush(reg) {
   } catch (e) { console.warn(e); return false; }
 }
 // Without the server job (demo mode, or before push is set up) the app shows today's reminders when it is opened.
-// YB 2026-10-31: every 2 days, when YB opens Sada, a pop-up lists the numbers that tried to sign in but are not members yet,
-// so YB can nudge them on WhatsApp (App status). It stops by itself once every such number has registered.
 const NUDGE_SKIP = ["80001234"]; // Claude's test number, not a person
-async function nudgeRemind() {
-  if (!D || !isYB() || api.mode !== "remote" || !api.phoneTries || /^#\/appstatus/.test(location.hash)) return;
-  if (Date.now() - (+LS.get("nudge.last") || 0) < 2 * 864e5 - 3600e3) return;
-  let tr; try { tr = (await api.phoneTries() || []).filter((r) => !NUDGE_SKIP.includes(r.phone)); } catch { return; }
-  if (!tr.length || $("#sheet").classList.contains("open")) return;
-  LS.set("nudge.last", Date.now());
-  A.nudgeOpen = () => { closeSheet(); location.hash = "#/appstatus"; };
-  sheet(L3(`${tr.length} nomor belum masuk Sada`, `${tr.length} nomor dope so masuk tu Sada`, `${tr.length} ${tr.length === 1 ? "number is" : "numbers are"} still not signed in`), `
-    <p class="small muted">${esc(L3("Mereka mencoba masuk tapi belum terdaftar. Ingatkan lewat WhatsApp:", "Nunga dicoba nasida masuk alai dope so tardaftar. Ingothon marhite WhatsApp:", "They tried to sign in but haven't registered yet. Nudge them on WhatsApp:"))}</p>
-    <div class="card menu">${tr.map((r) => `<a class="li" href="${wa(AS_NUDGE, r.phone)}" target="_blank" rel="noopener">${ic("wa")}<span class="grow"><b>${esc(fmtPhone(r.phone))}</b></span>${ic("chev", "chev")}</a>`).join("")}</div>
-    <button class="btn block" data-act="nudgeOpen">${esc(t("asTitle"))}</button>`);
-}
 async function localReminders() {
-  nudgeRemind();
   if (inJarvis()) return;
   if (D && !isGuest()) await ensurePush();
   if (!D || !LS.get("notifyOn") || !("Notification" in window) || Notification.permission !== "granted") return;
@@ -1024,9 +1009,6 @@ R.more = () => {
 };
 // Admin only: who has signed in to the app, installed it and turned notifications on.
 let AS = { rows: null, tries: [], f: "all" };
-// WhatsApp nudge for numbers that tried and failed to get in (YB 2026-10-31, after the Register button fix in PR #103).
-// Opens WhatsApp on the admin's own phone with this text filled in; the admin taps Send for each person.
-const AS_NUDGE = "Shalom! Aplikasi Sada HKBPS sudah diperbaiki. Silakan buka lagi https://yos2204.github.io/butet/hkbp/ , masukkan nomor HP Anda, tulis nama Anda, lalu tekan Daftar.\n\nSada HKBPS is fixed now. Please open https://yos2204.github.io/butet/hkbp/ again, enter your phone number, type your name and tap Register.";
 const asDot = (on, label) => `<span class="as-pill ${on ? "on" : "off"}"><i></i>${esc(label)}</span>`;
 function asFill() {
   const el = $("#asList"); if (!el || !AS.rows) return;
@@ -1037,7 +1019,7 @@ function asFill() {
     <div class="chips">${[["all", "asAll"], ["noapp", "asNoApp"], ["nonotif", "asNoNotif"]].map(([f, k]) => `<button class="chip ${AS.f === f ? "on" : ""}" data-act="asFilter" data-f="${f}">${esc(t(k))}</button>`).join("")}</div>
     <div class="card menu">${show.length ? show.map((r) => `<div class="li as-row">${avatarOf(r)}<span class="grow"><b>${esc(r.name)}</b>${r.self_reg ? ` <span class="badge chair">${esc(t("asSelfReg"))}</span>` : ""}<small>${esc(fmtPhone(r.phone))} · ${esc(r.last_seen ? t("asLast") + " " + fmt(r.last_seen, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : t("asNever"))}</small></span><span class="as-pills">${asDot(r.signed_in, t("asApp"))}${asDot(r.notif, t("asNotif"))}</span></div>`).join("") : empty(t("asNone"))}</div>
     <h3 class="sec-h">${esc(t("asOthers"))}</h3>
-    <div class="card menu">${AS.tries.length ? AS.tries.map((r) => `<div class="li as-row"><span class="avatar">?</span><span class="grow"><b>${esc(fmtPhone(r.phone))}</b><small>${esc(t("asTried", r.tries))} · ${esc(t("asLastTry") + " " + fmt(r.last_at, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }))}</small></span><span class="as-pills">${asDot(false, t("asNotListed"))}</span><a class="icon-btn wa" href="${wa(AS_NUDGE, r.phone)}" target="_blank" rel="noopener" aria-label="${esc(L3("Ingatkan lewat WhatsApp", "Ingothon marhite WhatsApp", "Nudge on WhatsApp"))}">${ic("wa")}</a></div>`).join("") : `<p class="small muted pad">${esc(t("asNoOthers"))}</p>`}</div>
+    <div class="card menu">${AS.tries.length ? AS.tries.map((r) => `<div class="li as-row"><span class="avatar">?</span><span class="grow"><b>${esc(fmtPhone(r.phone))}</b><small>${esc(t("asTried", r.tries))} · ${esc(t("asLastTry") + " " + fmt(r.last_at, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }))}</small></span><span class="as-pills">${asDot(false, t("asNotListed"))}</span></div>`).join("") : `<p class="small muted pad">${esc(t("asNoOthers"))}</p>`}</div>
     <p class="small muted pad">${esc(t("asNote"))}</p>`;
 }
 R.appstatus = () => {
