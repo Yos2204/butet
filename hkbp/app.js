@@ -30,6 +30,7 @@ const standalone = () => matchMedia("(display-mode: standalone)").matches || nav
 
 // ---------- icons (24px line icons) ----------
 const IC = {
+  gallery: '<rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-9 9"/>',
   redo: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>',
   home: '<path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/>',
   groups: '<circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><path d="M15 14.5c3 0 6 1.8 6 5.5"/>',
@@ -48,6 +49,7 @@ const IC = {
   people: '<circle cx="12" cy="7" r="3"/><circle cx="5" cy="10" r="2"/><circle cx="19" cy="10" r="2"/><path d="M6 20c0-3.3 2.7-6 6-6s6 2.7 6 6M1.5 18c0-2 1.6-3.6 3.5-3.6M22.5 18c0-2-1.6-3.6-3.5-3.6"/>',
   book: '<path d="M12 6c-2-1.5-5-2-8-1.5v14c3-.5 6 0 8 1.5 2-1.5 5-2 8-1.5v-14c-3-.5-6 0-8 1.5z"/><path d="M12 6v14"/>',
   drum: '<ellipse cx="12" cy="8" rx="8" ry="3"/><path d="M4 8v8c0 1.7 3.6 3 8 3s8-1.3 8-3V8"/><path d="M15 2l-5 7M20 4l-6 5"/>',
+  textsize: '<path d="M3 7V5h11v2M8.5 5v14M6.5 19h4M14 12v-1.5h7V12M17.5 10.5V19M16 19h3"/>',
   mic: '<rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v4M8 22h8"/>',
   note: '<path d="M9 18V5l11-2v13"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="17.5" cy="16" r="2.5"/>',
   star: '<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/>',
@@ -400,12 +402,13 @@ R.login = async () => {
         <button class="btn primary block">${esc(t("setupBtn"))}</button>
       </form>
       <button class="btn block ghost" data-act="seedDemo">${ic("spark")} ${esc(t("demoBtn"))}</button>` : `
+      <div class="pk-slot"></div>
       <form class="card form" data-form="login">
         <label>${esc(t("f_phone"))}<div class="phone-in"><span>+65</span><input name="phone" inputmode="numeric" required placeholder="8123 4567" autocomplete="username" data-phonecheck value="${esc(LS.get("remote.phone") || "")}"></div></label>
         <p class="small muted pc-hint" aria-live="polite"></p>
         <p class="small muted pc-note">${esc(t("pcNotice"))}</p>
         <div class="pc-reg" hidden><label>${esc(t("f_name"))}<input name="rname" maxlength="80" autocomplete="name"></label></div>
-        <div class="pc-pw" hidden><label>${esc(t("f_password"))}<input name="pw" type="password" autocomplete="current-password"></label></div>
+        <div class="pc-pw" hidden><label>${esc(t("f_password"))}<input name="pw" type="password" autocomplete="current-password"></label><button type="button" class="btn block pk-pw" data-act="pkLogin" hidden></button></div>
         <div class="pc-new" hidden>
           <label>${esc(t("f_newPw"))}<input name="npw" type="password" minlength="6" autocomplete="new-password"></label>
           <label>${esc(t("f_pw2"))}<input name="npw2" type="password" minlength="6" autocomplete="new-password"></label>
@@ -848,7 +851,7 @@ R.bread = (arg) => {
       ${isBreadMaker() ? `<div class="row two"><a class="btn" href="#/bread/edit-${b.day}">${ic("edit")} ${esc(t("edit"))}</a><button class="btn danger" data-act="del" data-kind="bread" data-id="${b.day}">${ic("trash")} ${esc(t("delete"))}</button></div>` : ""}
     </article>` : empty(t("noBread"), "bread")}
     ${(D.settings || {}).wa_group_link ? `<a class="btn wa block" href="${esc(D.settings.wa_group_link)}" target="_blank" rel="noopener">${ic("wa")} ${esc(t("joinWaGroup"))}</a>` : ""}
-    ${isAdmin() ? `<button class="card li" data-act="breadSetup">${ic("gear")}<span class="grow"><b>${esc(t("bs_title"))}</b><small>${esc(t("src_" + ((D.settings || {}).bread_source || "elders")))} · ${String((D.settings || {}).bread_hour ?? 6).padStart(2, "0")}:00</small></span>${ic("chev", "chev")}</button>` : ""}
+    ${isAdmin() ? `<button class="card li" data-act="breadSetup">${ic("gear")}<span class="grow"><b>${esc(t("bs_title"))}</b><small>${esc(breadSrcLabel())} · ${String((D.settings || {}).bread_hour ?? 6).padStart(2, "0")}:00</small></span>${ic("chev", "chev")}</button>` : ""}
     ${isBreadMaker() ? `<div class="card"><h3>${ic("edit")} ${esc(t("breadPlan"))}</h3><p class="small muted">${esc(t("breadPlanLead"))}</p>
       <div class="row two"><a class="btn primary" href="#/bread/new">${ic("plus")} ${esc(t("writeBread"))}</a><button class="btn" data-act="genWeek">${ic("ai")} ${esc(t("genWeek"))}</button></div>
       ${future.length ? `<div class="chips">${future.map((x) => `<a class="chip" href="#/bread/${x.day}">${esc(fmtShort(x.day))}</a>`).join("")}</div>` : ""}</div>` : ""}
@@ -960,6 +963,7 @@ R.more = () => {
       <button class="avatar-btn" data-act="photoPick" aria-label="${esc(L3("Foto profil", "Foto profil", "Profile photo"))}">${avatarOf(m, "lg")}<i class="avatar-edit">${ic("camera")}</i></button>
       <div class="grow"><h3>${esc(m.name)}</h3><p class="small muted">${esc(fmtPhone(m.phone))}${m.dob ? " · " + esc(fmt(m.dob, { day: "numeric", month: "long" })) : ""}</p>
         <div class="chips">${m.is_admin && manage() ? `<span class="badge admin">${esc(t("role_admin"))}</span>` : ""}${roles.map(([g, r]) => `<span class="chip" style="--gc:${(G(g) || {}).color}">${esc(gname(G(g)))}${r === "chair" && manage() ? " · " + esc(t("role_chair")) : ""}</span>`).join("")}</div>
+        <button class="btn sm pf-photo" data-act="photoPick">${ic("camera")} ${esc(D.photos && D.photos[m.id] ? L3("Ganti foto profil", "Ganti foto profil", "Change profile photo") : L3("Tambah foto profil", "Tambah foto profil", "Add a profile photo"))}</button>
         <button class="btn sm pf-reset" data-act="pfReset">${ic("redo")} ${esc(t("pfReset"))}</button></div>
     </section>
     <div class="menu card">
@@ -973,10 +977,11 @@ R.more = () => {
       <button class="li" data-act="notify">${ic("bell")}<span class="grow"><b>${esc(t("notifications"))}</b><small>${esc(perm === "granted" ? t("notifyOnTxt") : perm === "denied" ? t("notifyDenied") : t("notifyAskBody"))}</small></span>${ic("chev", "chev")}</button>
       ${hasRights() ? `<button class="li" data-act="toggleView">${ic("people")}<span class="grow"><b>${esc(t("layout"))}: ${esc(t(manage() ? "viewAdmin" : "viewMember"))}</b><small>${esc(t(manage() ? "toMember" : "toAdmin"))}</small></span>${ic("chev", "chev")}</button>` : ""}
       ${isAdmin() && isYB() ? `<a class="li" href="#/appstatus">${ic("phone")}<span class="grow"><b>${esc(t("asTitle"))}</b><small>${esc(t("asSub"))}</small></span>${ic("chev", "chev")}</a>` : ""}
-      ${isAdmin() ? `<button class="li" data-act="breadSetup">${ic("bread")}<span class="grow"><b>${esc(t("bs_title"))}</b><small>${esc(t("src_" + ((D.settings || {}).bread_source || "elders")))}</small></span>${ic("chev", "chev")}</button>` : ""}
+      ${isAdmin() ? `<button class="li" data-act="breadSetup">${ic("bread")}<span class="grow"><b>${esc(t("bs_title"))}</b><small>${esc(breadSrcLabel())}</small></span>${ic("chev", "chev")}</button>` : ""}
       ${serveOn() && manage() ? `<button class="li" data-act="servePick">${ic("calendar")}<span class="grow"><b>${esc(t("svTitle"))}</b><small>${esc((me().profile || {}).serve ? me().profile.serve.map((id) => gname(G(id))).filter(Boolean).join(", ") || t("svNone") : t("pfNotYet"))}</small></span>${ic("chev", "chev")}</button>` : ""}
       ${pfSkipped() && manage() ? `<button class="li" data-act="pfTest">${ic("spark")}<span class="grow"><b>${esc(t(LS.get("pfTest") ? "pfTestEnd" : "pfTestStart"))}</b><small>${esc(t(LS.get("pfTest") ? "pfTestOnSub" : "pfTestSub"))}</small></span>${ic("chev", "chev")}</button>` : ""}
       ${profileOn() ? `<button class="li" data-act="profile">${ic("people")}<span class="grow"><b>${esc(t("pfTitle"))}</b><small>${esc(me().profile ? profileCats(me().profile).map((id) => gname(G(id))).filter(Boolean).join(", ") : t("pfNotYet"))}</small></span>${ic("chev", "chev")}</button>` : ""}
+      ${typeof pkMenuItem === "function" ? pkMenuItem() : ""}
       ${manage() ? `<button class="li" data-act="password">${ic("key")}<span class="grow"><b>${esc(t("changePw"))}</b></span>${ic("chev", "chev")}</button>` : ""}
       <button class="li" data-act="install">${ic("phone")}<span class="grow"><b>${esc(t("installTitle"))}</b><small>${esc(standalone() ? t("installed") : t("installHint"))}</small></span>${ic("chev", "chev")}</button>
       ${isYB() && manage() ? `<button class="li" data-act="settings">${ic("gear")}<span class="grow"><b>${esc(t("settings"))}</b><small>${esc(api.mode === "remote" ? t("modeRemote") : t("modeLocal"))}</small></span>${ic("chev", "chev")}</button>` : ""}
@@ -986,6 +991,9 @@ R.more = () => {
 };
 // Admin only: who has signed in to the app, installed it and turned notifications on.
 let AS = { rows: null, tries: [], f: "all" };
+// WhatsApp nudge for numbers that tried and failed to get in (YB 2026-10-31, after the Register button fix in PR #103).
+// Opens WhatsApp on the admin's own phone with this text filled in; the admin taps Send for each person.
+const AS_NUDGE = "Shalom! Aplikasi Sada HKBPS sudah diperbaiki. Silakan buka lagi https://yos2204.github.io/butet/hkbp/ , masukkan nomor HP Anda, tulis nama Anda, lalu tekan Daftar.\n\nSada HKBPS is fixed now. Please open https://yos2204.github.io/butet/hkbp/ again, enter your phone number, type your name and tap Register.";
 const asDot = (on, label) => `<span class="as-pill ${on ? "on" : "off"}"><i></i>${esc(label)}</span>`;
 function asFill() {
   const el = $("#asList"); if (!el || !AS.rows) return;
@@ -996,7 +1004,7 @@ function asFill() {
     <div class="chips">${[["all", "asAll"], ["noapp", "asNoApp"], ["nonotif", "asNoNotif"]].map(([f, k]) => `<button class="chip ${AS.f === f ? "on" : ""}" data-act="asFilter" data-f="${f}">${esc(t(k))}</button>`).join("")}</div>
     <div class="card menu">${show.length ? show.map((r) => `<div class="li as-row">${avatarOf(r)}<span class="grow"><b>${esc(r.name)}</b>${r.self_reg ? ` <span class="badge chair">${esc(t("asSelfReg"))}</span>` : ""}<small>${esc(fmtPhone(r.phone))} · ${esc(r.last_seen ? t("asLast") + " " + fmt(r.last_seen, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : t("asNever"))}</small></span><span class="as-pills">${asDot(r.signed_in, t("asApp"))}${asDot(r.notif, t("asNotif"))}</span></div>`).join("") : empty(t("asNone"))}</div>
     <h3 class="sec-h">${esc(t("asOthers"))}</h3>
-    <div class="card menu">${AS.tries.length ? AS.tries.map((r) => `<div class="li as-row"><span class="avatar">?</span><span class="grow"><b>${esc(fmtPhone(r.phone))}</b><small>${esc(t("asTried", r.tries))} · ${esc(t("asLastTry") + " " + fmt(r.last_at, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }))}</small></span><span class="as-pills">${asDot(false, t("asNotListed"))}</span></div>`).join("") : `<p class="small muted pad">${esc(t("asNoOthers"))}</p>`}</div>
+    <div class="card menu">${AS.tries.length ? AS.tries.map((r) => `<div class="li as-row"><span class="avatar">?</span><span class="grow"><b>${esc(fmtPhone(r.phone))}</b><small>${esc(t("asTried", r.tries))} · ${esc(t("asLastTry") + " " + fmt(r.last_at, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }))}</small></span><span class="as-pills">${asDot(false, t("asNotListed"))}</span><a class="icon-btn wa" href="${wa(AS_NUDGE, r.phone)}" target="_blank" rel="noopener" aria-label="${esc(L3("Ingatkan lewat WhatsApp", "Ingothon marhite WhatsApp", "Nudge on WhatsApp"))}">${ic("wa")}</a></div>`).join("") : `<p class="small muted pad">${esc(t("asNoOthers"))}</p>`}</div>
     <p class="small muted pad">${esc(t("asNote"))}</p>`;
 }
 R.appstatus = () => {
@@ -1423,16 +1431,38 @@ try { document.head.insertAdjacentHTML("beforeend", `<style>
   .taro-x { width: 34px; height: 34px; border-radius: 50%; border: 0; background: color-mix(in srgb, var(--ink) 10%, var(--surface)); color: var(--ink); font-size: 15px; font-weight: 800; flex: none; display: grid; place-items: center; }
   .taro-x[hidden] { display: none; }
   .taro-tools { display: flex; gap: 8px; margin-bottom: 12px; } .taro-tools .btn { flex: 1; }
-  .taro-tree .taro-n { border-radius: 16px; margin: 6px 0; background: var(--surface); box-shadow: 0 2px 10px rgba(20,22,60,.05); border: 1px solid var(--line); overflow: hidden; }
-  .taro-tree .taro-n .taro-n { box-shadow: none; } .taro-n.d1 { background: color-mix(in srgb, var(--brand) 3%, var(--surface)); } .taro-n.d2 { background: color-mix(in srgb, var(--brand) 5%, var(--surface)); } .taro-n.d3, .taro-n.d4 { background: color-mix(in srgb, var(--brand) 7%, var(--surface)); }
-  .taro-n > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 10px; padding: 12px 14px; } .taro-n > summary::-webkit-details-marker { display: none; }
-  .taro-t { flex: 1; min-width: 0; display: grid; gap: 2px; } .taro-t b { font-size: 15.5px; } .taro-t small { color: var(--muted); font-size: 12.5px; line-height: 1.35; }
-  .taro-count { flex: none; font-size: 11.5px; font-weight: 800; color: var(--brand); background: color-mix(in srgb, var(--brand) 11%, var(--surface)); border-radius: 999px; padding: 3px 9px; }
-  .taro-arrow { flex: none; display: grid; color: var(--muted); transition: transform .2s; } .taro-arrow svg { width: 18px; height: 18px; } .taro-n[open] > summary .taro-arrow { transform: rotate(90deg); }
-  .taro-tree, .taro-tree .taro-tree { border-left: 0 !important; padding-left: 0 !important; margin: 0; list-style: none; }
-  .taro-n > summary::before { content: none !important; display: none !important; } .taro-n > summary small { flex-basis: auto !important; }
-  .taro-kids { padding: 0 8px 8px 8px; } .taro-kids > .taro-n { margin: 6px 0; } .taro-n.on-path > summary b { color: var(--brand); } .taro-n.on-path { border-color: color-mix(in srgb, var(--gold, #d8b25e) 70%, var(--line)); }
-  .taro-margas { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 0 2px; }
+  /* Tarombo as a family tree (YB 2026-10-31): each person is a card, lines run from a parent down to the children, tap a card to open or close its branch.
+     The three main lines carry Batak Toba ulos colours (red, gold, black) on their connector lines and a woven band on their card. */
+  .tt { --tl: color-mix(in srgb, var(--ink) 28%, var(--surface)); --ind: 16px; padding: 2px 0 8px; overflow-x: auto; }
+  .tt ul.tt-kids { list-style: none; margin: 0 0 0 calc(var(--ind) + 2px); padding: 0; }
+  .tt ul.tt-kids > li { position: relative; padding: 8px 0 0 var(--ind); margin: 0; }
+  .tt ul.tt-kids > li::before { content: ""; position: absolute; left: 0; top: 0; width: calc(var(--ind) - 2px); height: 30px; border-left: 2px solid var(--tl); border-bottom: 2px solid var(--tl); border-bottom-left-radius: 10px; }
+  .tt ul.tt-kids > li:not(:last-child)::after { content: ""; position: absolute; left: 0; top: 0; bottom: 0; border-left: 2px solid var(--tl); }
+  .tt .tt-n.l0 { --tl: #b3202a; } .tt .tt-n.l1 { --tl: #c99a2e; } .tt .tt-n.l2 { --tl: color-mix(in srgb, var(--ink) 78%, var(--surface)); }
+  .tt-n > summary, .tt-n[open] > summary { display: flex !important; margin: 0; color: inherit; list-style: none; } .tt-n > summary::-webkit-details-marker { display: none; } .tt-n > summary::before { content: none !important; }
+  .tt-card { position: relative; display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); box-shadow: 0 2px 8px rgba(20,22,60,.05); cursor: pointer; max-width: 560px; -webkit-tap-highlight-color: transparent; transition: border-color .15s, box-shadow .15s; }
+  div.tt-card { cursor: default; }
+  .tt-card:active { transform: scale(.99); }
+  .tt-t { flex: 1; min-width: 0; display: grid; gap: 2px; } .tt-t b { font-size: 15px; line-height: 1.25; } .tt-t small { color: var(--muted); font-size: 12px; line-height: 1.35; font-weight: 500; }
+  .tt-n.d0 > .tt-card { background: linear-gradient(140deg, var(--brand), #2b2e74); color: #fff; border: 0; padding: 14px 14px 14px 16px; box-shadow: 0 8px 20px rgba(30,32,90,.18); }
+  .tt-n.d0 > .tt-card .tt-t b { font-size: 18px; } .tt-n.d0 > .tt-card small { color: rgba(255,255,255,.78); }
+  .tt-n.d0 > .tt-card .tt-count { background: rgba(255,255,255,.18); color: #fff; } .tt-n.d0 > .tt-card .tt-tog { border-color: rgba(255,255,255,.5); color: #fff; }
+  .tt-n.d1 > .tt-card { padding-left: 18px; overflow: hidden; }
+  .tt-n.d1 > .tt-card::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 7px;
+    background: repeating-linear-gradient(180deg, #b3202a 0 12px, #1a1a1a 12px 15px, #f4ead5 15px 17px, #d8b25e 17px 19px, #f4ead5 19px 21px, #1a1a1a 21px 24px); }
+  .tt-n.d1 > .tt-card .tt-t b { font-size: 16.5px; }
+  .tt-count { flex: none; font-size: 11px; font-weight: 800; color: var(--brand); background: color-mix(in srgb, var(--brand) 11%, var(--surface)); border-radius: 999px; padding: 3px 8px; }
+  .tt-tog { flex: none; width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--tl); color: var(--tl); display: grid; place-items: center; font-weight: 900; font-size: 16px; line-height: 1; }
+  .tt-tog::before { content: "+"; } .tt-n[open] > summary .tt-tog::before { content: "−"; }
+  .tt-n[open] > summary.tt-card { border-color: color-mix(in srgb, var(--tl) 45%, var(--line)); }
+  .tt-n[open] > .tt-kids { animation: ttIn .18s ease-out; } @keyframes ttIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+  .tt-n.on-path > .tt-card { border-color: var(--gold, #c99a2e); box-shadow: 0 0 0 3px color-mix(in srgb, var(--gold, #c99a2e) 25%, transparent); } .tt-n.on-path > .tt-card .tt-t b { color: var(--brand); } .tt-n.d0.on-path > .tt-card .tt-t b { color: #fff; }
+  .tt-margas { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 10px; border-radius: 14px; border: 1px dashed color-mix(in srgb, var(--tl) 55%, var(--line)); background: color-mix(in srgb, var(--tl) 5%, var(--surface)); max-width: 560px; }
+  .tt-margas-h { flex-basis: 100%; font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+  .tt-leaf { display: inline-block; padding: 5px 11px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line); font-size: 13.5px; font-weight: 700; color: var(--ink); }
+  .tt-leaf.hit { background: var(--gold, #d8b25e); border-color: var(--gold, #d8b25e); color: #111; box-shadow: 0 0 0 4px rgba(216,178,94,.3); }
+  @media (max-width: 420px) { .tt { --ind: 12px; } .tt-card { padding: 9px 10px; gap: 8px; } .tt-t b { font-size: 14.5px; } .tt-tog { width: 24px; height: 24px; } }
+  @media (min-width: 900px) { .tt { --ind: 22px; } }
   .taro-chip { display: inline-block; padding: 6px 12px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line); font-size: 13.5px; font-weight: 700; color: var(--ink); }
   .taro-chip.hit { background: var(--gold, #d8b25e); border-color: var(--gold, #d8b25e); color: #111; box-shadow: 0 0 0 4px rgba(216,178,94,.3); }
   .taro-sug { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 12px; } .taro-chip.pick { cursor: pointer; background: color-mix(in srgb, var(--brand) 8%, var(--surface)); border-color: transparent; color: var(--brand); }
@@ -1903,12 +1933,6 @@ try { document.head.insertAdjacentHTML("beforeend", `<style>
   .rpp-ans { border-left: 5px solid #8a8f99; } .rpp-ans.yes { border-left-color: #c2410c; } .rpp-ans.no { border-left-color: #1f8a4c; } .rpp-ans.maybe { border-left-color: #b7791f; }
   .rpp-v { font-size: 19px; margin-bottom: 8px; } .rpp-h { font-weight: 700; } .rpp-ans h4 { margin: 14px 0 6px; } .rpp-rule { background: var(--surface-2); border-radius: 12px; padding: 10px 12px; margin: 6px 0; } .rpp-rule blockquote { margin: 6px 0; font-style: italic; color: var(--brand); }
   .badge.warn { background: #fde7d9; color: #9a3412; }
-  .taro-tree { list-style: none; margin: 0; padding-left: 14px; border-left: 2px solid var(--line); } .taro-tree.root { padding-left: 0; border-left: 0; }
-  .taro-n > details { margin: 6px 0; } .taro-n summary { cursor: pointer; list-style: none; display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 8px; padding: 8px 12px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); }
-  .taro-n summary::-webkit-details-marker { display: none; } .taro-n summary::before { content: "▸"; color: var(--brand); font-weight: 900; } .taro-n details[open] > summary::before { content: "▾"; }
-  .taro-n summary small { flex-basis: 100%; color: var(--muted); font-size: 12.5px; } .taro-count { margin-left: auto; font-size: 11px; font-weight: 800; background: var(--brand-soft); color: var(--brand); border-radius: 999px; padding: 2px 8px; }
-  .taro-margas { list-style: none; display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 0 4px 14px; margin: 0; } .taro-chip { display: inline-block; padding: 5px 10px; border-radius: 999px; background: color-mix(in srgb, var(--brand) 9%, var(--surface)); font-size: 13px; font-weight: 700; }
-  .taro-m.hit .taro-chip { background: var(--gold, #d8b25e); color: #111; box-shadow: 0 0 0 3px rgba(216,178,94,.4); }
   .taro-box { margin-top: 10px; padding: 10px 12px; border-radius: 12px; background: var(--surface-2); } .taro-path { font-size: 12.5px; color: var(--muted); margin: 4px 0 0; } .taro-path b { color: var(--ink); }
   .tutur-ref summary { cursor: pointer; } .tref-r { display: grid; grid-template-columns: 9.5em 1fr; gap: 8px; padding: 8px 0; border-top: 1px solid var(--line); font-size: 14px; } .tref-r b { color: var(--brand); }
 </style>`); } catch (e) {}
@@ -2079,15 +2103,21 @@ function taroRel(a, b) {
 const taroPath = (p, m) => `<p class="taro-path">${p.map((x) => `<span>${esc(x)}</span>`).join(" › ")} › <b>${esc(m)}</b></p>`;
 R.tarombo = () => {
   const countM = (n) => (typeof n === "string" ? 1 : n[2].reduce((s2, c) => s2 + countM(c), 0));
-  const node = (n, depth) => { if (typeof n === "string") return `<span class="taro-chip" data-n="${esc(mnorm(n))}">${esc(n)}</span>`;
+  // A family tree: a card per person, connector lines down to the children, tap to open or close. Margas under one parent sit together at the end of that branch.
+  const node = (n, depth, line) => {
     const kids = n[2]; const margas = kids.filter((k) => typeof k === "string"), subs = kids.filter((k) => typeof k !== "string");
-    return `<details class="taro-n d${Math.min(depth, 4)}" data-name="${esc(n[0])}" data-def="${depth < 2 ? 1 : 0}"${depth < 2 ? " open" : ""}><summary><span class="taro-t"><b>${esc(n[0])}</b>${n[1] ? `<small>${esc(n[1])}</small>` : ""}</span>${kids.length ? `<span class="taro-count">${countM(n)}</span>` : ""}<span class="taro-arrow">${ic("chev")}</span></summary>
-      <div class="taro-kids">${subs.map((c) => node(c, depth + 1)).join("")}${margas.length ? `<div class="taro-margas">${margas.map((c) => node(c, depth + 1)).join("")}</div>` : ""}</div></details>`; };
+    const cls = `tt-n d${Math.min(depth, 4)}${line != null ? ` l${line % 3}` : ""}`;
+    const head = `<span class="tt-t"><b>${esc(n[0])}</b>${n[1] ? `<small>${esc(n[1])}</small>` : ""}</span>`;
+    if (!kids.length) return `<div class="${cls}" data-name="${esc(n[0])}"><div class="tt-card">${head}</div></div>`;
+    const items = subs.map((c, i) => `<li>${node(c, depth + 1, depth === 0 ? i : line)}</li>`);
+    if (margas.length) items.push(`<li><div class="tt-margas"><span class="tt-margas-h">${esc(L3("Marga", "Marga", "Margas"))} · ${margas.length}</span>${margas.map((m) => `<span class="tt-leaf taro-leaf" data-n="${esc(mnorm(m))}">${esc(m)}</span>`).join("")}</div></li>`);
+    return `<details class="${cls}" data-name="${esc(n[0])}" data-def="${depth < 2 ? 1 : 0}"${depth < 2 ? " open" : ""}><summary class="tt-card">${head}<span class="tt-count">${countM(n)}</span><span class="tt-tog" aria-hidden="true"></span></summary>
+      <ul class="tt-kids">${items.join("")}</ul></details>`; };
   return shell("#/more", `<h2 class="page-h">🌳 Tarombo</h2><p class="lead">${esc(L3("Silsilah marga Batak dari Si Raja Batak. Ketuk untuk membuka dan menutup cabang.", "Tarombo sian Si Raja Batak. Ketuk asa terbuka manang tertutup.", "The Batak margas from Si Raja Batak. Tap to open and close each branch."))}</p>
     <div class="taro-search">${ic("search")}<input type="search" id="taroFind" placeholder="${esc(L3("Cari marga…", "Lului marga…", "Find a marga…"))}" autocomplete="off" autocapitalize="off" spellcheck="false"><button type="button" class="taro-x" data-act="taroClear" aria-label="${esc(L3("Hapus", "Apus", "Clear"))}" hidden>✕</button></div>
     <div class="taro-tools"><button class="btn sm" data-act="taroAll" data-o="1">⊕ ${esc(L3("Buka semua", "Bukka sude", "Open all"))}</button><button class="btn sm" data-act="taroAll" data-o="0">⊖ ${esc(L3("Tutup semua", "Tutup sude", "Close all"))}</button></div>
     <div id="taroHit"></div>
-    <div class="taro-tree">${node(TAROMBO, 0)}</div>
+    <div class="taro-tree tt">${node(TAROMBO, 0, null)}</div>
     <h3 class="sec-h">🤝 ${esc(L3("Dongan sapadan (marga yang terikat janji)", "Dongan sapadan", "Dongan sapadan (margas bound by a pact)"))}</h3>
     <div class="card"><p class="small">${esc(L3("“Togu urat ni bulu, toguan urat ni padang; togu nidok ni uhum, toguan nidok ni padan.” Marga yang marpadan saling menganggap dongan sabutuha dan tidak saling menikah:", "Togu urat ni bulu, toguan urat ni padang; togu nidok ni uhum, toguan nidok ni padan.", "“Strong are the roots of bamboo, stronger the roots of grass; strong is the word of law, stronger the word of a pact.” Margas bound by a pact count as dongan sabutuha and do not intermarry:"))}</p>
       <div class="chips">${PADAN.map(([a2, b2]) => `<span class="chip">${esc(a2)} ⇄ ${esc(b2)}</span>`).join("")}</div></div>
@@ -2096,16 +2126,16 @@ R.tarombo = () => {
 };
 const TARO_ALL = (() => { const s2 = new Set(); const w = (n) => (typeof n === "string" ? s2.add(n) : n[2].forEach(w)); w(TAROMBO); return [...s2].sort((a, b) => a.localeCompare(b)); })();
 function taroReset() {
-  document.querySelectorAll(".taro-chip.hit").forEach((x) => x.classList.remove("hit"));
-  document.querySelectorAll(".taro-n.on-path").forEach((x) => x.classList.remove("on-path"));
-  document.querySelectorAll(".taro-n").forEach((x) => (x.open = x.dataset.def === "1"));
+  document.querySelectorAll(".taro-leaf.hit").forEach((x) => x.classList.remove("hit"));
+  document.querySelectorAll(".tt-n.on-path").forEach((x) => x.classList.remove("on-path"));
+  document.querySelectorAll("details.tt-n").forEach((x) => (x.open = x.dataset.def === "1"));
   const hit = document.getElementById("taroHit"); if (hit) hit.innerHTML = "";
 }
 function taroShow(m) {
   taroReset(); const k = mnorm(m); const p = taroFind(m); if (!p) return false;
-  const chips = [...document.querySelectorAll(".taro-tree .taro-chip")];
+  const chips = [...document.querySelectorAll(".taro-tree .taro-leaf")];
   const chip = chips.find((c) => c.dataset.n === k) || chips.find((c) => c.dataset.n.endsWith(k) || k.endsWith(c.dataset.n));
-  if (chip) { chip.classList.add("hit"); let el = chip.parentElement; while (el) { if (el.tagName === "DETAILS") { el.open = true; el.classList.add("on-path"); } el = el.parentElement; } setTimeout(() => chip.scrollIntoView({ block: "center", behavior: "smooth" }), 80); }
+  if (chip) { chip.classList.add("hit"); let el = chip.parentElement; while (el) { if (el.classList && el.classList.contains("tt-n")) { if (el.tagName === "DETAILS") el.open = true; el.classList.add("on-path"); } el = el.parentElement; } setTimeout(() => chip.scrollIntoView({ block: "center", behavior: "smooth" }), 80); }
   const name = chip ? chip.textContent : m; const hit = document.getElementById("taroHit");
   if (hit) hit.innerHTML = `<div class="taro-res"><div class="taro-res-h"><b>${esc(name)}</b><small>${esc(L3("Garis keturunan", "Tarombo", "Line of descent"))}</small></div><ol class="taro-steps">${p.map((x) => `<li>${esc(x)}</li>`).join("")}<li class="me">${esc(name)}</li></ol></div>`;
   return true;
@@ -2118,7 +2148,7 @@ document.addEventListener("input", (e) => { if (!e.target || e.target.id !== "ta
   if (hit) hit.innerHTML = sug.length ? `<div class="taro-sug">${sug.map((m) => `<button class="taro-chip pick" data-act="taroPick" data-m="${esc(m)}">${esc(m)}</button>`).join("")}</div>` : `<p class="small muted taro-none">${esc(L3("Marga tidak ditemukan di tarombo ini.", "Marga ndang dapot.", "Marga not found in this tarombo."))}</p>`; });
 A.taroPick = (d) => { const i = document.getElementById("taroFind"); if (i) { i.value = d.m; const x = document.querySelector(".taro-x"); if (x) x.hidden = false; i.blur(); } taroShow(d.m); };
 A.taroClear = () => { const i = document.getElementById("taroFind"); if (i) i.value = ""; const x = document.querySelector(".taro-x"); if (x) x.hidden = true; taroReset(); window.scrollTo({ top: 0, behavior: "smooth" }); if (i) i.focus(); };
-A.taroAll = (d) => document.querySelectorAll(".taro-n").forEach((x) => (x.open = d.o === "1"));
+A.taroAll = (d) => document.querySelectorAll("details.tt-n").forEach((x) => (x.open = d.o === "1"));
 // Partuturan reference: who calls whom, including in-laws (from published guides to Batak Toba kinship terms).
 const TUTUR_REF = [
   ["Amang / Inang", "Ayah / ibu; sapaan hormat untuk laki-laki / perempuan yang lebih tua.", "Father / mother; a respectful address for older men / women."],
@@ -3756,13 +3786,13 @@ function communityMenu() {
     + ((isPastor() || isPlainElder()) && LS.get("fullView", false) ? `<button class="li" data-act="viewSimple"><span class="grow"><b>🪟 ${esc(L3("Kembali ke tampilan sederhana", "Mulak tu tampilan na sederhana", "Back to the simple view"))}</b></span>${ic("chev", "chev")}</button>` : "")
     + it("#/ende", "book", "🎵 Buku Ende", L3("Arti setiap baris lagu", "Lapatan ni ende", "The meaning of every hymn line"))
     + it("#/sunday", "calendar", "📅 " + L3("Minggu Ini", "Minggu On", "This Sunday"), L3("Tata Ibadah, lagu, nas dan live", "Tata Ibadah, ende, turpuk, live", "Tata Ibadah, songs, readings and live"))
-    + `<button class="li" data-act="textSize"><span class="grow"><b>🔠 ${esc(L3("Ukuran teks", "Balga ni surat", "Text size"))}</b><small>${esc(L3("Perbesar huruf di seluruh Sada", "Pabalga surat", "Make the text larger everywhere"))}</small></span>${ic("chev", "chev")}</button>`
+    + `<button class="li" data-act="textSize">${ic("textsize")}<span class="grow"><b>🔠 ${esc(L3("Ukuran teks", "Balga ni surat", "Text size"))}</b><small>${esc(L3("Perbesar huruf di seluruh Sada", "Pabalga surat", "Make the text larger everywhere"))}</small></span>${ic("chev", "chev")}</button>`
     + (D.me.is_admin ? it("#/usage", "chart", "📊 " + L3("Pemakaian fitur", "Pamakean fitur", "Feature usage"), L3("Fitur mana yang benar-benar dipakai jemaat", "Fitur na dipake", "Which features members actually use")) : "")
     + it("#/stories", "mic", "🎙️ Turi-turian", L3("Cerita orang tua, direkam untuk generasi muda", "Turi-turian ni natua-tua", "Elders' stories, recorded for the young"))
     + (("pelaut" in (D.me.groups || {})) ? it("#/voyage", "globe", "🚢 Pelaut", L3("Mode berlayar dan paket offline", "Mode marlayar", "Voyage mode and offline pack")) : "")
     + it("#/grief", "heart", "🕊️ Dukacita", L3("Dukung keluarga yang berduka", "Apuli na marsak", "Support a grieving family"))
     + (elder ? it("#/care", "bell", "🫶 " + esc(L3("Perlu dikunjungi", "Ingkon dikunjungi", "Time for a visit")), L3("Jemaat yang lama tidak hadir (hanya sintua)", "Ruas na leleng so ro", "Members not seen for a while (elders only)")) : "")
-    + `<label class="li care-opt"><input type="checkbox" data-act="careOptin" ${D.care_optin ? "checked" : ""}><span class="grow"><b>${esc(L3("Sintua boleh menghubungi saya", "Sintua boi manghubungi au", "Elders may check on me"))}</b><small>${esc(L3("Jika saya lama tidak hadir atau membuka aplikasi", "Molo leleng ndang ro", "If I haven't been at church or in the app for a while"))}</small></span></label>`;
+    + `<label class="li care-opt"><input type="checkbox" data-act-change="careOptin" ${D.care_optin ? "checked" : ""}><span class="grow"><b>${esc(L3("Sintua boleh menghubungi saya", "Sintua boi manghubungi au", "Elders may check on me"))}</b><small>${esc(L3("Jika saya lama tidak hadir atau membuka aplikasi", "Molo leleng ndang ro", "If I haven't been at church or in the app for a while"))}</small></span></label>`;
 }
 A.careOptin = async (d, el) => { const on = el.checked; try { await api.save("care_optin", { on }); D.care_optin = on; toast(on ? L3("Terima kasih. Sintua akan menyapa bila Anda lama tidak hadir.", "Mauliate.", "Thank you. The elders will check on you if you're away a while.") : t("saved")); } catch (e) { el.checked = !on; toast(errMsg(e), true); } };
 
@@ -4183,14 +4213,20 @@ async function resizeImage(file, max, q, square) {
 }
 
 // Profile photo: tap your picture on More.
+// YB 2026-10-31: pick one from the phone's photo library or take a new one with the camera. Stored (square, small JPEG) on the member's row.
 A.photoPick = () => {
-  if (!(D.photos && D.photos[D.me.id])) return A.photoNew();
-  sheet(L3("Foto profil", "Foto profil", "Profile photo"), `<div class="stack"><button class="opt-card" data-act="photoNew">${ic("camera")}<span><b>${esc(L3("Ganti foto", "Ganti foto", "Change photo"))}</b></span>${ic("chev", "chev")}</button>
-    <button class="opt-card" data-act="photoRemove">${ic("trash")}<span><b>${esc(L3("Hapus foto", "Hapus foto", "Remove photo"))}</b></span>${ic("chev", "chev")}</button></div>`);
+  const has = !!(D.photos && D.photos[D.me.id]);
+  sheet(L3("Foto profil", "Foto profil", "Profile photo"), `<div class="pf-prev">${avatarOf(D.me, "xl")}</div><div class="stack">
+    <button class="opt-card" data-act="photoNew" data-src="camera">${ic("camera")}<span><b>${esc(L3("Ambil foto", "Buat foto", "Take a photo"))}</b><small>${esc(L3("Pakai kamera ponsel", "Pake kamera", "Use the phone's camera"))}</small></span>${ic("chev", "chev")}</button>
+    <button class="opt-card" data-act="photoNew" data-src="library">${ic("gallery")}<span><b>${esc(L3("Pilih dari galeri", "Pilih sian galeri", "Choose from library"))}</b><small>${esc(L3("Foto yang sudah ada di ponsel", "Foto na adong di ponsel", "A photo already on your phone"))}</small></span>${ic("chev", "chev")}</button>
+    ${has ? `<button class="opt-card" data-act="photoRemove">${ic("trash")}<span><b>${esc(L3("Hapus foto", "Hapus foto", "Remove photo"))}</b></span>${ic("chev", "chev")}</button>` : ""}</div>`);
 };
-A.photoNew = () => {
+A.photoNew = (d) => {
   closeSheet(); const inp = document.createElement("input"); inp.type = "file"; inp.accept = "image/*";
-  inp.onchange = async () => { const f = inp.files[0]; if (!f) return; try { const data = await resizeImage(f, 192, 0.8, true); await api.save("photo", { photo: data }); D.photos = { ...(D.photos || {}), [D.me.id]: data }; toast(t("saved")); render(); } catch (e) { toast(errMsg(e), true); } };
+  if (d && d.src === "camera") inp.setAttribute("capture", "user");
+  inp.onchange = async () => { const f = inp.files[0]; if (!f) return;
+    try { let data = await resizeImage(f, 256, 0.82, true); if (data.length > 78000) data = await resizeImage(f, 192, 0.7, true);
+      await api.save("photo", { photo: data }); D.photos = { ...(D.photos || {}), [D.me.id]: data }; toast(t("saved")); render(); } catch (e) { toast(errMsg(e), true); } };
   inp.click();
 };
 A.photoRemove = async () => { closeSheet(); try { await api.save("photo", { photo: "" }); if (D.photos) delete D.photos[D.me.id]; render(); } catch (e) { toast(errMsg(e), true); } };
@@ -4433,6 +4469,16 @@ try { document.head.insertAdjacentHTML("beforeend", `<style>
   .ch-acts button { border: 0; background: transparent; font-size: 18px; padding: 4px 6px; border-radius: 10px; }
   .ch-acts button:nth-last-child(-n+2) { font-size: 13px; font-weight: 700; color: var(--brand); }
   .ch-time { font-size: 11.5px; color: var(--muted); padding: 0 8px; }
+  .ch-msg.has-av { position: relative; padding-left: 40px; max-width: calc(82% + 40px); }
+  .ch-msg.ch-head { margin-top: 6px; }
+  .ch-av { position: absolute; left: 0; top: 20px; }
+  .ch-av .avatar { width: 32px; height: 32px; font-size: 12px; }
+  .ch-av .pres { width: 10px; height: 10px; border-width: 2px; }
+  .pf-prev { display: grid; place-items: center; margin: 4px 0 14px; }
+  .avatar.xl { width: 112px; height: 112px; font-size: 36px; }
+  .avatar.xl .pres { display: none; }
+  .pf-photo { display: inline-flex; align-items: center; gap: 6px; margin-top: 6px; }
+  .pf-photo .ic { width: 15px; height: 15px; }
   .ch-online { display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 12.5px; color: var(--muted); margin: 6px 0 0; min-height: 18px; }
   .ch-online i { width: 9px; height: 9px; border-radius: 50%; background: #22c55e; display: inline-block; }
   .ch-bar { position: fixed; left: 0; right: 0; bottom: calc(66px + env(safe-area-inset-bottom)); z-index: 19; display: grid; gap: 6px; padding: 8px max(12px, env(safe-area-inset-left)); background: color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-top: 1px solid var(--line); }
@@ -4505,7 +4551,10 @@ function chatHtml() {
     const chips = Object.keys(rx).map((e) => `<button class="ch-rx${rx[e].includes(me) ? " me" : ""}" data-act="chatReact" data-id="${m.id}" data-e="${e}" title="${esc(rx[e].join(", "))}">${e} ${rx[e].length}</button>`).join("");
     const dm = String(CH.room || "").startsWith("dm:"); const lastMine = dm && mine && !CH.msgs.slice(CH.msgs.indexOf(m) + 1).some((x) => x.member_id === D.me.id);
     const seen = lastMine ? `<small class="ch-seen">${CH.otherRead >= m.id ? "✓✓ " + esc(L3("Dilihat", "Dibereng", "Seen")) : "✓ " + esc(L3("Terkirim", "Tarkirim", "Sent"))}</small>` : "";
-    return `${sep}<div class="ch-msg${mine ? " mine" : ""}${sel ? " sel" : ""}">${mine || dm ? "" : `<b class="ch-name">${presDot(m.member_id)}${esc(m.name || "")}</b>`}
+    // Profile photo beside other people's messages (YB 2026-10-31): photo + name on the first message of a run, a gap under it after that.
+    const prev = CH.msgs[CH.msgs.indexOf(m) - 1]; const head = !!sep || !prev || prev.member_id !== m.member_id;
+    const av = !mine && !dm; const who = (D.people || []).find((q) => q.id === m.member_id) || { id: m.member_id, name: m.name };
+    return `${sep}<div class="ch-msg${mine ? " mine" : ""}${sel ? " sel" : ""}${av ? " has-av" : ""}${av && head ? " ch-head" : ""}">${av && head ? `<span class="ch-av">${avatarOf(who)}</span><b class="ch-name">${esc(m.name || "")}</b>` : ""}
       <div class="ch-bubble" data-act="chatMsg" data-id="${m.id}">${m.reply ? `<span class="ch-quote"><b>${esc(m.reply.name || "")}</b>${esc(m.reply.body || "")}</span>` : ""}${m.image ? `<img class="ch-img" src="${esc(m.image)}" alt="" data-act="chatImg" data-id="${m.id}">` : ""}${m.body ? `<span>${esc(m.body).replace(/\n/g, "<br>")}</span>` : ""}</div>
       ${chips ? `<div class="ch-rxs">${chips}</div>` : ""}
       ${sel ? `<div class="ch-acts">${REACTS.map((e) => `<button data-act="chatReact" data-id="${m.id}" data-e="${e}">${e}</button>`).join("")}<button data-act="chatReply" data-id="${m.id}">↩︎ ${esc(L3("Balas", "Balas", "Reply"))}</button>${mine || D.me.is_admin ? `<button data-act="chatDel" data-id="${m.id}">${esc(t("delete"))}</button>` : ""}</div>` : ""}
@@ -4824,6 +4873,11 @@ F.publish = async (f) => {
 };
 
 // ---------- daily bread setup (admin, first time and later) ----------
+// The daily bread source as a readable label (the raw key "src_verse" showed under More; YB 2026-10-31). Same choice as breadSetup.
+function breadSrcLabel() {
+  const v = (D.settings || {}).bread_source || ""; const src = /^claude/.test(v) || !v ? "verse" : v;
+  return src === "elders" ? L3("Hanya ditulis sintua", "Sian sintua sambing", "Written by elders only") : L3("Ayat Harian otomatis", "Ayat siganup ari", "Automatic verse of the day");
+}
 A.breadSetup = () => {
   if (!$("#sheet").hidden && $("#sheet [data-form=breadsetup]")) return;
   const st = D.settings || {}; const cur = /^claude/.test(st.bread_source || "") || !st.bread_source ? "verse" : st.bread_source; const hr = +(st.bread_hour ?? 6); const bl = st.bread_lang || lang;
@@ -5324,10 +5378,10 @@ const pwIsPhone = (pw, phone) => /^[+0-9 ()-]+$/.test(pw || "") && S.phone8(pw) 
 function pcShow(f, kind) {
   f.dataset.kind = kind || ""; f.dataset.kphone = kind ? S.phone8(f.phone.value) : "";
   const q = (c) => f.querySelector(c);
-  q(".pc-pw").hidden = kind !== "maker"; q(".pc-new").hidden = kind !== "maker_new"; q(".pc-forgot").hidden = kind !== "maker"; q(".pc-reg").hidden = q(".pc-browse").hidden = kind !== "unknown"; q(".pc-note").hidden = !!kind;
+  q(".pc-pw").hidden = kind !== "maker"; if (kind === "maker" && typeof pkPwBtn === "function") pkPwBtn(q(".pk-pw"), S.phone8(f.phone.value)); q(".pc-new").hidden = kind !== "maker_new"; q(".pc-forgot").hidden = kind !== "maker"; q(".pc-reg").hidden = q(".pc-browse").hidden = kind !== "unknown"; q(".pc-note").hidden = !!kind;
   q(".pc-hint").textContent = kind ? t("pc_" + kind) : "";
   q(".pc-btn").textContent = t(kind === "maker_new" ? "firstPwBtn" : kind === "unknown" ? "pcRegister" : "signIn");
-  q("button").disabled = !kind;
+  q(".pc-btn").closest("button").disabled = !kind; // the submit button, not the Face ID one above it
   const focus = kind === "maker" ? f.pw : kind === "maker_new" ? f.npw : kind === "unknown" ? f.rname : null; if (focus) setTimeout(() => focus.focus(), 50);
 }
 async function pcCheck(f) {
@@ -5335,7 +5389,11 @@ async function pcCheck(f) {
   if (!validPhone(ph)) { pcShow(f, ""); return ""; }
   if (f.dataset.kphone === ph && f.dataset.kind) return f.dataset.kind;
   const kind = await api.phoneCheck(ph);
-  if (S.phone8(f.phone.value) === ph) pcShow(f, kind);
+  if (S.phone8(f.phone.value) === ph) {
+    pcShow(f, kind);
+    // No password needed: sign in straight away once the number is filled in (YB 2026-10-31). Once per number.
+    if (kind === "member" && f.dataset.auto !== ph && f.isConnected) { f.dataset.auto = ph; f.requestSubmit(); }
+  }
   return kind;
 }
 let pcTimer = 0;
@@ -5377,6 +5435,7 @@ F.login = async (f) => {
 };
 function afterSignIn() {
   if (viewMode() === "admin" && D && !hasRights()) { LS.set("view", "member"); toast(t("notAdmin")); }
+  if (typeof pkOffer === "function" && pkOffer()) return; // Face ID / fingerprint offer first; it asks for notifications after (passkey.js)
   // Right after signing in, ask once for notifications (the phone only allows this after a tap).
   if ("Notification" in window && Notification.permission === "default") setTimeout(() => sheet(t("notifyAskTitle"), `<p class="muted">${esc(t("notifyAskBody"))}</p><button class="btn primary block" data-act="notifyNow">${ic("bell")} ${esc(t("notifyAskTitle"))}</button>`), 600);
 }
@@ -6732,4 +6791,180 @@ const qs = new URLSearchParams(location.search);
   await render(); localReminders();
 })();
 document.addEventListener("visibilitychange", async () => { if (document.visibilityState === "visible" && D && !/^#\/login/.test(location.hash)) { try { await refresh(); if (!$("#sheet").classList.contains("open")) render(); localReminders(); } catch {} } });
+
+// ---------- Face ID / fingerprint sign-in ----------
+// Face ID / fingerprint sign-in (YB 2026-10-31). Uses passkeys (WebAuthn): iPhone asks for Face ID (or Touch ID),
+// Android for face unlock or the fingerprint. The face or fingerprint never leaves the phone; the phone signs a
+// one-time challenge and the edge function hkbp-passkey checks it, then hands out a normal 10-year session.
+// Server side: backend/edge/hkbp-passkey. Tables hk_passkeys, hk_passkey_challenges.
+(() => {
+  const CFG = window.HKBP_CONFIG || {};
+  const FN = (CFG.supabaseUrl || "").replace(/\/$/, "") + "/functions/v1/hkbp-passkey";
+  const ua = navigator.userAgent;
+  const IOS = /iP(hone|ad|od)/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+  const ANDROID = /Android/.test(ua);
+  // What the phone calls it, in the member's language.
+  const bio = () => IOS ? "Face ID" : ANDROID ? L3("sidik jari / wajah", "sidik jari / bohi", "fingerprint / face") : L3("Face ID / sidik jari", "Face ID / sidik jari", "Face ID / fingerprint");
+  const fillTxt = () => L3("Isi nomor HP dengan ", "Isi nomor HP pake ", "Fill in my number with ") + bio();
+  const device = () => IOS ? (/iPad/.test(ua) ? "iPad" : "iPhone") : ANDROID ? "Android" : /Mac/.test(ua) ? "Mac" : /Windows/.test(ua) ? "Windows" : "Browser";
+
+  let ok = null, srv = false; // does this phone have Face ID / fingerprint for websites? is the sign-in service up?
+  const okP = (async () => {
+    try { ok = !!(window.PublicKeyCredential && PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable && await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()); }
+    catch { ok = false; }
+    if (ok && CFG.supabaseUrl) srv = await fetch(FN, { method: "POST", headers: { "content-type": "application/json" }, body: '{"action":"ping"}' }).then((r) => r.ok, () => false);
+    if (srv && D && /^#\/more/.test(location.hash)) try { render(); } catch {} // show the Profile menu entry
+    return ok;
+  })();
+  const usable = () => ok && srv && api.mode === "remote" && !!CFG.supabaseUrl;
+
+  const b64u = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  const unb64u = (s) => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4)), (c) => c.charCodeAt(0)).buffer;
+  class PkError extends Error { constructor(code) { super(code); this.code = code; } }
+
+  async function call(body) {
+    let r;
+    try { r = await fetch(FN, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }); }
+    catch { throw new PkError("offline"); }
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || j.error) throw new PkError(j.error || "server");
+    return j;
+  }
+  const msg = (e) => {
+    const c = (e && (e.code || e.name)) || "";
+    if (c === "NotAllowedError" || c === "AbortError") return L3("Dibatalkan.", "Dibatalkan.", "Cancelled.");
+    if (c === "InvalidStateError") return L3("Face ID sudah aktif di HP ini.", "Face ID nunga aktif di HP on.", "Already turned on on this phone.");
+    if (c === "no_passkey") return L3("Kunci ini tidak terhubung lagi. Masuk dengan nomor HP, lalu aktifkan lagi di Profil.", "Kunci on ndang tarhubung be. Bongot ma pake nomor HP, dungi aktifhon muse di Profil.", "This key isn't linked any more. Sign in with your phone number, then turn it on again in Profile.");
+    if (c === "expired") return L3("Waktu habis. Coba lagi.", "Nunga lewat tingkina. Coba muse.", "That took too long. Please try again.");
+    if (c === "offline") return typeof t === "function" ? t("err_offline") : "Offline";
+    return L3("Tidak berhasil. Coba lagi atau masuk dengan nomor HP.", "Ndang boi. Coba muse manang bongot pake nomor HP.", "That didn't work. Try again or sign in with your phone number.");
+  };
+
+  // The phone wants the Face ID prompt to follow the tap straight away (iPhone is strict about this),
+  // so the challenge is fetched before the tap and kept for a few minutes.
+  const pre = { login: null, reg: null };
+  const fresh = (p) => p && Date.now() - p.at < 240e3;
+  async function prefetch(kind) {
+    const j = await call(kind === "login" ? { action: "login_options" } : { action: "reg_options", token: api.token });
+    pre[kind] = { at: Date.now(), ...j };
+    return pre[kind];
+  }
+  async function take(kind) { const p = fresh(pre[kind]) ? pre[kind] : await prefetch(kind); pre[kind] = null; return p; }
+
+  // ---- sign in ----
+  async function login(btn) {
+    const p = await take("login");
+    const o = p.options;
+    const cred = await navigator.credentials.get({ publicKey: {
+      challenge: unb64u(o.challenge), rpId: o.rpId, timeout: o.timeout, userVerification: "required",
+      // Only this phone's own key, so the phone goes straight to Face ID (no QR code / security key screen).
+      allowCredentials: [{ type: "public-key", id: unb64u(LS.get("pk.id")), transports: ["internal"] }],
+    } });
+    const r = cred.response;
+    const res = await busy(btn, () => call({ action: "login_verify", cid: p.cid, response: {
+      id: cred.id, rawId: b64u(cred.rawId), type: cred.type, clientExtensionResults: cred.getClientExtensionResults ? cred.getClientExtensionResults() : {},
+      authenticatorAttachment: cred.authenticatorAttachment || undefined,
+      response: { clientDataJSON: b64u(r.clientDataJSON), authenticatorData: b64u(r.authenticatorData), signature: b64u(r.signature), userHandle: r.userHandle ? b64u(r.userHandle) : undefined },
+    } }));
+    LS.set("pk.on", 1); LS.set("pk.offered", 1); LS.set("pk.phone", res.phone);
+    // A Maker: Face ID stands in for the password, so the service starts the sign-in itself (YB 2026-10-31).
+    if (res.token) { api.setToken(res.token); LS.set("remote.phone", res.phone); D = null; await refresh(); afterSignIn(); backAfterLogin(); localReminders(); return; }
+    // Everyone else: Face ID fills in the saved phone number and signing in goes on as usual.
+    const f = document.querySelector('form[data-form="login"]'); if (!f) return;
+    f.phone.value = res.phone; f.phone.dispatchEvent(new Event("input", { bubbles: true }));
+    // pcCheck signs a member in straight away; a Maker's password box opens instead, since they still type it.
+    const kind = await pcCheck(f).catch(() => "");
+    if (kind !== "member") toast(L3("Nomor HP Anda sudah diisi.", "Nomor HP mu nunga diisi.", "Your phone number is filled in."));
+  }
+  // Next to a Maker's password box: "Use Face ID instead", when this phone's Face ID belongs to the number typed.
+  window.pkPwBtn = (b, ph) => {
+    const on = usable() && LS.get("pk.id") && LS.get("pk.phone") === ph;
+    b.hidden = !on; if (on) b.innerHTML = `${ic("lock")} ${esc(L3("Atau pakai ", "Manang pake ", "Or use ") + bio())}`;
+  };
+  A.pkLogin = async (d, btn) => {
+    try { await login(btn); }
+    catch (e) { toast(msg(e), e.name !== "NotAllowedError"); prefetch("login").catch(() => {}); }
+  };
+
+  function fillSlot(el) {
+    el.dataset.pk = "1";
+    okP.then(() => {
+      if (!usable() || api.hasSession() || !LS.get("pk.id")) return; // only once Face ID was turned on on this phone (YB 2026-10-31)
+      prefetch("login").then(() => {
+        el.innerHTML = `<button type="button" class="btn block pk-btn" data-act="pkLogin">${ic("lock")} ${esc(fillTxt())}</button>
+          <p class="small muted center pk-or">${esc(L3("atau ketik nomor HP Anda", "manang ketik nomor HP mu", "or type your phone number"))}</p>`;
+        clearInterval(fillSlot.h); fillSlot.h = setInterval(() => { if (!el.isConnected) return clearInterval(fillSlot.h); prefetch("login").catch(() => {}); }, 200e3);
+      }).catch(() => {}); // the sign-in service isn't reachable: keep the phone-number sign-in only
+    });
+  }
+  new MutationObserver(() => { const el = document.querySelector(".pk-slot:not([data-pk])"); if (el) fillSlot(el); }).observe(document.body, { childList: true, subtree: true });
+  { const el = document.querySelector(".pk-slot:not([data-pk])"); if (el) fillSlot(el); }
+
+  // ---- turn on / manage (Profile) ----
+  window.pkMenuItem = () => {
+    if (!usable() || typeof isGuest === "function" && isGuest()) return "";
+    const on = LS.get("pk.on");
+    return `<button class="li" data-act="pkManage">${ic("lock")}<span class="grow"><b>${esc(fillTxt())}</b><small>${esc(on ? L3("Aktif di HP ini", "Aktif di HP on", "On for this phone") : L3("Tidak perlu mengetik nomor HP saat masuk", "Ndang pola mangetik nomor HP", "No need to type your number when signing in"))}</small></span>${ic("chev", "chev")}</button>`;
+  };
+  async function register(btn) {
+    const p = await take("reg");
+    const o = p.options;
+    const cred = await navigator.credentials.create({ publicKey: {
+      ...o, challenge: unb64u(o.challenge), user: { ...o.user, id: unb64u(o.user.id) },
+      excludeCredentials: (o.excludeCredentials || []).map((c) => ({ ...c, id: unb64u(c.id) })),
+    } });
+    const r = cred.response;
+    await busy(btn, () => call({ action: "reg_verify", token: api.token, cid: p.cid, device: device(), response: {
+      id: cred.id, rawId: b64u(cred.rawId), type: cred.type, clientExtensionResults: cred.getClientExtensionResults ? cred.getClientExtensionResults() : {},
+      authenticatorAttachment: cred.authenticatorAttachment || undefined,
+      response: { clientDataJSON: b64u(r.clientDataJSON), attestationObject: b64u(r.attestationObject), transports: r.getTransports ? r.getTransports() : undefined },
+    } }));
+    LS.set("pk.on", 1); LS.set("pk.offered", 1); LS.set("pk.id", cred.id); try { LS.set("pk.phone", S.phone8(me().phone)); } catch {}
+  }
+  const cap = (x) => x.charAt(0).toUpperCase() + x.slice(1);
+  const doneTxt = () => L3(`${cap(bio())} aktif. Lain kali tekan "${fillTxt()}".`, `${cap(bio())} nunga aktif.`, `${cap(bio())} is on. Next time tap "${fillTxt()}".`);
+  A.pkAdd = async (d, btn) => {
+    try { await register(btn); closeSheet(); toast(doneTxt()); if (d.next) setTimeout(pkNext, 700); else render(); }
+    catch (e) { toast(msg(e), e.name !== "NotAllowedError"); prefetch("reg").catch(() => {}); }
+  };
+  A.pkManage = async () => {
+    sheet(fillTxt(), `<div class="center pad">${skel(2)}</div>`);
+    let keys = [];
+    try { [{ keys }] = await Promise.all([call({ action: "list", token: api.token }), prefetch("reg")]); }
+    catch (e) { closeSheet(); toast(msg(e), true); return; }
+    const fmtD = (s) => s ? new Date(s).toLocaleDateString(lang === "en" ? "en-GB" : "id-ID", { day: "numeric", month: "short", year: "numeric" }) : "";
+    sheet(fillTxt(), `
+      <p class="muted">${esc(L3(`Saat masuk, ${bio()} mengisi nomor HP Anda yang tersimpan. Makers tetap mengetik kata sandi. Wajah dan sidik jari Anda tetap di HP, tidak dikirim ke mana pun.`, `Tingki bongot, ${bio()} mangisi nomor HP mu. Makers tetap mangetik kata sandi. Bohi dohot sidik jarimu tetap di HP.`, `When you sign in, ${bio()} fills in your saved phone number. Makers still type their password. Your face and fingerprint stay on your phone and are never sent anywhere.`))}</p>
+      <button class="btn primary block" data-act="pkAdd">${ic("lock")} ${esc(L3("Aktifkan di HP ini", "Aktifhon di HP on", "Turn on for this phone"))}</button>
+      ${keys.length ? `<h4>${esc(L3("HP yang sudah aktif", "HP na nunga aktif", "Phones that are on"))}</h4><div class="menu card">${keys.map((k) => `<div class="li">${ic("phone")}<span class="grow"><b>${esc(k.device || "—")}</b><small>${esc(L3("Sejak ", "Sian ", "Since ") + fmtD(k.created_at))}${k.last_used ? esc(" · " + L3("terakhir ", "parpudi ", "last used ") + fmtD(k.last_used)) : ""}</small></span><button class="btn sm ghost" data-act="pkDel" data-id="${esc(k.id)}">${esc(L3("Hapus", "Apus", "Remove"))}</button></div>`).join("")}</div>` : ""}`);
+  };
+  A.pkDel = async (d, btn) => {
+    if (!confirm(L3("Hapus Face ID / sidik jari untuk HP ini?", "Apus?", "Remove sign-in with this phone?"))) return;
+    await busy(btn, () => call({ action: "remove", token: api.token, id: d.id }));
+    if (d.id === LS.get("pk.id")) { LS.set("pk.on", null); LS.set("pk.id", null); }
+    toast(L3("Dihapus.", "Nunga diapus.", "Removed.")); A.pkManage();
+  };
+
+  // Right after a normal sign-in, offer it once (then the notification question, as before).
+  function pkNext() {
+    if ("Notification" in window && Notification.permission === "default") sheet(t("notifyAskTitle"), `<p class="muted">${esc(t("notifyAskBody"))}</p><button class="btn primary block" data-act="notifyNow">${ic("bell")} ${esc(t("notifyAskTitle"))}</button>`);
+  }
+  A.pkLater = (d) => { closeSheet(); if (d.next) setTimeout(pkNext, 400); };
+  window.pkOffer = (quiet) => {
+    if (!usable() || LS.get("pk.on") || LS.get("pk.offered") || !api.hasSession()) return false;
+    LS.set("pk.offered", 1);
+    setTimeout(() => {
+      if (quiet && (!document.querySelector("#sheet")?.hidden || /^#\/login/.test(location.hash))) return;
+      prefetch("reg").then(() => sheet(L3("Masuk lebih cepat?", "Bongot lobi hatop?", "Faster sign-in?"), `
+        <p class="muted">${esc(L3(`Lain kali ${bio()} mengisi nomor HP Anda, tidak perlu mengetik.`, `Sogot ${bio()} mangisi nomor HP mu, ndang pola mangetik.`, `Next time, ${bio()} fills in your phone number so you don't have to type it.`))}</p>
+        <button class="btn primary block" data-act="pkAdd"${quiet ? "" : ` data-next="1"`}>${ic("lock")} ${esc(L3("Pakai ", "Pake ", "Use ") + bio())}</button>
+        <button class="btn block ghost" data-act="pkLater"${quiet ? "" : ` data-next="1"`}>${esc(L3("Nanti saja", "Annon ma", "Not now"))}</button>`)).catch(() => { if (!quiet) pkNext(); });
+    }, quiet ? 0 : 600);
+    return true;
+  };
+  // Members who are already signed in see the offer once, a few seconds after opening the app from the home screen.
+  addEventListener("load", () => setTimeout(() => okP.then(() => {
+    try { if (standalone() && D && !isGuest()) pkOffer(true); } catch {}
+  }), 5000));
+})();
 })();
