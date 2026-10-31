@@ -349,7 +349,7 @@ async function localReminders() {
   LS.set("shown", shown);
 }
 
-// ---------- Claude (daily bread writer) ----------
+// ---------- Verse of the day writer (free) ----------
 async function claudeBread(day, langCode, recent) {
   // free (YB 2026-10-30): a well-known verse, read from SABDA, with a short prayer; the elder can add their own reflection
   const L = ["Mazmur 23:1-4", "Yohanes 3:16-17", "Roma 8:28", "Filipi 4:6-7", "Yesaya 41:10", "Amsal 3:5-6", "Matius 11:28-30", "Yeremia 29:11", "Mazmur 121:1-8", "Yesaya 40:29-31", "Matius 6:33-34", "Yosua 1:9", "Ratapan 3:22-23", "Mikha 6:8", "1 Tesalonika 5:16-18", "Yohanes 14:27", "2 Korintus 12:9", "Galatia 5:22-23", "Filipi 4:13", "Mazmur 46:2-4"];
@@ -2121,7 +2121,7 @@ F.rppAsk = async (f) => {
   RPP.q = q; const box = document.getElementById("rppAns"); box.innerHTML = `<div class="card center pad">⏳ ${esc(L3("Mencari di Juklak RPP…", "Manglului di Juklak RPP…", "Searching the Juklak RPP…"))}</div>`;
   try { const a = await freeRpp(q); RPP.last = a; box.innerHTML = rppAnswer(a);
     const h = (LS.get("rppHist", []) || []).slice(0, 9); h.unshift({ q, a, at: new Date().toISOString() }); LS.set("rppHist", h); }
-  catch (e) { box.innerHTML = `<p class="warn">${esc(/claude|key|api/i.test(e.message || "") ? L3("Kunci Claude gereja tidak berlaku. Admin perlu memperbaruinya di Lainnya → Renungan Harian.", "Kunci Claude ni huria ndang tama.", "The church's Claude key isn't valid. The admin needs to update it in More → Settings.") : errMsg(e))}</p>`; }
+  catch (e) { box.innerHTML = `<p class="warn">${esc(errMsg(e))}</p>`; }
   throw Object.assign(new Error("noRender"), { silent: true });
 };
 A.rppHist = (d) => { const h = (LS.get("rppHist", []) || [])[+d.i]; if (!h) return; RPP.q = h.q; RPP.last = h.a; render(); };
@@ -4167,16 +4167,8 @@ function hymnSplit(heading, rawLines, opts = {}) {
 
 // ---------- Community features (YB 2026-10-29) ----------
 // Partuturan helper, Buku Ende line by line, Turi-turian stories, Pelaut voyage mode, live Tata Ibadah follow-along,
-// Dukacita support, pastoral care nudge (opt-in), and Claude-made roster drafts and discussion questions.
+// Dukacita support, pastoral care nudge (opt-in), and free roster drafts and discussion questions.
 
-// Claude jobs run on the server with the church's key: queue one, then wait for the answer.
-async function aiRun(task, input, onWait) {
-  let r = await api.save("ai", { task, input });
-  const until = Date.now() + 120e3;
-  while (r && r.status === "queued" && Date.now() < until) { if (onWait) onWait(); await new Promise((ok) => setTimeout(ok, 2500)); r = await api.save("ai_get", { job_id: r.id }); }
-  if (!r || r.status !== "done") throw new Error(r && r.error === "no_claude_key" ? L3("Kunci Claude gereja belum disimpan (Admin: Lainnya → Renungan Harian → kunci Claude).", "Kunci Claude ni huria ndang disimpan dope.", "The church's Claude key is not saved yet (admin: More → Daily Bread setup → Claude key on the server).") : L3("Claude belum bisa menjawab, coba lagi.", "Coba muse.", "Claude could not answer, please try again."));
-  return r.result || {};
-}
 const busySheet = (title, text) => sheet(title, `<div class="center pad">${skel(3)}<p class="muted small">${esc(text)}</p></div>`);
 
 // More: one place for the community features.
@@ -4470,7 +4462,7 @@ R.care = () => {
     { back: "#/more", title: L3("Perlu dikunjungi", "Ingkon dikunjungi", "Time for a visit") });
 };
 
-// 8. Fair roster draft: Claude spreads the month's duties fairly; the makers check, then save.
+// 8. Fair roster draft (free, on the phone): Sada spreads the month's duties fairly; the makers check, then save.
 A.rosterDraft = async (d) => {
   const gid = d.g, ym = d.m; const g = G(gid); const old = manualRoster(gid, ym);
   const sundays = []; for (let x = ym + "-01"; x.slice(0, 7) === ym; x = addDays(x, 1)) if (new Date(x + "T12:00:00Z").getUTCDay() === 0) sundays.push(x);
@@ -5497,12 +5489,10 @@ A.breadSetup = () => {
 };
 F.breadsetup = async (f) => {
   const source = (f.querySelector("[name=source]:checked") || {}).value || "elders";
-  const key = ""; const st = D.settings || {};
-  // no key needed any more: the verse of the day is free
+  // no key needed: the verse of the day is free
   const link = f.walink.value.trim();
   if (link && !/^https:\/\/(chat\.whatsapp\.com|wa\.me|whatsapp\.com)\//.test(link)) throw new S.AppError("bad_wa_link");
-  await api.settingsSave({ bread_source: source, bread_lang: f.blang.value, bread_hour: +f.bhour.value, wa_group_link: link, wa_senders: [...f.querySelectorAll("[name=sender]:checked")].map((x) => x.value), setup_done: true, claude_key: key });
-  if (key) LS.set("claudeKey", key);
+  await api.settingsSave({ bread_source: source, bread_lang: f.blang.value, bread_hour: +f.bhour.value, wa_group_link: link, wa_senders: [...f.querySelectorAll("[name=sender]:checked")].map((x) => x.value), setup_done: true });
   closeSheet(); D = null; await refresh(); toast(t("bs_done"));
 };
 
