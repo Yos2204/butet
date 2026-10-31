@@ -67,6 +67,52 @@ async function sha(s) {
 }
 
 // ---------- Local mode ----------
+// ---------- no double booking (mirrors hk__roster_clash in backend/sql/roster_clash_helpers.sql) ----------
+const RC_TITLES = /^(st|pdt|cst|sintua|bapak|bpk|ibu|bu|pak|kak|bang|ev|dr|br|amang|inang|pnt|guru|mr|mrs|ms|sdr|sdri)$/;
+const rcPn = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim().split(" ").filter((w) => w && !RC_TITLES.test(w)).join(" ");
+function rcSame(a, b) {
+  const x = a.split(" "), y = b.split(" "); if (!a || !b || x[0] !== y[0] || x[0].length < 2) return false;
+  for (let i = 1; i < Math.min(x.length, y.length); i++) if (!(y[i].startsWith(x[i]) || x[i].startsWith(y[i]))) return false;
+  return true;
+}
+const RC_MON = { jan: 1, feb: 2, mar: 3, apr: 4, mei: 5, may: 5, jun: 6, jul: 7, agu: 8, aug: 8, sep: 9, okt: 10, oct: 10, nov: 11, des: 12, dec: 12 };
+function rcDate(c, ym) {
+  c = String(c == null ? "" : c); if (!/\d/.test(c)) return null;
+  let m = c.match(/(20\d{2})-(\d{2})-(\d{2})/); if (m) return m[0];
+  m = c.toLowerCase().match(/(?:^|[^0-9a-z])(\d{1,2})[\s\/.-]+(\d{1,2}|jan|feb|mar|apr|mei|may|jun|jul|agu|aug|sep|okt|oct|nov|des|dec)[a-z]*(?:[\s\/.-]+(\d{2,4}))?/); if (!m) return null;
+  const d = +m[1], mo = /^\d+$/.test(m[2]) ? +m[2] : RC_MON[m[2]]; let y = m[3] ? +m[3] : +(ym || new Date().toISOString()).slice(0, 4); if (y < 100) y += 2000;
+  if (!mo || mo > 12 || d < 1 || d > 31) return null;
+  return `${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+}
+const RC_SKIP = /(tanggal|date|hari|bahasa|language|nama minggu|asal|tema|theme|ayat|nas\b|bacaan|catatan|note|keterangan|pengumuman)/;
+function rosterSlots(tj, ym) {
+  const out = [];
+  (Array.isArray(tj) ? tj : []).forEach((tb) => {
+    const rows = (tb && tb.rows) || []; if (rows.length < 2) return;
+    const hi = Math.max(0, rows.findIndex((r) => Array.isArray(r) && r.filter((c) => String(c == null ? "" : c).trim()).length >= 2)); const hd = rows[hi] || [];
+    rows.slice(hi + 1).forEach((rw) => {
+      if (!Array.isArray(rw)) return; let day = null; for (const c of rw) { day = rcDate(c, ym); if (day) break; } if (!day) return;
+      rw.forEach((cell, j) => {
+        const h = String(hd[j] == null ? "" : hd[j]); cell = String(cell == null ? "" : cell);
+        if (!cell.trim() || rcDate(cell, ym) || RC_SKIP.test(h.toLowerCase())) return;
+        cell.split(/\s*(?:,|;|\/|&|\+|·|•|\n|\s+dan\s+|\s+and\s+)\s*/i).forEach((ch) => { const pn = rcPn(ch); if (pn.split(" ")[0].length < 2 || /^\d/.test(pn)) return; out.push({ day, job: h, who: ch.trim(), pn }); });
+      });
+    });
+  });
+  return out;
+}
+function rosterClash(rosters, groups, rid, gid, tj, ym) {
+  const nw = rosterSlots(tj, ym); const self = rosters.find((r) => r.id === rid && r.group_id === gid);
+  const od = self ? rosterSlots(self.table_json, self.month) : [];
+  const fresh = nw.filter((n) => !od.some((o) => o.day === n.day && o.job === n.job && o.pn === n.pn));
+  const sh = (k) => { const d = new Date((ym || "2000-01") + "-15T12:00:00Z"); d.setUTCMonth(d.getUTCMonth() + k); return d.toISOString().slice(0, 7); };
+  const months = [sh(-1), ym, sh(1)]; const out = []; const seen = new Set();
+  const add = (f, g, o) => { const k = [f.day, f.job, f.who, g, o.job, o.who].join("|"); if (seen.has(k)) return; seen.add(k); const G = groups.find((x) => x.id === g) || {}; out.push({ day: f.day, job: f.job, who: f.who, group_id: g, group: G.name_id || g, group_en: G.name_en || G.name_id || g, other_job: o.job, other_who: o.who }); };
+  rosters.filter((r) => !r.removed_at && r.table_json && r.id !== rid && months.includes(r.month)).forEach((r) => rosterSlots(r.table_json, r.month).forEach((o) => fresh.forEach((f) => { if (o.day === f.day && rcSame(f.pn, o.pn)) add(f, r.group_id, o); })));
+  fresh.forEach((f) => nw.forEach((n) => { if (n.day === f.day && n.job !== f.job && rcSame(f.pn, n.pn)) add(f, gid, n); }));
+  return out.sort((a, b) => a.day.localeCompare(b.day) || a.who.localeCompare(b.who)).slice(0, 40);
+}
+
 const Local = {
   mode: "local",
   async load() {
@@ -206,8 +252,13 @@ const Local = {
     if (kind === "post") {
       if (!this.poster(m, gid)) deny();
       res = upsert(db.posts, { id: d.id || uid(), group_id: gid, kind: d.kind || "news", title: d.title, verse: d.verse, body: d.body, day: d.day || null, author_name: m.name, created_at: d.created_at || now });
+    } else if (kind === "roster_check") {
+      if (!this.chair(m, gid)) deny();
+      return rosterClash(db.rosters, db.groups, d.id, gid, d.table_json, d.month);
     } else if (kind === "roster") {
       if (!this.chair(m, gid)) deny();
+      const clash = rosterClash(db.rosters, db.groups, d.id, gid, d.table_json, d.month);
+      if (clash.length) { const e = new AppError("roster_clash"); e.clash = clash; throw e; }
       res = upsert(db.rosters, { id: d.id || uid(), group_id: gid, month: d.month, title: d.title, file_name: d.file_name, mime: d.mime, file_b64: d.file_b64 || null, link: d.link || null, table_json: d.table_json || null, text_content: d.text_content || "", author_name: m.name, created_at: now });
     } else if (kind === "bread") {
       if (!this.chair(m, "parhalado")) deny(); // only Elders Makers (and the admin) write the daily bread
@@ -376,6 +427,8 @@ const Remote = {
           catch {} finally { this._relog = false; }
         }
       }
+      // A roster that puts someone on two duties on one date: the server lists where (YB 2026-10-31).
+      if (/roster_clash/.test((j && j.message) || "")) { const e = new AppError("roster_clash"); try { e.clash = JSON.parse(j.details || "[]"); } catch { e.clash = []; } throw e; }
       throw new AppError(code ? code[0] : "server");
     }
     return j;
@@ -435,5 +488,5 @@ function pick() {
   return Local;
 }
 
-window.HKBP_STORE = { pick, LS, phone8, sgToday, AppError, DEFAULT_GROUPS, uid, TEACH, MAKERS };
+window.HKBP_STORE = { pick, LS, phone8, sgToday, AppError, DEFAULT_GROUPS, uid, TEACH, MAKERS, rosterClash };
 })();
