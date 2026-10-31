@@ -3505,10 +3505,23 @@ function callGathered(pc) {
     const done = () => { if (pc.iceGatheringState === "complete") { pc.removeEventListener("icegatheringstatechange", done); res(); } };
     pc.addEventListener("icegatheringstatechange", done); setTimeout(res, 2500); });
 }
-function callPc(id, name) {
+// Backup relay (YB 2026-10-31): some phone and office networks block direct phone-to-phone video. Every call also
+// carries a free relay server (Open Relay by Metered, ports 80/443, TCP and TLS too). The phones only use it when a
+// direct link can't be made, so nobody has to do anything. If a call still drops, it reconnects by itself, the second
+// time through the relay only. Extra or paid relays (e.g. Cloudflare) can be added in hk_settings 'call_ice'.
+async function callRelay() {
+  try {
+    const user = (Math.floor(Date.now() / 1000) + 6 * 3600) + ":sada";
+    const key = await crypto.subtle.importKey("raw", new TextEncoder().encode("openrelayprojectsecret"), { name: "HMAC", hash: "SHA-1" }, false, ["sign"]);
+    const sig = new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(user)));
+    const credential = btoa(String.fromCharCode(...sig)); const h = "staticauth.openrelay.metered.ca";
+    return [{ urls: [`turn:${h}:80`, `turn:${h}:80?transport=tcp`, `turn:${h}:443?transport=tcp`, `turns:${h}:443?transport=tcp`], username: user, credential }];
+  } catch (e) { return []; }
+}
+function callPc(id, name, relay) {
   const old = CALL.pcs[id]; if (old) { try { old.pc.close(); } catch (e) {} }
-  const pc = new RTCPeerConnection({ iceServers: CALL.ice || [] });
-  const x = { pc, name, tile: old ? old.tile : callTile(id, name), sent: false, queue: [], miss: 0, born: Date.now() };
+  const pc = new RTCPeerConnection({ iceServers: CALL.ice || [], iceTransportPolicy: relay ? "relay" : "all" });
+  const x = { pc, name, tile: old ? old.tile : callTile(id, name), sent: false, queue: [], miss: 0, born: Date.now(), tries: old ? old.tries : 0, relay: !!relay };
   CALL.pcs[id] = x;
   CALL.local.getTracks().forEach((tr) => pc.addTrack(tr, CALL.local));
   pc.ontrack = (e) => { const v = x.tile.querySelector("video"); const s = e.streams[0] || new MediaStream([e.track]); if (v.srcObject !== s) { v.srcObject = s; v.play().catch(() => {}); }
@@ -3520,32 +3533,41 @@ function callPc(id, name) {
     x.tile.classList.toggle("wait", st !== "connected");
     if (st === "connected") { if (!CALL.t0) CALL.t0 = Date.now(); CALL.status = ""; callToneStop(); if (s) s.textContent = ""; const a = document.getElementById("callStat"); if (a) a.textContent = callClock(); }
     else if (s) s.textContent = st === "failed" ? L3("Tidak tersambung", "Ndang tarsambung", "Can't connect") : st === "disconnected" ? L3("Sinyal lemah…", "Sinyal lemah…", "Weak signal…") : L3("Menyambungkan…", "Manyambung…", "Connecting…");
-    if (st === "failed" && !x.retried && CALL.me > id) { x.retried = true; setTimeout(() => CALL && CALL.pcs[id] === x && callOffer(id, name), 1500); }
+    // reconnect by itself: a weak signal gets 6 seconds to come back, a failed link is redone (up to 3 times, through the relay)
+    clearTimeout(x.fix);
+    if (st === "failed" || st === "disconnected") x.fix = setTimeout(() => callRedo(id, x), st === "failed" ? 300 : 6000);
   };
   return x;
 }
-async function callOffer(id, name) {
-  const x = callPc(id, name); callPaint();
+function callRedo(id, x) {
+  if (!CALL || CALL.pcs[id] !== x || ["connected", "new", "connecting"].includes(x.pc.connectionState) || x.tries >= 3) return;
+  x.tries++; const s = x.tile.querySelector(".call-tst"); if (s) s.textContent = L3("Menyambungkan ulang…", "Manyambung muse…", "Reconnecting…");
+  if (CALL.me > id) callOffer(id, x.name, true).catch(() => {}); else callSig(id, "redo", {});
+}
+async function callOffer(id, name, relay) {
+  const x = callPc(id, name, relay); callPaint();
   const o = await x.pc.createOffer(); await x.pc.setLocalDescription(o); await callGathered(x.pc);
-  x.sent = true; await callSig(id, "offer", { sdp: x.pc.localDescription.sdp });
+  x.sent = true; await callSig(id, "offer", { sdp: x.pc.localDescription.sdp, relay: !!relay });
 }
 async function callOnSig(s) {
   const id = s.from; let x = CALL.pcs[id]; const name = (CALL.names && CALL.names[id]) || "";
   if (s.kind === "offer") {
     if (x && x.pc.signalingState === "have-local-offer" && CALL.me > id) return;   // both offered at once: the larger id keeps its own offer
-    x = callPc(id, name); callPaint();
+    x = callPc(id, name, s.data.relay); callPaint();
     await x.pc.setRemoteDescription({ type: "offer", sdp: s.data.sdp });
     for (const c of x.queue) await x.pc.addIceCandidate(c).catch(() => {}); x.queue = [];
     const a = await x.pc.createAnswer(); await x.pc.setLocalDescription(a); await callGathered(x.pc);
     x.sent = true; await callSig(id, "answer", { sdp: x.pc.localDescription.sdp });
   } else if (s.kind === "answer") {
     if (x && x.pc.signalingState === "have-local-offer") { await x.pc.setRemoteDescription({ type: "answer", sdp: s.data.sdp }); for (const c of x.queue) await x.pc.addIceCandidate(c).catch(() => {}); x.queue = []; }
+  } else if (s.kind === "redo" && x && CALL.me > id) {
+    if (x.tries < 3) { x.tries++; await callOffer(id, name || x.name, true); }
   } else if (s.kind === "ice" && x) {
     if (x.pc.remoteDescription) await x.pc.addIceCandidate(s.data).catch(() => {}); else x.queue.push(s.data);
   }
 }
 async function callBegin(res, video) {
-  CALL.after = res.after || 0; CALL.id = res.call.id; CALL.room = res.call.room; CALL.me = res.me; CALL.ice = res.ice; CALL.answered = !!res.call.answered_at || res.call.caller_id !== res.me;
+  CALL.after = res.after || 0; CALL.id = res.call.id; CALL.room = res.call.room; CALL.me = res.me; CALL.ice = (Array.isArray(res.ice) ? res.ice : []).concat(await callRelay()); CALL.answered = !!res.call.answered_at || res.call.caller_id !== res.me;
   CALL.names = {}; (res.peers || []).forEach((p) => (CALL.names[p.id] = p.name));
   if (CALL.room.startsWith("dm:")) { CALL.dm = CALL.room.slice(3).split(":").find((x) => x !== res.me); CALL.dmName = res.call.caller_id === res.me ? "" : res.call.caller_name; }
   else CALL.title = (chatRooms().find((r) => r.id === CALL.room) || {}).name || "Chat";
