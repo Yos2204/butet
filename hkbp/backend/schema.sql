@@ -134,6 +134,7 @@ alter table hk_groups add constraint hk_groups_kind_check check (kind in ('sermo
 alter table hk_posts add column if not exists removed_at timestamptz;
 alter table hk_rosters add column if not exists removed_at timestamptz;
 alter table hk_bread add column if not exists removed_at timestamptz;
+alter table hk_bread add column if not exists langs jsonb;   -- verse of the day in id / bt / en (YB 2026-10-31)
 alter table hk_updates add column if not exists removed_at timestamptz;
 -- Berita Pelayanan (kind 'berita'): uploaded by the Secretary; other rows are elders' updates.
 alter table hk_updates add column if not exists kind text not null default 'update';
