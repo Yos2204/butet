@@ -6801,7 +6801,8 @@ document.addEventListener("visibilitychange", async () => { if (document.visibil
     const o = p.options;
     const cred = await navigator.credentials.get({ publicKey: {
       challenge: unb64u(o.challenge), rpId: o.rpId, timeout: o.timeout, userVerification: "required",
-      allowCredentials: (o.allowCredentials || []).map((c) => ({ ...c, id: unb64u(c.id) })),
+      // Only this phone's own key, so the phone goes straight to Face ID (no QR code / security key screen).
+      allowCredentials: [{ type: "public-key", id: unb64u(LS.get("pk.id")), transports: ["internal"] }],
     } });
     const r = cred.response;
     const res = await busy(btn, () => call({ action: "login_verify", cid: p.cid, response: {
@@ -6826,7 +6827,7 @@ document.addEventListener("visibilitychange", async () => { if (document.visibil
   function fillSlot(el) {
     el.dataset.pk = "1";
     okP.then(() => {
-      if (!usable() || api.hasSession()) return;
+      if (!usable() || api.hasSession() || !LS.get("pk.id")) return; // only once Face ID was turned on on this phone (YB 2026-10-31)
       prefetch("login").then(() => {
         el.innerHTML = `<button type="button" class="btn block pk-btn" data-act="pkLogin">${ic("lock")} ${esc(fillTxt())}</button>
           <p class="small muted center pk-or">${esc(L3("atau ketik nomor HP Anda", "manang ketik nomor HP mu", "or type your phone number"))}</p>`;
@@ -6856,7 +6857,7 @@ document.addEventListener("visibilitychange", async () => { if (document.visibil
       authenticatorAttachment: cred.authenticatorAttachment || undefined,
       response: { clientDataJSON: b64u(r.clientDataJSON), attestationObject: b64u(r.attestationObject), transports: r.getTransports ? r.getTransports() : undefined },
     } }));
-    LS.set("pk.on", 1); LS.set("pk.offered", 1);
+    LS.set("pk.on", 1); LS.set("pk.offered", 1); LS.set("pk.id", cred.id);
   }
   const cap = (x) => x.charAt(0).toUpperCase() + x.slice(1);
   const doneTxt = () => L3(`${cap(bio())} aktif. Lain kali tekan "${fillTxt()}".`, `${cap(bio())} nunga aktif.`, `${cap(bio())} is on. Next time tap "${fillTxt()}".`);
@@ -6878,7 +6879,8 @@ document.addEventListener("visibilitychange", async () => { if (document.visibil
   A.pkDel = async (d, btn) => {
     if (!confirm(L3("Hapus Face ID / sidik jari untuk HP ini?", "Apus?", "Remove sign-in with this phone?"))) return;
     await busy(btn, () => call({ action: "remove", token: api.token, id: d.id }));
-    LS.set("pk.on", null); toast(L3("Dihapus.", "Nunga diapus.", "Removed.")); A.pkManage();
+    if (d.id === LS.get("pk.id")) { LS.set("pk.on", null); LS.set("pk.id", null); }
+    toast(L3("Dihapus.", "Nunga diapus.", "Removed.")); A.pkManage();
   };
 
   // Right after a normal sign-in, offer it once (then the notification question, as before).
