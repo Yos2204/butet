@@ -38,12 +38,14 @@ begin
 end $$;
 
 -- Every (date, job, name) in a roster table. Date, language, Sunday-name, place, theme and note columns are skipped.
+-- Practices (latihan / practice / rehearsal / gladi: a sheet, a row or a column) never count, so they may overlap anything (YB 2026-10-31).
 create or replace function hk__roster_slots(tj jsonb, ym text) returns table (day date, job text, who text, pn text) language plpgsql immutable set search_path = public as $$
 declare tb jsonb; rws jsonb; hd jsonb; rw jsonb; hi int; r int; j int; dt date; cell text; h text; ch text; p text;
 begin
   if jsonb_typeof(tj) is distinct from 'array' then return; end if;
   for tb in select x from jsonb_array_elements(tj) x loop
     rws := tb -> 'rows'; if jsonb_typeof(rws) is distinct from 'array' or jsonb_array_length(rws) < 2 then continue; end if;
+    if lower(coalesce(tb ->> 'name', '')) ~ '(latihan|practi[cs]e|rehearsal|gladi)' then continue; end if;  -- practices may overlap (YB 2026-10-31)
     hi := 0;
     for r in 0 .. jsonb_array_length(rws) - 1 loop
       if jsonb_typeof(rws -> r) = 'array' and (select count(*) from jsonb_array_elements(rws -> r) c where btrim(c #>> '{}') <> '') >= 2 then hi := r; exit; end if;
@@ -54,10 +56,13 @@ begin
       dt := null;
       for j in 0 .. jsonb_array_length(rw) - 1 loop dt := hk__cell_date(rw ->> j, ym); exit when dt is not null; end loop;
       if dt is null then continue; end if;
+      -- a practice row: a cell says so, or a practice column (header "Latihan" …) is filled in
+      if lower(rw::text) ~ '(latihan|practi[cs]e|rehearsal|gladi)' or exists (select 1 from generate_series(0, jsonb_array_length(rw) - 1) k
+        where lower(coalesce(hd ->> k, '')) ~ '(latihan|practi[cs]e|rehearsal|gladi)' and coalesce(btrim(rw ->> k), '') <> '') then continue; end if;
       for j in 0 .. jsonb_array_length(rw) - 1 loop
         cell := rw ->> j; h := coalesce(hd ->> j, '');
         if coalesce(btrim(cell), '') = '' or hk__cell_date(cell, ym) is not null
-          or lower(h) ~ '(tanggal|date|hari|bahasa|language|nama minggu|asal|tema|theme|ayat|nas\M|bacaan|catatan|note|keterangan|pengumuman)' then continue; end if;
+          or lower(h) ~ '(tanggal|date|hari|bahasa|language|nama minggu|asal|tema|theme|ayat|nas\M|bacaan|catatan|note|keterangan|pengumuman|latihan|practi[cs]e|rehearsal|gladi)' then continue; end if;
         foreach ch in array regexp_split_to_array(cell, '\s*(,|;|/|&|\+|·|•|\n|\s+dan\s+|\s+and\s+)\s*', 'i') loop
           p := hk__pn(ch);
           if length(split_part(p, ' ', 1)) < 2 or p ~ '^\d' then continue; end if;
