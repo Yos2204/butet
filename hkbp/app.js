@@ -5122,6 +5122,7 @@ function rosterWrite(gid, ym, old, head, rows, notify, onlyIso) {
 }
 // Roster notifications go only to the members named in it (YB 2026-10-28), each with their own Sundays and jobs.
 // With onlyIso, only that Sunday counts (Make Roster); otherwise every row of the roster (an uploaded file or link).
+const pushDate = (iso) => new Intl.DateTimeFormat("en-GB", { timeZone: TZ, weekday: "long", day: "numeric", month: "short" }).format(new Date(iso + "T12:00:00+08:00"));
 function rosterNotifyList(gid, tables, ym, onlyIso) {
   const g = G(gid) || {}; const out = [];
   D.people.filter((p) => p.id).forEach((p) => {
@@ -5131,10 +5132,10 @@ function rosterNotifyList(gid, tables, ym, onlyIso) {
       rows.forEach((row, i) => {
         if (i <= hi) return; const iso = rowDate(row, ym); if (onlyIso && iso !== onlyIso) return;
         const jobs = row.map((c, j) => (hit(c, names) && head[j] && head[j] !== c ? head[j] : null)).filter(Boolean);
-        if (jobs.length || row.some((c) => hit(c, names))) lines.push(`${iso ? rDateCell(iso) : row.filter(Boolean)[0] || ""}${jobs.length ? " · " + jobs.join(", ") : ""}`);
+        if (jobs.length || row.some((c) => hit(c, names))) lines.push(`${iso ? pushDate(iso) : row.filter(Boolean)[0] || ""}${jobs.length ? " · " + jobs.join(", ") : ""}`);
       });
     });
-    if (lines.length) out.push({ member: p.id, title: `📅 Jadwal ${g.name_id || gname(g)}`, body: "Anda bertugas:\n" + lines.slice(0, 8).join("\n") });
+    if (lines.length) out.push({ member: p.id, title: `📅 ${g.name_en || g.name_id || gname(g)} roster`, body: "You're serving:\n" + lines.slice(0, 8).join("\n") });   // push text in English (YB 2026-10-31)
   });
   return out;
 }
