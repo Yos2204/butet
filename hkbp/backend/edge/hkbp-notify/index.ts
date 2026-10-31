@@ -35,8 +35,8 @@ const DIGEST_HOUR = 18;
 // because iPhone cuts long titles short on the lock screen but shows several lines of body text.
 const BDAY_TITLE = "🎂 Happy Birthday!";
 const ANNIV_TITLE = "💍 Happy Wedding Anniversary!";
-const bdayBody = (name: string) => `The Church Council and Congregation of HKBP Singapore wish ${name} a happy birthday. May you always live in faith, love and hope. God bless you.`;
-const annivBody = (name: string) => `The Church Council and Congregation of HKBP Singapore wish ${name} a happy wedding anniversary. May you always live in faith, love and hope. God bless you.`;
+const bdayBody = (name: string) => `The Church Council and Congregation of HKBP Singapore wish ${name} a happy birthday. May you always live in faith, love and hope. God bless us.`;
+const annivBody = (name: string) => `The Church Council and Congregation of HKBP Singapore wish ${name} a happy wedding anniversary. May you always live in faith, love and hope. God bless us.`;
 
 // Verse of the day: well-known passages (TB book names); never the same within 120 days.
 const VERSES = ["Mazmur 23:1-4", "Yohanes 3:16-17", "Roma 8:28", "Filipi 4:6-7", "Yesaya 41:10", "Amsal 3:5-6", "Matius 11:28-30", "Yeremia 29:11", "Mazmur 46:2-4", "2 Korintus 5:17",
