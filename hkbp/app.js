@@ -1268,7 +1268,7 @@ function qzOpts(right, pool, n = 4) { const opts = qzShuffle([right, ...qzShuffl
 R.quizwb = (arg) => {
   const id = String(arg || "").split("?")[0]; const gid = new URLSearchParams(location.hash.split("?")[1] || "").get("g") || "remaja";
   if (!qzMaker(gid)) { location.replace(`#/g/${gid}?tab=quiz`); return ""; }
-  setTimeout(async () => { const box = document.getElementById("qzwBox"); if (!box) return;
+  QZ.mat = null; setTimeout(async () => { const box = document.getElementById("qzwBox"); if (!box) return;
     if (id === "new") QZ.ed = { gid, id: null, day: nextSunday(), title: L3("Kuis Minggu Ini", "Kuis Minggu On", "This week's quiz"), questions: [] };
     else { if (!QZ.list.length || QZ.gid !== gid) { QZ.gid = gid; QZ.list = (await api.save("quiz_list", { group_id: gid })) || []; } const z = QZ.list.find((x) => x.id === id); if (!z) { box.innerHTML = empty("–", "star"); return; } QZ.ed = { gid, id: z.id, day: z.day, title: z.title, status: z.status, questions: JSON.parse(JSON.stringify(z.questions)) }; }
     qzwPaint(); }, 0);
@@ -1277,8 +1277,9 @@ R.quizwb = (arg) => {
 function qzwPaint() {
   const box = document.getElementById("qzwBox"); const e = QZ.ed; if (!box || !e) return;
   box.innerHTML = `<div class="card qzw-meta"><label class="small">${esc(L3("Judul kuis", "Judul", "Quiz title"))}<input class="qzw-m" data-k="title" value="${esc(e.title)}"></label><label class="small">${esc(L3("Untuk hari Minggu", "Tu ari Minggu", "For Sunday"))}<input type="date" class="qzw-m" data-k="day" value="${esc(e.day)}"></label></div>
+    ${qzwMatCard()}
     <button class="btn block" data-act="qzwAuto">✨ ${esc(L3("Draf otomatis dari Tata Ibadah + soal Alkitab", "Draf sian Tata Ibadah", "Auto-draft from the Tata Ibadah + Bible questions"))}</button>
-    ${e.questions.map((q, i) => `<article class="card qzw-q"><div class="row between" style="margin:0"><b>${i + 1}.</b><span class="row" style="margin:0;gap:4px"><button class="icon-btn" data-act="qzwMove" data-i="${i}" data-d="-1">↑</button><button class="icon-btn" data-act="qzwMove" data-i="${i}" data-d="1">↓</button><button class="icon-btn danger" data-act="qzwDel" data-i="${i}">${ic("trash")}</button></span></div>
+    ${e.questions.map((q, i) => `<article class="card qzw-q"><div class="row between" style="margin:0"><b>${i + 1}.</b><span class="row" style="margin:0;gap:4px">${qzMat().text ? `<button class="icon-btn" data-act="qzwRedo" data-i="${i}" aria-label="${esc(L3("Soal baru dari bahan", "Soal na imbaru", "New question from the materials"))}" title="${esc(L3("Soal baru dari bahan", "Soal na imbaru", "New question from the materials"))}">↻</button>` : ""}<button class="icon-btn" data-act="qzwMove" data-i="${i}" data-d="-1">↑</button><button class="icon-btn" data-act="qzwMove" data-i="${i}" data-d="1">↓</button><button class="icon-btn danger" data-act="qzwDel" data-i="${i}">${ic("trash")}</button></span></div>
       <textarea class="qzw-i" data-i="${i}" data-k="q" rows="2" placeholder="${esc(L3("Pertanyaan", "Sungkun-sungkun", "Question"))}">${esc(q.q || "")}</textarea>
       ${[0, 1, 2, 3].map((k) => `<div class="qzw-o"><input type="radio" name="ans${i}" class="qzw-r" data-i="${i}" data-k="${k}"${+q.answer === k ? " checked" : ""} aria-label="${esc(L3("Jawaban benar", "Alus na tama", "Correct answer"))}"><input class="qzw-i" data-i="${i}" data-k="o${k}" value="${esc((q.options || [])[k] || "")}" placeholder="${esc(L3("Pilihan", "Pilihan", "Option"))} ${"ABCD"[k]}${k > 1 ? " (" + L3("boleh kosong", "boi kosong", "optional") + ")" : ""}"></div>`).join("")}
       <input class="qzw-i" data-i="${i}" data-k="explain" value="${esc(q.explain || "")}" placeholder="💡 ${esc(L3("Penjelasan / ayat (boleh kosong)", "Penjelasan", "Explanation / verse (optional)"))}"></article>`).join("")}
@@ -1294,6 +1295,84 @@ const qzwRe = () => { const y = window.scrollY; qzwPaint(); window.scrollTo(0, y
 A.qzwAdd = () => { QZ.ed.questions.push({ q: "", options: ["", "", "", ""], answer: 0, explain: "" }); qzwRe(); };
 A.qzwDel = (d) => { QZ.ed.questions.splice(+d.i, 1); qzwRe(); };
 A.qzwMove = (d) => { const a = QZ.ed.questions, i = +d.i, j = i + +d.d; if (j < 0 || j >= a.length) return; [a[i], a[j]] = [a[j], a[i]]; qzwRe(); };
+// Teens Quiz Workbench (YB 2026-10-31): the teacher adds this week's lesson materials (PDF, Word, PowerPoint, text, photos of handouts)
+// or pastes the lesson text; Claude writes the questions on the server (hkbp-quiz, the church's key) into this draft, the teacher
+// checks and edits them, then Save & open. "↻" rewrites one question from the same materials.
+const QZW_SET = { n: 10, lang: "auto", diff: "mixed", types: "both" };
+const qzMat = () => QZ.mat || (QZ.mat = { files: [], paste: "", text: "", ...QZW_SET, ...LS.get("qzw-set", {}) });
+const qzWords = (t) => { const k = (String(t || "").match(/\S+/g) || []).length; return k.toLocaleString() + " " + L3("kata", "hata", "words"); };
+function qzwMatCard() {
+  const m = qzMat(); const ready = m.files.some((f) => f.state === "ready") || m.paste.trim().length > 40; const reading = m.files.some((f) => f.state === "reading");
+  const opt = (k, list) => list.map(([v, l]) => `<option value="${v}"${String(m[k]) === String(v) ? " selected" : ""}>${esc(l)}</option>`).join("");
+  return `<div class="card qzw-mat"><b>📚 ${esc(L3("Dari bahan pelajaran minggu ini", "Sian bahan parsiajaran minggu on", "From this week's lesson materials"))}</b>
+    <p class="small muted" style="margin:0">${esc(L3("Masukkan PDF, Word, PowerPoint, teks, atau foto handout pelajaran. Claude menulis soalnya, Anda memeriksa dan mengubahnya, lalu Simpan & buka.", "Pamasuk PDF, Word, PowerPoint, teks, manang foto. Claude manurat soal, hamu mamareso, dung i Simpan & bukka.", "Add the lesson PDF, Word, PowerPoint, text or photos of handouts. Claude writes the questions, you check and edit them, then Save & open."))}</p>
+    <button class="btn block" data-act="qzwFiles">📎 ${esc(L3("Pilih file pelajaran", "Pillit file", "Choose lesson files"))}</button>
+    ${m.files.map((f, i) => `<div class="qzw-f"><span class="grow"><b>${esc(f.name)}</b><small${f.state === "error" ? ' class="err"' : ""}>${esc(f.state === "reading" ? L3("Membaca…", "Manjaha…", "Reading…") : f.state === "error" ? f.error : f.note)}</small></span><button class="icon-btn" data-act="qzwRmFile" data-i="${i}" aria-label="${esc(t("delete"))}">✕</button></div>`).join("")}
+    <textarea class="qzw-s" data-k="paste" rows="3" placeholder="${esc(L3("Atau tempel teks pelajaran / nas Alkitab di sini", "Manang tempel teks parsiajaran dison", "Or paste the lesson text / Bible passage here"))}">${esc(m.paste)}</textarea>
+    <div class="qzw-set">
+      <label class="small">${esc(L3("Jumlah soal", "Godang ni soal", "Questions"))}<select class="qzw-s" data-k="n">${opt("n", [5, 8, 10, 12, 15, 20].map((k) => [k, k]))}</select></label>
+      <label class="small">${esc(L3("Bahasa", "Hata", "Language"))}<select class="qzw-s" data-k="lang">${opt("lang", [["auto", L3("Sama dengan bahan", "Songon bahan", "Same as the materials")], ["id", "Bahasa Indonesia"], ["en", "English"], ["bt", "Bahasa Batak Toba"]])}</select></label>
+      <label class="small">${esc(L3("Tingkat", "Tingkat", "Difficulty"))}<select class="qzw-s" data-k="diff">${opt("diff", [["easy", L3("Mudah", "Mura", "Easy")], ["mixed", L3("Campur", "Campur", "Mixed")], ["hard", L3("Menantang", "Maol", "Challenging")]])}</select></label>
+      <label class="small">${esc(L3("Jenis soal", "Jenis", "Question types"))}<select class="qzw-s" data-k="types">${opt("types", [["both", L3("Pilihan ganda + Benar/Salah", "PG + Benar/Salah", "Multiple choice + True/False")], ["mcq", L3("Pilihan ganda", "Pilihan ganda", "Multiple choice")], ["tf", L3("Benar / Salah", "Benar / Salah", "True / False")]])}</select></label>
+    </div>
+    <button class="btn primary block" data-act="qzwWrite"${ready && !reading ? "" : " disabled"}>✨ ${esc(L3("Tulis kuis dengan Claude", "Surat kuis dohot Claude", "Write the quiz with Claude"))}</button></div>`;
+}
+document.addEventListener("input", (ev) => { const el = ev.target; if (!el || !el.classList || !el.classList.contains("qzw-s") || !QZ.ed) return;
+  const m = qzMat(); if (el.dataset.k === "paste") { m.paste = el.value; const b = document.querySelector('[data-act="qzwWrite"]'); if (b) b.disabled = !(m.files.some((f) => f.state === "ready") || m.paste.trim().length > 40) || m.files.some((f) => f.state === "reading"); }
+  else { m[el.dataset.k] = el.dataset.k === "n" ? +el.value : el.value; LS.set("qzw-set", { n: m.n, lang: m.lang, diff: m.diff, types: m.types }); } });
+document.addEventListener("change", (ev) => { const el = ev.target; if (el && el.classList && el.classList.contains("qzw-s") && el.tagName === "SELECT") el.dispatchEvent(new Event("input", { bubbles: true })); });
+// One lesson file → text (or a photo, made smaller) for Claude.
+async function qzwRead(f) {
+  const name = f.name.toLowerCase();
+  if (/^image\//.test(f.type)) { const url = await resizeImage(f, 1400, 0.85); return { image: url.split(",")[1], mime: "image/jpeg", note: L3("Foto handout", "Foto", "Photo of a handout") }; }
+  if (/\.(txt|md|csv)$/.test(name)) { const text = (await f.text()).trim(); if (!text) throw new Error("empty"); return { text, note: qzWords(text) }; }
+  if (/\.pptx$/.test(name)) {
+    await P.load("https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js");
+    const zip = await window.JSZip.loadAsync(await f.arrayBuffer()); const dec = (x) => x.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&#(\d+);/g, (a, k) => String.fromCharCode(+k)).replace(/&amp;/g, "&");
+    const names = Object.keys(zip.files).filter((k) => /^ppt\/slides\/slide\d+\.xml$/.test(k)).sort((a, b) => +a.match(/(\d+)\.xml$/)[1] - +b.match(/(\d+)\.xml$/)[1]);
+    const out = []; for (const k of names) { const xml = await zip.file(k).async("string"); const paras = xml.split("</a:p>").map((pp) => [...pp.matchAll(/<a:t[^>]*>([\s\S]*?)<\/a:t>/g)].map((mm) => dec(mm[1])).join("").trim()).filter(Boolean);
+      const nn = k.replace("slides/slide", "notesSlides/notesSlide"); let notes = ""; if (zip.file(nn)) { const nx = await zip.file(nn).async("string"); notes = [...nx.matchAll(/<a:t[^>]*>([\s\S]*?)<\/a:t>/g)].map((mm) => dec(mm[1])).join(" ").replace(/\s+/g, " ").trim(); }
+      if (paras.length || notes) out.push(`[slide ${k.match(/(\d+)\.xml$/)[1]}]\n${paras.join("\n")}${notes ? "\nCatatan: " + notes : ""}`); }
+    const text = out.join("\n\n"); if (!text) throw new Error("empty"); return { text, note: `${names.length} slide · ${qzWords(text)}` };
+  }
+  if (/\.(docx|doc|pdf)$/.test(name)) { const r = await P.file(f); const text = String(r.text || (r.lines || []).join("\n") || "").trim(); if (!text) throw new Error("empty"); return { text, note: qzWords(text) }; }
+  if (/\.(ppt)$/.test(name)) throw new Error("old");
+  throw new Error("unsupported");
+}
+A.qzwFiles = () => {
+  const inp = document.createElement("input"); inp.type = "file"; inp.multiple = true; inp.accept = ".pdf,.docx,.doc,.pptx,.txt,.md,.csv,image/*";
+  inp.onchange = () => { const m = qzMat();
+    for (const f of inp.files) { const entry = { name: f.name, state: "reading", text: "", note: "" }; m.files.push(entry);
+      qzwRead(f).then((r) => Object.assign(entry, r, { state: "ready" })).catch((e) => { entry.state = "error"; entry.error = e.message === "empty" ? L3("Tidak ada teks di file ini.", "Dang adong teks.", "No text found in this file.") : e.message === "old" ? L3("Format lama. Simpan sebagai .pptx atau PDF.", "Format na buruk.", "Old format. Save it as .pptx or PDF.") : L3("File ini tidak bisa dibaca.", "Dang tarjaha.", "This file can't be read."); }).finally(qzwRe); }
+    qzwRe(); };
+  inp.click();
+};
+A.qzwRmFile = (d) => { qzMat().files.splice(+d.i, 1); qzwRe(); };
+const qzwFromAi = (x) => ({ q: x.q, options: (x.options || []).slice(0, 4), answer: +x.answer || 0, explain: x.explain || "", type: x.type || "" });
+A.qzwWrite = async () => {
+  const e = QZ.ed, m = qzMat(); const ready = m.files.filter((f) => f.state === "ready");
+  const text = [...ready.filter((f) => f.text).map((f) => `=== File: ${f.name} ===\n${f.text}`), m.paste.trim() ? `=== Teks ===\n${m.paste.trim()}` : ""].filter(Boolean).join("\n\n").slice(0, 120000);
+  const images = ready.filter((f) => f.image).slice(0, 3).map((f) => ({ mime: f.mime, data: f.image }));
+  if (!text && !images.length) { toast(L3("Tambahkan file atau tempel teks pelajaran dulu.", "Tambah file jolo.", "Add a file or paste the lesson text first."), true); return; }
+  const def = L3("Kuis Minggu Ini", "Kuis Minggu On", "This week's quiz");
+  busySheet("✨ " + L3("Claude menulis kuis", "Claude manurat kuis", "Claude is writing the quiz"), L3(`Membaca bahan dan menulis ${m.n} soal… sekitar satu menit.`, `Manjaha bahan jala manurat ${m.n} soal…`, `Reading the materials and writing ${m.n} questions… about a minute.`));
+  try {
+    const r = await aiRun("quiz", { group_id: e.gid, day: e.day, topic: e.title && e.title !== def ? e.title : "", n: m.n, lang: m.lang, diff: m.diff, types: m.types, text, images });
+    const qs = (r.questions || []).map(qzwFromAi); if (!qs.length) throw new Error("empty_reply");
+    closeSheet(); m.text = text || "(foto)";
+    if (e.questions.every((q) => !String(q.q || "").trim())) e.questions = qs; else e.questions.push(...qs);
+    if (r.title && (!e.title || e.title === def)) e.title = r.title;
+    if (r.summary) m.summary = r.summary;
+    qzwRe(); toast(L3(`${qs.length} soal ditulis. Periksa dan ubah bila perlu, lalu Simpan & buka.`, `${qs.length} soal nunga disurat. Pareso jolo.`, `${qs.length} questions written. Check and edit them, then Save & open.`));
+  } catch (er) { closeSheet(); toast(er && er.message === "empty_reply" ? L3("Claude tidak menghasilkan soal. Coba lagi.", "Coba muse.", "No questions came back. Try again.") : errMsg(er), true); }
+};
+A.qzwRedo = async (d, btn) => {
+  const e = QZ.ed, m = qzMat(), i = +d.i, q = e.questions[i]; if (!q || !m.text) return;
+  try { await busy(btn, async () => {
+    const r = await aiRun("quiz", { group_id: e.gid, lang: m.lang, text: m.text, one: { type: q.type || ((q.options || []).filter(Boolean).length === 2 ? "tf" : "mcq"), old: q.q || "", others: e.questions.filter((x, k) => k !== i).map((x) => x.q || "").filter(Boolean) } });
+    if (!r.question) throw new Error("empty_reply"); e.questions[i] = qzwFromAi(r.question); });
+    qzwRe(); } catch (er) { toast(er && er.message === "empty_reply" ? L3("Claude tidak menghasilkan soal. Coba lagi.", "Coba muse.", "No question came back. Try again.") : errMsg(er), true); }
+};
 A.qzwAuto = async (d, btn) => {
   const e = QZ.ed; const out = [];
   await busy(btn, async () => {
@@ -1332,6 +1411,8 @@ try { document.head.insertAdjacentHTML("beforeend", `<style>
   .qz-board { display: grid; gap: 6px; } .qz-b { display: grid; grid-template-columns: 36px 1fr auto auto; gap: 10px; align-items: center; padding: 10px 12px; border-radius: 14px; background: var(--surface-2, #f4f5fa); }
   .qz-b.me { outline: 2px solid #e3367d; } .qz-rank { font-size: 20px; text-align: center; font-weight: 900; } .qz-b span:nth-child(3) { font-weight: 900; } .qz-b small { color: var(--muted); }
   .qzw-meta, .qzw-q { display: grid; gap: 8px; } .qzw-o { display: flex; align-items: center; gap: 8px; } .qzw-o input[type=radio] { width: 22px; height: 22px; flex: none; accent-color: #1f8a4c; } .qzw-o input:not([type]) , .qzw-o .qzw-i { flex: 1; }
+  .qzw-mat { display: grid; gap: 10px; } .qzw-f { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 12px; background: var(--surface-2, #f4f5fa); } .qzw-f b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .qzw-f small { display: block; color: var(--muted); } .qzw-f small.err { color: #b93a26; }
+  .qzw-set { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; } .qzw-set label { display: grid; gap: 4px; } .qzw-set select { width: 100%; min-width: 0; }
 </style>`); } catch (e) {}
 try { document.head.insertAdjacentHTML("beforeend", `<style>
   .taro-search { display: flex; align-items: center; gap: 10px; background: var(--surface); border: 1.5px solid var(--line); border-radius: 18px; padding: 4px 6px 4px 14px; margin: 10px 0 8px; box-shadow: 0 4px 14px rgba(20,22,60,.06); }
