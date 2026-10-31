@@ -1117,7 +1117,7 @@ const SX_KINDS = [
   [/^(File & video|Files & videos)$/i, "files", "📁", ["File", "File", "Files"]], [/^(Kiriman|Posts)$/i, "posts", "📝", ["Kiriman", "Kiriman", "Posts"]],
   [/Alkitab|Bibel|Bible/i, "bible", "📖", ["Alkitab", "Bibel", "Bible"]], [/Nyanyian|Ende|Songs/i, "songs", "🎵", ["Lagu", "Ende", "Songs"]],
   [/Dokumen|Church documents/i, "docs", "📚", ["Dokumen", "Dokumen", "Documents"]], [/Tarombo/i, "taro", "🌳", ["Tarombo", "Tarombo", "Tarombo"]],
-  [/RPP/, "rpp", "⚖️", ["RPP", "RPP", "RPP"]], [/Liturgi|Paragenda|Liturgy/i, "lit", "📜", ["Liturgi", "Liturgi", "Liturgy"]]];
+  [/^(Fitur|Features)$/i, "feat", "✨", ["Fitur", "Fitur", "Features"]], [/RPP/, "rpp", "⚖️", ["RPP", "RPP", "RPP"]], [/Liturgi|Paragenda|Liturgy/i, "lit", "📜", ["Liturgi", "Liturgi", "Liturgy"]]];
 function sxDecorate() {
   const res = document.getElementById("searchRes"); if (!res) return;
   res.querySelectorAll("h3.sec-h").forEach((h) => { if (h.closest(".sx-sec")) return; const body = h.nextElementSibling; if (!body) return;
@@ -1139,10 +1139,10 @@ A.sxPick = (d) => { const i = document.getElementById("searchIn"); if (!i) retur
 A.sxForget = () => { LS.set("searchHist", []); searchRun(""); };
 function sxHistAdd(q) { q = String(q || "").trim(); if (q.length < 2) return; const h = (LS.get("searchHist", []) || []).filter((x) => norm(x) !== norm(q)); h.unshift(q); LS.set("searchHist", h.slice(0, 8)); }
 function sxEmpty() {
-  const h = LS.get("searchHist", []) || []; const sug = ["KJ 4", "Mazmur 23", "Sihombing", "Natal", "Haleluya", "parbagason"];
+  const h = LS.get("searchHist", []) || []; const sug = ["KJ 4", "Mazmur 23", "Sihombing", L3("Panggilan video", "Telepon video", "Video call"), L3("Ayat harian", "Ayat ari on", "Daily verse"), "Tarombo", "Haleluya"];
   return `${h.length ? `<div class="sx-blk"><div class="sx-blk-h"><b>🕘 ${esc(L3("Pencarian terakhir", "Lului na salpu", "Recent searches"))}</b><button class="sx-link" data-act="sxForget">${esc(L3("Hapus", "Apus", "Clear"))}</button></div><div class="sx-pills">${h.map((q) => `<button class="sx-pill" data-act="sxPick" data-q="${esc(q)}">${esc(q)}</button>`).join("")}</div></div>` : ""}
     <div class="sx-blk"><div class="sx-blk-h"><b>✨ ${esc(L3("Coba cari", "Lului", "Try"))}</b></div><div class="sx-pills">${sug.map((q) => `<button class="sx-pill soft" data-act="sxPick" data-q="${esc(q)}">${esc(q)}</button>`).join("")}</div></div>
-    <div class="sx-what"><p>${esc(L3("Satu kotak untuk semuanya:", "Sada kotak tu sude:", "One box for everything:"))}</p><div>👤 ${esc(L3("Anggota", "Ruas", "Members"))} · 🎵 ${esc(L3("Lagu", "Ende", "Songs"))} · 📚 ${esc(L3("Dokumen", "Dokumen", "Documents"))} · 📖 ${esc(L3("Alkitab", "Bibel", "Bible"))} · 🗓 ${esc(L3("Acara", "Ulaon", "Events"))} · 📋 Roster · 🌳 Tarombo</div></div>`;
+    <div class="sx-what"><p>${esc(L3("Satu kotak untuk semuanya:", "Sada kotak tu sude:", "One box for everything:"))}</p><div>👤 ${esc(L3("Anggota", "Ruas", "Members"))} · 🎵 ${esc(L3("Lagu", "Ende", "Songs"))} · 📚 ${esc(L3("Dokumen", "Dokumen", "Documents"))} · 📖 ${esc(L3("Alkitab", "Bibel", "Bible"))} · 🗓 ${esc(L3("Acara", "Ulaon", "Events"))} · 📋 Roster · 🌳 Tarombo · ✨ ${esc(L3("Fitur Sada (ketik mis. \"video call\", \"foto profil\")", "Fitur Sada", "Sada features (type e.g. \"video call\", \"profile photo\")"))} · 📞 ${esc(L3("Telepon anggota", "Telepon ruas", "Call a member"))}</div></div>`;
 }
 try { document.head.insertAdjacentHTML("beforeend", `<style>
   .sx-top { position: sticky; top: calc(64px + env(safe-area-inset-top)); z-index: 4; padding: 8px 0 6px; background: linear-gradient(var(--bg, #f2f3f8) 75%, transparent); }
@@ -3566,10 +3566,23 @@ function callGathered(pc) {
     const done = () => { if (pc.iceGatheringState === "complete") { pc.removeEventListener("icegatheringstatechange", done); res(); } };
     pc.addEventListener("icegatheringstatechange", done); setTimeout(res, 2500); });
 }
-function callPc(id, name) {
+// Backup relay (YB 2026-10-31): some phone and office networks block direct phone-to-phone video. Every call also
+// carries a free relay server (Open Relay by Metered, ports 80/443, TCP and TLS too). The phones only use it when a
+// direct link can't be made, so nobody has to do anything. If a call still drops, it reconnects by itself, the second
+// time through the relay only. Extra or paid relays (e.g. Cloudflare) can be added in hk_settings 'call_ice'.
+async function callRelay() {
+  try {
+    const user = (Math.floor(Date.now() / 1000) + 6 * 3600) + ":sada";
+    const key = await crypto.subtle.importKey("raw", new TextEncoder().encode("openrelayprojectsecret"), { name: "HMAC", hash: "SHA-1" }, false, ["sign"]);
+    const sig = new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(user)));
+    const credential = btoa(String.fromCharCode(...sig)); const h = "staticauth.openrelay.metered.ca";
+    return [{ urls: [`turn:${h}:80`, `turn:${h}:80?transport=tcp`, `turn:${h}:443?transport=tcp`, `turns:${h}:443?transport=tcp`], username: user, credential }];
+  } catch (e) { return []; }
+}
+function callPc(id, name, relay) {
   const old = CALL.pcs[id]; if (old) { try { old.pc.close(); } catch (e) {} }
-  const pc = new RTCPeerConnection({ iceServers: CALL.ice || [] });
-  const x = { pc, name, tile: old ? old.tile : callTile(id, name), sent: false, queue: [], miss: 0, born: Date.now() };
+  const pc = new RTCPeerConnection({ iceServers: CALL.ice || [], iceTransportPolicy: relay ? "relay" : "all" });
+  const x = { pc, name, tile: old ? old.tile : callTile(id, name), sent: false, queue: [], miss: 0, born: Date.now(), tries: old ? old.tries : 0, relay: !!relay };
   CALL.pcs[id] = x;
   CALL.local.getTracks().forEach((tr) => pc.addTrack(tr, CALL.local));
   pc.ontrack = (e) => { const v = x.tile.querySelector("video"); const s = e.streams[0] || new MediaStream([e.track]); if (v.srcObject !== s) { v.srcObject = s; v.play().catch(() => {}); }
@@ -3581,32 +3594,41 @@ function callPc(id, name) {
     x.tile.classList.toggle("wait", st !== "connected");
     if (st === "connected") { if (!CALL.t0) CALL.t0 = Date.now(); CALL.status = ""; callToneStop(); if (s) s.textContent = ""; const a = document.getElementById("callStat"); if (a) a.textContent = callClock(); }
     else if (s) s.textContent = st === "failed" ? L3("Tidak tersambung", "Ndang tarsambung", "Can't connect") : st === "disconnected" ? L3("Sinyal lemah…", "Sinyal lemah…", "Weak signal…") : L3("Menyambungkan…", "Manyambung…", "Connecting…");
-    if (st === "failed" && !x.retried && CALL.me > id) { x.retried = true; setTimeout(() => CALL && CALL.pcs[id] === x && callOffer(id, name), 1500); }
+    // reconnect by itself: a weak signal gets 6 seconds to come back, a failed link is redone (up to 3 times, through the relay)
+    clearTimeout(x.fix);
+    if (st === "failed" || st === "disconnected") x.fix = setTimeout(() => callRedo(id, x), st === "failed" ? 300 : 6000);
   };
   return x;
 }
-async function callOffer(id, name) {
-  const x = callPc(id, name); callPaint();
+function callRedo(id, x) {
+  if (!CALL || CALL.pcs[id] !== x || ["connected", "new", "connecting"].includes(x.pc.connectionState) || x.tries >= 3) return;
+  x.tries++; const s = x.tile.querySelector(".call-tst"); if (s) s.textContent = L3("Menyambungkan ulang…", "Manyambung muse…", "Reconnecting…");
+  if (CALL.me > id) callOffer(id, x.name, true).catch(() => {}); else callSig(id, "redo", {});
+}
+async function callOffer(id, name, relay) {
+  const x = callPc(id, name, relay); callPaint();
   const o = await x.pc.createOffer(); await x.pc.setLocalDescription(o); await callGathered(x.pc);
-  x.sent = true; await callSig(id, "offer", { sdp: x.pc.localDescription.sdp });
+  x.sent = true; await callSig(id, "offer", { sdp: x.pc.localDescription.sdp, relay: !!relay });
 }
 async function callOnSig(s) {
   const id = s.from; let x = CALL.pcs[id]; const name = (CALL.names && CALL.names[id]) || "";
   if (s.kind === "offer") {
     if (x && x.pc.signalingState === "have-local-offer" && CALL.me > id) return;   // both offered at once: the larger id keeps its own offer
-    x = callPc(id, name); callPaint();
+    x = callPc(id, name, s.data.relay); callPaint();
     await x.pc.setRemoteDescription({ type: "offer", sdp: s.data.sdp });
     for (const c of x.queue) await x.pc.addIceCandidate(c).catch(() => {}); x.queue = [];
     const a = await x.pc.createAnswer(); await x.pc.setLocalDescription(a); await callGathered(x.pc);
     x.sent = true; await callSig(id, "answer", { sdp: x.pc.localDescription.sdp });
   } else if (s.kind === "answer") {
     if (x && x.pc.signalingState === "have-local-offer") { await x.pc.setRemoteDescription({ type: "answer", sdp: s.data.sdp }); for (const c of x.queue) await x.pc.addIceCandidate(c).catch(() => {}); x.queue = []; }
+  } else if (s.kind === "redo" && x && CALL.me > id) {
+    if (x.tries < 3) { x.tries++; await callOffer(id, name || x.name, true); }
   } else if (s.kind === "ice" && x) {
     if (x.pc.remoteDescription) await x.pc.addIceCandidate(s.data).catch(() => {}); else x.queue.push(s.data);
   }
 }
 async function callBegin(res, video) {
-  CALL.after = res.after || 0; CALL.id = res.call.id; CALL.room = res.call.room; CALL.me = res.me; CALL.ice = res.ice; CALL.answered = !!res.call.answered_at || res.call.caller_id !== res.me;
+  CALL.after = res.after || 0; CALL.id = res.call.id; CALL.room = res.call.room; CALL.me = res.me; CALL.ice = (Array.isArray(res.ice) ? res.ice : []).concat(await callRelay()); CALL.answered = !!res.call.answered_at || res.call.caller_id !== res.me;
   CALL.names = {}; (res.peers || []).forEach((p) => (CALL.names[p.id] = p.name));
   if (CALL.room.startsWith("dm:")) { CALL.dm = CALL.room.slice(3).split(":").find((x) => x !== res.me); CALL.dmName = res.call.caller_id === res.me ? "" : res.call.caller_name; }
   else CALL.title = (chatRooms().find((r) => r.id === CALL.room) || {}).name || "Chat";
@@ -4642,14 +4664,20 @@ function searchRun(q) {
   const n = norm(q); const xb = document.querySelector(".sx-x"); if (xb) xb.hidden = !q;
   if (n.length < 2) { DEEP.n++; el.innerHTML = sxEmpty(); const ch = document.getElementById("sxChips"); if (ch) ch.innerHTML = ""; return; }
   const has = (x) => norm(x || "").includes(n); const digits = q.replace(/\D/g, "");
-  const people = (D.people || []).filter((p) => has(p.name) || has(p.alias) || (digits.length >= 3 && (p.phone || "").includes(digits))).slice(0, 20);
+  // "call Samuel", "video call Samuel", "telepon Samuel": find Samuel, with the call buttons on the row
+  const callQ = q.match(/^\s*(?:video\s*call|voice\s*call|vc|call|telepon|telpon|panggil|hubungi)\s+(.{2,})$/i); const pn = callQ ? norm(callQ[1]) : n; const hasP = (x) => norm(x || "").includes(pn);
+  const people = (D.people || []).filter((p) => hasP(p.name) || hasP(p.alias) || (digits.length >= 3 && (p.phone || "").includes(digits))).slice(0, 20);
+  const feats = sxFeatFind(q); const canCall = callOk();
   const groups = (D.groups || []).filter((g) => canSee(g) && has(gname(g)));
   const evs = (D.events || []).filter((e) => has(e.title) || has(e.place) || has(e.notes)).slice(0, 15);
   const files = (D.files || []).filter((f) => has(f.title) || has(f.file_name) || has(f.note)).slice(0, 15);
   const posts = (D.posts || []).filter((p) => !["warta", "finance"].includes(p.kind) && (has(p.title) || has(p.body))).slice(0, 10);
   const lines = []; (D.rosters || []).forEach((r) => (r.table_json || []).forEach((tb) => { const rows = tb.rows || []; const head = rows[0] || []; rows.slice(1).forEach((row) => { if (row.some((c, j) => j && has(c))) lines.push({ r, row, head }); }); }));
   const sec = (title, html) => (html ? `<h3 class="sec-h">${esc(title)}</h3><div class="card">${html}</div>` : "");
-  const out = sec(L3("Anggota", "Ruas", "Members"), people.map((p) => `<div class="li">${avatarOf(p)}<span class="grow"><b>${esc(p.name)}</b><small>${esc([fmtPhone(p.phone), ...Object.keys(p.groups || {}).map((g) => gname(G(g))).filter(Boolean)].filter(Boolean).join(" · "))}</small></span>${p.id !== D.me.id ? `<a class="icon-btn" href="#/chat/${esc(dmRoom(p.id))}" aria-label="${esc(L3("Kirim pesan", "Kirim pesan", "Message"))}">${ic("chat")}</a>` : ""}${p.phone && p.id !== D.me.id ? `<a class="icon-btn wa" href="${wa("", p.phone)}" target="_blank" rel="noopener" aria-label="WhatsApp">${ic("wa")}</a>` : ""}</div>`).join(""))
+  const featSec = feats.length ? `<h3 class="sec-h">${esc(L3("Fitur", "Fitur", "Features"))}</h3><div class="card deep-card">${sxFeatRows(feats, callQ ? "" : q)}</div>` : "";
+  const memActs = (p) => p.id === D.me.id ? "" : `<span class="sx-mem-acts">${canCall ? `<button class="icon-btn" data-act="sxCall" data-id="${esc(p.id)}" data-video="0" aria-label="${esc(L3("Telepon suara", "Telepon suara", "Voice call"))}">${cic("voice")}</button><button class="icon-btn" data-act="sxCall" data-id="${esc(p.id)}" data-video="1" aria-label="${esc(L3("Panggilan video", "Telepon video", "Video call"))}">${cic("video")}</button>` : ""}<a class="icon-btn" href="#/chat/${esc(dmRoom(p.id))}" aria-label="${esc(L3("Kirim pesan", "Kirim pesan", "Message"))}">${ic("chat")}</a>${p.phone ? `<a class="icon-btn wa" href="${wa("", p.phone)}" target="_blank" rel="noopener" aria-label="WhatsApp">${ic("wa")}</a>` : ""}</span>`;
+  const memSec = sec(L3("Anggota", "Ruas", "Members"), people.map((p) => `<div class="li">${avatarOf(p)}<span class="grow"><b>${esc(p.name)}</b><small>${esc([fmtPhone(p.phone), ...Object.keys(p.groups || {}).map((g) => gname(G(g))).filter(Boolean)].filter(Boolean).join(" · "))}</small></span>${memActs(p)}</div>`).join(""));
+  const out = (callQ ? memSec + featSec : featSec + memSec)
     + (groups.length ? `<h3 class="sec-h">${esc(t("tab_groups"))}</h3><div class="glist">${groups.map((g) => groupTile(g, esc(t(g.kind === "service" ? "kindService" : "kindSermon")))).join("")}</div>` : "")
     + sec(L3("Acara", "Ulaon", "Events"), evs.map(eventRow).join(""))
     + sec(L3("Roster", "Roster", "Rosters"), lines.slice(0, 15).map(({ r, row, head }) => `<a class="li" href="${rosterHome(r.group_id, r.month)}"><span class="grow"><b>${esc(gname(G(r.group_id)))} · ${esc(row[0] || "")}</b><small>${esc(row.map((c, j) => (j && c ? `${head[j] || ""}: ${c}` : "")).filter(Boolean).join(" · "))}</small></span>${ic("chev", "chev")}</a>`).join(""))
@@ -4659,6 +4687,86 @@ function searchRun(q) {
   clearTimeout(searchRun._t); searchRun._t = setTimeout(() => deepSearch(q), 250);
 }
 document.addEventListener("input", (e) => { if (e.target && e.target.id === "searchIn") searchRun(e.target.value); });
+
+// ---------- Search finds app features too (YB 2026-10-31): "video call", "voice note", "profile photo", "daily verse", "Tarombo"…
+// Each feature opens straight from the result. A call feature picks a person and starts the call; member results get call buttons.
+// [id, emoji, [id, bt, en] title, [id, bt, en] subtitle, extra search words, where it goes (#/route or A.<action>), who sees it]
+const SX_FEATS = () => [
+  ["vcall", "📹", ["Panggilan video", "Telepon video", "Video call"], ["Pilih orang, lalu panggil", "Pilih jolma", "Pick a person and call"], "vc video call videocall facetime panggil telepon telpon kamera", "act:sxCallPick:1", () => callOk()],
+  ["acall", "📞", ["Panggilan suara", "Telepon suara", "Voice call"], ["Pilih orang, lalu panggil", "Pilih jolma", "Pick a person and call"], "call phone telepon telpon panggil suara audio", "act:sxCallPick:0", () => callOk()],
+  ["chat", "💬", ["Chat", "Chat", "Chat"], ["Grup dan pesan pribadi", "Grup dohot pesan", "Group chat and private messages"], "pesan message messages chat inbox obrolan", "#/chat", () => true],
+  ["dm", "✏️", ["Pesan pribadi baru", "Pesan baru", "New private message"], ["Kirim pesan ke satu orang", "Kirim pesan", "Message one person"], "dm pm private pribadi japri pesan message baru new", "act:dmNew", () => true],
+  ["vnote", "🎤", ["Pesan suara", "Pesan suara", "Voice note"], ["Buka Chat, lalu tekan 🎤 untuk merekam", "Bukka Chat, tekan 🎤", "Open Chat, then tap 🎤 to record"], "voice note voicenote vn rekam record audio suara pesan mic mikrofon", "#/chat", () => canVoice()],
+  ["photo", "🖼️", ["Foto profil", "Foto profil", "Profile photo"], ["Ambil atau ganti foto Anda", "Ganti foto", "Take or change your photo"], "profile photo picture avatar foto gambar selfie profil", "act:photoPick", () => true],
+  ["bread", "🍞", ["Ayat & renungan harian", "Ayat dohot renungan", "Daily verse & daily bread"], ["Ayat hari ini dan renungannya", "Ayat ari on", "Today's verse and reading"], "daily verse bread renungan harian ayat hari ini verse of the day devotion", "#/bread", () => true],
+  ["sunday", "📅", ["Minggu Ini", "Minggu On", "This Sunday"], ["Tata Ibadah, lagu, nas dan live", "Tata Ibadah, ende, live", "Service order, songs, readings, live"], "minggu sunday ibadah service kebaktian", "#/sunday", () => true],
+  ["tata", "📖", ["Tata Ibadah", "Tata Ibadah", "Service order"], ["Urutan ibadah Minggu", "Tata Ibadah", "The Sunday order of service"], "tata ibadah acara kebaktian liturgy order service", "#/tata", () => true],
+  ["live", "🔴", ["Ikuti live", "Ihuthon live", "Follow live"], ["Ikuti ibadah yang sedang berlangsung", "Ihuthon live", "Follow the service as it happens"], "live siaran langsung stream", "#/live", () => true],
+  ["library", "🎵", ["Alkitab & nyanyian", "Bibel dohot ende", "Bible & hymns"], ["KJ, Buku Ende, Buku Nyanyian, Alkitab", "KJ, BE, BN, Bibel", "KJ, BE, BN and the Bible"], "alkitab bible bibel lagu song songs hymn hymns nyanyian ende kj be bn kidung", "#/library", () => true],
+  ["ende", "🎶", ["Arti Buku Ende", "Lapatan ni ende", "Buku Ende meanings"], ["Arti setiap baris lagu", "Lapatan ende", "The meaning of every hymn line"], "buku ende arti meaning lapatan translate", "#/ende", () => true],
+  ["calendar", "🗓", ["Warnasari & acara", "Warnasari", "Calendar & events"], ["Acara gereja dan kategorial", "Ulaon", "Church and category events"], "warnasari kalender calendar acara event events agenda jadwal", "#/calendar", () => true],
+  ["serve", "📋", ["Roster pelayanan", "Roster", "Service roster"], ["Siapa bertugas kapan", "Ise marhobas", "Who serves when"], "roster jadwal tugas duty duties pelayanan serve schedule", "#/serve", () => true],
+  ["meet", "🖥", ["Rapat", "Rapat", "Meetings"], ["Rapat online dan tautan", "Rapat", "Online meetings and links"], "rapat meeting meetings zoom meet online", "#/meet", () => true],
+  ["groups", "👥", ["Kategorial", "Kategorial", "Categories"], ["Sekolah Minggu, Remaja, Naposo, Ina, Ama…", "Kategorial", "Sunday School, Teens, Youth, Ina, Ama…"], "kategorial categories groups kelompok remaja naposo ina ama sekolah minggu pelaut", "#/groups", () => true],
+  ["people", "🎂", ["Anggota & ulang tahun", "Ruas dohot ulang tahun", "Members & birthdays"], ["Daftar anggota dan ulang tahun", "Ruas", "Member list and birthdays"], "anggota members member birthday birthdays ulang tahun ultah jemaat", "#/people", () => true],
+  ["prayer", "🙏", ["Pokok doa", "Pokok tangiang", "Prayer requests"], ["Bagikan dan ikut mendoakan", "Tangianghon", "Share and pray together"], "doa prayer pray tangiang pokok", "#/prayer", () => true],
+  ["elders", "📰", ["Kabar Parhalado", "Barita Parhalado", "Elders' updates"], ["Kabar dari parhalado", "Barita", "News from the elders"], "kabar parhalado elders updates news sintua", "#/elders", () => true],
+  ["berita", "📣", ["Berita Pelayanan", "Berita Pelayanan", "Service news"], ["Pengumuman gereja", "Barita", "Church announcements"], "berita pelayanan news announcement pengumuman warta", "#/berita", () => true],
+  ["tarombo", "🌳", ["Tarombo", "Tarombo", "Tarombo"], ["Silsilah marga Batak", "Tarombo marga", "The Batak marga tree"], "tarombo silsilah marga family tree", "#/tarombo", () => true],
+  ["tutur", "🤝", ["Partuturan", "Partuturan", "Partuturan"], ["Cara saling menyapa (Dalihan Na Tolu)", "Partuturan", "How to address each other"], "partuturan tutur dalihan na tolu address kinship sapaan", "#/tutur", () => true],
+  ["stories", "🎙️", ["Turi-turian", "Turi-turian", "Elders' stories"], ["Cerita orang tua yang direkam", "Turi-turian", "Recorded stories from the elders"], "turi turian stories story cerita rekaman", "#/stories", () => true],
+  ["grief", "🕊️", ["Dukacita", "Dukacita", "Grief support"], ["Dukung keluarga yang berduka", "Apuli na marsak", "Support a grieving family"], "dukacita grief duka mourning funeral meninggal", "#/grief", () => true],
+  ["fx", "💱", ["Kurs", "Kurs", "Exchange rates"], ["Konversi mata uang", "Kurs", "Currency converter"], "kurs exchange rate currency sgd idr rupiah dollar", "#/fx", () => true],
+  ["textsize", "🔠", ["Ukuran teks", "Balga ni surat", "Text size"], ["Perbesar huruf", "Pabalga surat", "Make the text larger"], "text size ukuran huruf font besar larger zoom", "act:textSize", () => true],
+  ["notify", "🔔", ["Notifikasi", "Notifikasi", "Notifications"], ["Nyalakan pemberitahuan", "Notifikasi", "Turn on notifications"], "notifikasi notification notifications push bell pemberitahuan", "act:notify", () => true],
+  ["install", "📲", ["Pasang di HP", "Pasang", "Install the app"], ["Tambahkan ke layar utama", "Pasang", "Add to the home screen"], "install pasang home screen layar utama aplikasi app", "act:install", () => true],
+  ["profile", "🧾", ["Profil saya", "Profil", "My profile"], ["Kategori saya", "Kategori", "My categories"], "profil profile kategori status menikah married", "act:profile", () => profileOn()],
+  ["lang_id", "🇮🇩", ["Bahasa Indonesia", "Bahasa Indonesia", "Bahasa Indonesia"], ["Ganti bahasa", "Ganti hata", "Change the language"], "bahasa language indonesia", "act:lang:id", () => true],
+  ["lang_bt", "🗣", ["Bahasa Batak", "Hata Batak", "Batak language"], ["Ganti bahasa", "Ganti hata", "Change the language"], "bahasa language batak toba hata", "act:lang:bt", () => true],
+  ["lang_en", "🇬🇧", ["English", "English", "English"], ["Ganti bahasa", "Ganti hata", "Change the language"], "bahasa language english inggris", "act:lang:en", () => true],
+  ["voyage", "🚢", ["Mode berlayar", "Mode marlayar", "Voyage mode"], ["Paket offline untuk pelaut", "Pelaut", "Offline pack for seafarers"], "pelaut voyage ship kapal offline seafarer", "#/voyage", () => "pelaut" in (D.me.groups || {})],
+  ["care", "🫶", ["Perlu dikunjungi", "Ingkon dikunjungi", "Time for a visit"], ["Jemaat yang lama tidak hadir", "Ruas na leleng so ro", "Members not seen for a while"], "kunjungan visit care pastoral", "#/care", () => "parhalado" in (D.me.groups || {})],
+  ["rpp", "⚖️", ["RPP", "RPP", "RPP"], ["Daftar RPP dan tanya Juklak", "RPP", "RPP list and the Juklak"], "rpp juklak disiplin discipline", "#/rpp", () => isParhalado()],
+  ["lit", "📜", ["Naskah Liturgi", "Naskah Paragenda", "Liturgy scripts"], ["Untuk liturgis", "Paragenda", "For the liturgist"], "liturgi liturgy liturgis paragenda naskah script", "#/lit", () => isLit()],
+  ["sswb", "🧒", ["Workbench Sekolah Minggu", "Workbench SM", "Sunday School workbench"], ["Slide pelajaran", "Slide", "Lesson slides"], "sekolah minggu sunday school workbench slides", "#/sswb", () => !!D.ss_maker],
+  ["office", "🔒", ["Kantor gereja", "Kantor", "Church office"], ["Sekretaris, Bendahara, Ketua", "Kantor", "Secretary, Treasurer, Chairman"], "kantor office sekretaris secretary bendahara treasurer ketua chairman warta", "#/o/secretary", () => isOffice() && manage()],
+  ["password", "🔑", ["Ganti kata sandi", "Ganti sandi", "Change password"], ["", "", ""], "password kata sandi sandi pin", "act:password", () => manage()],
+  ["checkinqr", "📷", ["QR Check-in", "QR Check-in", "QR check-in"], ["QR pintu gereja dan kehadiran", "QR", "Door QR and attendance"], "qr checkin check in kehadiran attendance absen", "#/checkinqr", () => D.me.is_admin && manage()],
+  ["usage", "📊", ["Pemakaian fitur", "Pamakean fitur", "Feature usage"], ["Fitur yang dipakai jemaat", "Fitur", "Which features members use"], "usage pemakaian statistik stats analytics", "#/usage", () => !!D.me.is_admin],
+  ["appstatus", "📶", ["Status aplikasi", "Status aplikasi", "App status"], ["Siapa sudah masuk dan notifikasi", "Status", "Who signed in, installed, notifications"], "app status aplikasi signed in masuk install", "#/appstatus", () => isAdmin() && isYB()],
+  ["access", "🔐", ["Akses & tampilan", "Akses", "Access & views"], ["Periksa kategori dan lihat sebagai anggota", "Akses", "Check categories, view as any member"], "akses access views roles peran", "#/access", () => isYB()],
+  ["settings", "⚙️", ["Pengaturan", "Pengaturan", "Settings"], ["", "", ""], "settings pengaturan setting config", "act:settings", () => isYB() && manage()],
+];
+// every word typed must appear in the feature's names or search words, in any of the three languages
+function sxFeatFind(q) {
+  const words = norm(q).split(" ").filter(Boolean); if (!words.length || isGuest()) return [];
+  return SX_FEATS().filter((f) => { try { if (!f[6]()) return false; } catch (e) { return false; }
+    const hay = " " + norm([...f[2], ...f[3], f[4]].join(" ")) + " "; return words.every((w) => hay.includes(" " + w) || (w.length >= 4 && hay.includes(w))); }).slice(0, 8);
+}
+function sxFeatRows(list, q) {
+  return list.map((f) => { const [kind, a, b] = f[5].split(":"); const title = deepMark(L3(...f[2]), norm(q)); const sub = L3(...f[3]);
+    const inner = `<span class="sx-lead">${f[1]}</span><span class="grow"><i class="sx-kick">${esc(L3("Fitur", "Fitur", "Feature"))}</i><b class="sx-t">${title}</b>${sub ? `<small class="sx-s">${esc(sub)}</small>` : ""}</span>${ic("chev", "chev")}`;
+    return kind === "act" ? `<button class="li deep-li" data-act="sxFeat" data-id="${f[0]}">${inner}</button>` : `<a class="li deep-li" href="${esc(f[5])}">${inner}</a>`; }).join("");
+}
+A.sxFeat = (d, el) => { const f = SX_FEATS().find((x) => x[0] === d.id); if (!f) return; sxHistAdd((document.getElementById("searchIn") || {}).value);
+  const [, a, b] = f[5].split(":"); if (a === "lang") return A.lang({ l: b }); if (a === "sxCallPick") return A.sxCallPick({ video: b });
+  if (a === "notify") return A.notify(d, el); if (A[a]) A[a](d, el); };
+// Pick a person, then the call starts at once and their private chat opens behind it.
+A.sxCallPick = (d) => {
+  const video = d.video === "1"; const people = (D.people || []).filter((p) => p.id !== D.me.id).sort((a, b) => a.name.localeCompare(b.name));
+  sheet((video ? "📹 " : "📞 ") + (video ? L3("Panggilan video", "Telepon video", "Video call") : L3("Panggilan suara", "Telepon suara", "Voice call")), `<input type="search" id="callFind" placeholder="${esc(L3("Cari nama…", "Lului goar…", "Search a name…"))}" autocomplete="off" style="margin-bottom:8px">
+    <div class="card call-pick">${people.map((p) => `<button class="li" data-act="sxCall" data-id="${esc(p.id)}" data-video="${video ? 1 : 0}" data-n="${esc(norm(p.name + " " + (p.alias || "")))}">${avatarOf(p)}<span class="grow"><b>${esc(p.name)}</b><small>${esc(seenText(p.id))}</small></span><span class="icon-btn sx-callic">${cic(video ? "video" : "voice")}</span></button>`).join("")}</div>`);
+  setTimeout(() => { const i = document.getElementById("callFind"); if (i) i.focus(); }, 50);
+};
+document.addEventListener("input", (e) => { if (e.target && e.target.id === "callFind") { const q = norm(e.target.value); document.querySelectorAll(".call-pick .li").forEach((a) => (a.style.display = !q || a.dataset.n.includes(q) ? "" : "none")); } });
+// start the call inside the tap (phones only allow the camera and microphone from a tap), then open the chat with that person
+A.sxCall = (d) => { const p = (D.people || []).find((x) => x.id === d.id); if (!p || p.id === D.me.id) return; const room = dmRoom(p.id);
+  if (document.getElementById("sheet") && typeof closeSheet === "function") closeSheet();
+  sxHistAdd((document.getElementById("searchIn") || {}).value); A.callStart({ room, video: d.video }); location.hash = "#/chat/" + room; };
+try { document.head.insertAdjacentHTML("beforeend", `<style>
+  .sx-card .li .icon-btn + .icon-btn { margin-left: -4px; } .sx-callic { pointer-events: none; color: var(--brand); }
+  .sx-mem-acts { display: flex; gap: 2px; flex: none; } .sx-mem-acts .icon-btn { width: 38px; height: 38px; }
+</style>`); } catch (e) {}
 
 // "This Sunday" on Home: the Tata Ibadah, your duty, who serves in each section, and that day's events.
 function thisSundayCard() {
