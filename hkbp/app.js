@@ -5357,7 +5357,7 @@ function pcShow(f, kind) {
   q(".pc-pw").hidden = kind !== "maker"; if (kind === "maker" && typeof pkPwBtn === "function") pkPwBtn(q(".pk-pw"), S.phone8(f.phone.value)); q(".pc-new").hidden = kind !== "maker_new"; q(".pc-forgot").hidden = kind !== "maker"; q(".pc-reg").hidden = q(".pc-browse").hidden = kind !== "unknown"; q(".pc-note").hidden = !!kind;
   q(".pc-hint").textContent = kind ? t("pc_" + kind) : "";
   q(".pc-btn").textContent = t(kind === "maker_new" ? "firstPwBtn" : kind === "unknown" ? "pcRegister" : "signIn");
-  q("button").disabled = !kind;
+  q(".pc-btn").closest("button").disabled = !kind; // the submit button, not the Face ID one above it
   const focus = kind === "maker" ? f.pw : kind === "maker_new" ? f.npw : kind === "unknown" ? f.rname : null; if (focus) setTimeout(() => focus.focus(), 50);
 }
 async function pcCheck(f) {
