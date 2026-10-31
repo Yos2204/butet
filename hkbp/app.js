@@ -48,6 +48,7 @@ const IC = {
   people: '<circle cx="12" cy="7" r="3"/><circle cx="5" cy="10" r="2"/><circle cx="19" cy="10" r="2"/><path d="M6 20c0-3.3 2.7-6 6-6s6 2.7 6 6M1.5 18c0-2 1.6-3.6 3.5-3.6M22.5 18c0-2-1.6-3.6-3.5-3.6"/>',
   book: '<path d="M12 6c-2-1.5-5-2-8-1.5v14c3-.5 6 0 8 1.5 2-1.5 5-2 8-1.5v-14c-3-.5-6 0-8 1.5z"/><path d="M12 6v14"/>',
   drum: '<ellipse cx="12" cy="8" rx="8" ry="3"/><path d="M4 8v8c0 1.7 3.6 3 8 3s8-1.3 8-3V8"/><path d="M15 2l-5 7M20 4l-6 5"/>',
+  textsize: '<path d="M3 7V5h11v2M8.5 5v14M6.5 19h4M14 12v-1.5h7V12M17.5 10.5V19M16 19h3"/>',
   mic: '<rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v4M8 22h8"/>',
   note: '<path d="M9 18V5l11-2v13"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="17.5" cy="16" r="2.5"/>',
   star: '<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/>',
@@ -3758,7 +3759,7 @@ function communityMenu() {
     + ((isPastor() || isPlainElder()) && LS.get("fullView", false) ? `<button class="li" data-act="viewSimple"><span class="grow"><b>🪟 ${esc(L3("Kembali ke tampilan sederhana", "Mulak tu tampilan na sederhana", "Back to the simple view"))}</b></span>${ic("chev", "chev")}</button>` : "")
     + it("#/ende", "book", "🎵 Buku Ende", L3("Arti setiap baris lagu", "Lapatan ni ende", "The meaning of every hymn line"))
     + it("#/sunday", "calendar", "📅 " + L3("Minggu Ini", "Minggu On", "This Sunday"), L3("Tata Ibadah, lagu, nas dan live", "Tata Ibadah, ende, turpuk, live", "Tata Ibadah, songs, readings and live"))
-    + `<button class="li" data-act="textSize"><span class="grow"><b>🔠 ${esc(L3("Ukuran teks", "Balga ni surat", "Text size"))}</b><small>${esc(L3("Perbesar huruf di seluruh Sada", "Pabalga surat", "Make the text larger everywhere"))}</small></span>${ic("chev", "chev")}</button>`
+    + `<button class="li" data-act="textSize">${ic("textsize")}<span class="grow"><b>🔠 ${esc(L3("Ukuran teks", "Balga ni surat", "Text size"))}</b><small>${esc(L3("Perbesar huruf di seluruh Sada", "Pabalga surat", "Make the text larger everywhere"))}</small></span>${ic("chev", "chev")}</button>`
     + (D.me.is_admin ? it("#/usage", "chart", "📊 " + L3("Pemakaian fitur", "Pamakean fitur", "Feature usage"), L3("Fitur mana yang benar-benar dipakai jemaat", "Fitur na dipake", "Which features members actually use")) : "")
     + it("#/stories", "mic", "🎙️ Turi-turian", L3("Cerita orang tua, direkam untuk generasi muda", "Turi-turian ni natua-tua", "Elders' stories, recorded for the young"))
     + (("pelaut" in (D.me.groups || {})) ? it("#/voyage", "globe", "🚢 Pelaut", L3("Mode berlayar dan paket offline", "Mode marlayar", "Voyage mode and offline pack")) : "")
