@@ -317,7 +317,23 @@ async function ensurePush(reg) {
   } catch (e) { console.warn(e); return false; }
 }
 // Without the server job (demo mode, or before push is set up) the app shows today's reminders when it is opened.
+// YB 2026-10-31: every 2 days, when YB opens Sada, a pop-up lists the numbers that tried to sign in but are not members yet,
+// so YB can nudge them on WhatsApp (App status). It stops by itself once every such number has registered.
+const NUDGE_SKIP = ["80001234"]; // Claude's test number, not a person
+async function nudgeRemind() {
+  if (!D || !isYB() || api.mode !== "remote" || !api.phoneTries || /^#\/appstatus/.test(location.hash)) return;
+  if (Date.now() - (+LS.get("nudge.last") || 0) < 2 * 864e5 - 3600e3) return;
+  let tr; try { tr = (await api.phoneTries() || []).filter((r) => !NUDGE_SKIP.includes(r.phone)); } catch { return; }
+  if (!tr.length || $("#sheet").classList.contains("open")) return;
+  LS.set("nudge.last", Date.now());
+  A.nudgeOpen = () => { closeSheet(); location.hash = "#/appstatus"; };
+  sheet(L3(`${tr.length} nomor belum masuk Sada`, `${tr.length} nomor dope so masuk tu Sada`, `${tr.length} ${tr.length === 1 ? "number is" : "numbers are"} still not signed in`), `
+    <p class="small muted">${esc(L3("Mereka mencoba masuk tapi belum terdaftar. Ingatkan lewat WhatsApp:", "Nunga dicoba nasida masuk alai dope so tardaftar. Ingothon marhite WhatsApp:", "They tried to sign in but haven't registered yet. Nudge them on WhatsApp:"))}</p>
+    <div class="card menu">${tr.map((r) => `<a class="li" href="${wa(AS_NUDGE, r.phone)}" target="_blank" rel="noopener">${ic("wa")}<span class="grow"><b>${esc(fmtPhone(r.phone))}</b></span>${ic("chev", "chev")}</a>`).join("")}</div>
+    <button class="btn block" data-act="nudgeOpen">${esc(t("asTitle"))}</button>`);
+}
 async function localReminders() {
+  nudgeRemind();
   if (D && !isGuest()) await ensurePush();
   if (!D || !LS.get("notifyOn") || !("Notification" in window) || Notification.permission !== "granted") return;
   if (api.mode === "remote" && LS.get("pushOn") && vapid()) return; // the server sends these
@@ -1019,7 +1035,7 @@ function asFill() {
 R.appstatus = () => {
   if (!isAdmin() || !isYB()) return shell("#/more", empty(t("notFound")), { back: "#/more" });
   AS.rows = null;
-  Promise.all([api.appStatus(), api.phoneTries ? api.phoneTries().catch(() => []) : []]).then(([r, tr]) => { AS.rows = r || []; AS.tries = tr || []; asFill(); }).catch((e) => { const el = $("#asList"); if (el) el.innerHTML = empty(errMsg(e)); });
+  Promise.all([api.appStatus(), api.phoneTries ? api.phoneTries().catch(() => []) : []]).then(([r, tr]) => { AS.rows = r || []; AS.tries = (tr || []).filter((r) => !NUDGE_SKIP.includes(r.phone)); asFill(); }).catch((e) => { const el = $("#asList"); if (el) el.innerHTML = empty(errMsg(e)); });
   const hc = HYMN.selfTest();
   return shell("#/more", `${hc.fails.length ? `<div class="card li"><span class="grow"><b>🎵 Hymn splitter: ${hc.pass}/${hc.total} ✗</b><small>${esc(hc.fails.join(" · "))}</small></span></div>` : ""}<div id="asList">${skel(4)}</div>`, { back: "#/more", title: t("asShort"), sub: t("asSub") });
 };
@@ -3529,7 +3545,7 @@ async function callOnSig(s) {
   }
 }
 async function callBegin(res, video) {
-  CALL.id = res.call.id; CALL.room = res.call.room; CALL.me = res.me; CALL.ice = res.ice; CALL.answered = !!res.call.answered_at || res.call.caller_id !== res.me;
+  CALL.after = res.after || 0; CALL.id = res.call.id; CALL.room = res.call.room; CALL.me = res.me; CALL.ice = res.ice; CALL.answered = !!res.call.answered_at || res.call.caller_id !== res.me;
   CALL.names = {}; (res.peers || []).forEach((p) => (CALL.names[p.id] = p.name));
   if (CALL.room.startsWith("dm:")) { CALL.dm = CALL.room.slice(3).split(":").find((x) => x !== res.me); CALL.dmName = res.call.caller_id === res.me ? "" : res.call.caller_name; }
   else CALL.title = (chatRooms().find((r) => r.id === CALL.room) || {}).name || "Chat";
