@@ -291,7 +291,7 @@ begin
     end if;
     return 'unknown';
   end if;
-  if not hk__leader(m) or m.phone = '85334780' then return 'member'; end if; -- YB: no password (2026-10-26)
+  if not hk__leader(m) then return 'member'; end if; -- the admin and Makers always need a password or Face ID (security check 2026-10-31)
   return case when m.pass_hash is null then 'maker_new' else 'maker' end;
 end $$;
 
@@ -301,7 +301,7 @@ begin
   perform pg_sleep(0.3); -- slows down password guessing
   select * into m from hk_members where phone = hk__phone(p_phone) and removed_at is null;
   -- Members who are not Makers sign in with just their phone number (read only).
-  if m.id is not null and coalesce(p_password, '') = '' and (not hk__leader(m) or m.phone = '85334780') then -- YB signs in without a password (YB's choice, 2026-10-26)
+  if m.id is not null and coalesce(p_password, '') = '' and not hk__leader(m) then
     tok := encode(gen_random_bytes(24), 'hex');
     insert into hk_sessions values (tok, m.id, now() + interval '10 years');
     return jsonb_build_object('token', tok);
@@ -323,7 +323,7 @@ declare m hk_members; tok text;
 begin
   perform pg_sleep(0.5);
   select * into m from hk_members where phone = hk__phone(p_phone) and removed_at is null;
-  if m.id is null or m.pass_hash is not null then raise exception 'bad_login'; end if;
+  if m.id is null or m.pass_hash is not null or m.is_admin then raise exception 'bad_login'; end if; -- the admin's password is changed only from inside the app
   if length(coalesce(p_password, '')) < 6 then raise exception 'short_password'; end if;
   if hk__pw_is_phone(p_password, m.phone) then raise exception 'pw_is_phone'; end if;
   update hk_members set pass_hash = crypt(p_password, gen_salt('bf')), setup_code_hash = null where id = m.id and pass_hash is null;
