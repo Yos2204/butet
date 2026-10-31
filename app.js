@@ -1,5 +1,5 @@
 // Jarvis: voice assistant with a talking avatar. Brain: Claude API with the user's own key (default), or free Claude through Puter as a backup.
-import { startAvatar } from "./avatar.js?v=28";
+import { startAvatar } from "./avatar.js?v=32";
 // The Claude SDK loads on demand, so the app still starts if the CDN is slow or blocked.
 const SDK_URL = "https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk@0.131.0/+esm";
 let Anthropic = null;
@@ -26,6 +26,18 @@ const keyCookie = {
 };
 if (!settings.apiKey && keyCookie.get()) { settings.apiKey = keyCookie.get(); store.set("settings", settings); }
 const saveSettings = () => { store.set("settings", settings); keyCookie.set(settings.apiKey); };
+// No notifications in Jarvis (YB 2026-10-31). On iPhone, Sada HKBPS pages opened inside the Jarvis app share its
+// notification permission, so Sada's alerts showed up as "Jarvis". In the home-screen app (navigator.standalone is
+// iPhone-only), mark this app as notification-free for Sada, drop any push sign-ups and clear alerts already shown.
+if (navigator.standalone === true) {
+  try { localStorage.setItem("jarvis.noNotify", "1"); } catch {}
+  try {
+    navigator.serviceWorker && navigator.serviceWorker.getRegistrations().then((rs) => rs.forEach((r) => {
+      if (r.pushManager) r.pushManager.getSubscription().then((sub) => sub && sub.unsubscribe()).catch(() => {});
+      if (r.getNotifications) r.getNotifications().then((ns) => ns.forEach((n) => n.close())).catch(() => {});
+    })).catch(() => {});
+  } catch {}
+}
 if (settings.avatarV !== 1) { settings.avatar = "auto"; settings.avatarV = 1; saveSettings(); } // new default: face only while talking
 let notes = store.get("notes", []);
 let history = store.get("history", []);

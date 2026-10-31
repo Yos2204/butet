@@ -286,10 +286,14 @@ function birthdaysBetween(fromIso, days) {
 }
 
 // ---------- notifications ----------
+// Inside the Jarvis home-screen app (it sets "jarvis.noNotify"), Sada never asks for, keeps or shows notifications,
+// so nothing reaches the user under Jarvis's name (YB 2026-10-31). The Sada HKBPS app itself is unaffected.
+const inJarvis = () => { try { return localStorage.getItem("jarvis.noNotify") === "1"; } catch { return false; } };
 async function swReg() { if (!("serviceWorker" in navigator)) return null; try { return await navigator.serviceWorker.ready; } catch { return null; } }
 function b64urlToU8(s) { const p = "=".repeat((4 - (s.length % 4)) % 4); const b = atob((s + p).replace(/-/g, "+").replace(/_/g, "/")); return Uint8Array.from(b, (c) => c.charCodeAt(0)); }
 const vapid = () => (D && D.settings && D.settings.vapid_public) || (api.cfg && api.cfg.vapidPublicKey) || "";
 async function enableNotifications(btn) {
+  if (inJarvis()) { toast(L3("Notifikasi mati di Jarvis. Buka aplikasi Sada HKBPS untuk menyalakannya.", "Notifikasi mate di Jarvis. Buka aplikasi Sada HKBPS laho pasangkon.", "Notifications are off inside Jarvis. Open the Sada HKBPS app to turn them on."), true); return; }
   if (!("Notification" in window)) { toast(/iP(hone|ad)/.test(navigator.userAgent) && !standalone() ? t("iosInstallFirst") : t("noNotify"), true); return; }
   const perm = await Notification.requestPermission();
   if (perm !== "granted") { toast(t("notifyDenied"), true); return; }
@@ -302,6 +306,7 @@ async function enableNotifications(btn) {
 // Notifications stay on: once the phone has allowed them, every open and every sign-in quietly renews this phone's
 // push sign-up for the signed-in member (new sign-in, new server key, or a sign-up the phone dropped).
 async function ensurePush(reg) {
+  if (inJarvis()) { try { const r = reg || await swReg(); const s = r && r.pushManager && await r.pushManager.getSubscription(); if (s) await s.unsubscribe(); } catch {} return false; }
   if (!("Notification" in window) || Notification.permission !== "granted") return false;
   LS.set("notifyOn", true);
   reg = reg || await swReg();
@@ -334,6 +339,7 @@ async function nudgeRemind() {
 }
 async function localReminders() {
   nudgeRemind();
+  if (inJarvis()) return;
   if (D && !isGuest()) await ensurePush();
   if (!D || !LS.get("notifyOn") || !("Notification" in window) || Notification.permission !== "granted") return;
   if (api.mode === "remote" && LS.get("pushOn") && vapid()) return; // the server sends these
