@@ -1426,23 +1426,38 @@ try { document.head.insertAdjacentHTML("beforeend", `<style>
   .taro-x { width: 34px; height: 34px; border-radius: 50%; border: 0; background: color-mix(in srgb, var(--ink) 10%, var(--surface)); color: var(--ink); font-size: 15px; font-weight: 800; flex: none; display: grid; place-items: center; }
   .taro-x[hidden] { display: none; }
   .taro-tools { display: flex; gap: 8px; margin-bottom: 12px; } .taro-tools .btn { flex: 1; }
-  .taro-tree .taro-n { border-radius: 16px; margin: 6px 0; background: var(--surface); box-shadow: 0 2px 10px rgba(20,22,60,.05); border: 1px solid var(--line); overflow: hidden; }
-  /* The page-wide rule "details[open] summary { display: none }" hid every branch name inside an open branch, leaving empty striped boxes (YB 2026-10-31). */
-  .taro-n[open] > summary, .taro-n > summary { display: flex !important; margin-top: 0; color: inherit; }
-  /* Batak Toba ulos colours (red, black, white, with a gold thread) as a woven band down the main branches. */
-  .taro-tree .taro-n.d0, .taro-tree .taro-n.d1 { position: relative; }
-  .taro-tree .taro-n.d0::before, .taro-tree .taro-n.d1::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 6px; z-index: 1;
+  /* Tarombo as a family tree (YB 2026-10-31): each person is a card, lines run from a parent down to the children, tap a card to open or close its branch.
+     The three main lines carry Batak Toba ulos colours (red, gold, black) on their connector lines and a woven band on their card. */
+  .tt { --tl: color-mix(in srgb, var(--ink) 28%, var(--surface)); --ind: 16px; padding: 2px 0 8px; overflow-x: auto; }
+  .tt ul.tt-kids { list-style: none; margin: 0 0 0 calc(var(--ind) + 2px); padding: 0; }
+  .tt ul.tt-kids > li { position: relative; padding: 8px 0 0 var(--ind); margin: 0; }
+  .tt ul.tt-kids > li::before { content: ""; position: absolute; left: 0; top: 0; width: calc(var(--ind) - 2px); height: 30px; border-left: 2px solid var(--tl); border-bottom: 2px solid var(--tl); border-bottom-left-radius: 10px; }
+  .tt ul.tt-kids > li:not(:last-child)::after { content: ""; position: absolute; left: 0; top: 0; bottom: 0; border-left: 2px solid var(--tl); }
+  .tt .tt-n.l0 { --tl: #b3202a; } .tt .tt-n.l1 { --tl: #c99a2e; } .tt .tt-n.l2 { --tl: color-mix(in srgb, var(--ink) 78%, var(--surface)); }
+  .tt-n > summary, .tt-n[open] > summary { display: flex !important; margin: 0; color: inherit; list-style: none; } .tt-n > summary::-webkit-details-marker { display: none; } .tt-n > summary::before { content: none !important; }
+  .tt-card { position: relative; display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); box-shadow: 0 2px 8px rgba(20,22,60,.05); cursor: pointer; max-width: 560px; -webkit-tap-highlight-color: transparent; transition: border-color .15s, box-shadow .15s; }
+  div.tt-card { cursor: default; }
+  .tt-card:active { transform: scale(.99); }
+  .tt-t { flex: 1; min-width: 0; display: grid; gap: 2px; } .tt-t b { font-size: 15px; line-height: 1.25; } .tt-t small { color: var(--muted); font-size: 12px; line-height: 1.35; font-weight: 500; }
+  .tt-n.d0 > .tt-card { background: linear-gradient(140deg, var(--brand), #2b2e74); color: #fff; border: 0; padding: 14px 14px 14px 16px; box-shadow: 0 8px 20px rgba(30,32,90,.18); }
+  .tt-n.d0 > .tt-card .tt-t b { font-size: 18px; } .tt-n.d0 > .tt-card small { color: rgba(255,255,255,.78); }
+  .tt-n.d0 > .tt-card .tt-count { background: rgba(255,255,255,.18); color: #fff; } .tt-n.d0 > .tt-card .tt-tog { border-color: rgba(255,255,255,.5); color: #fff; }
+  .tt-n.d1 > .tt-card { padding-left: 18px; overflow: hidden; }
+  .tt-n.d1 > .tt-card::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 7px;
     background: repeating-linear-gradient(180deg, #b3202a 0 12px, #1a1a1a 12px 15px, #f4ead5 15px 17px, #d8b25e 17px 19px, #f4ead5 19px 21px, #1a1a1a 21px 24px); }
-  .taro-tree .taro-n.d1 { padding-left: 6px; } .taro-tree .taro-n.d0::before { width: 0; }
-  .taro-tree .taro-n .taro-n { box-shadow: none; } .taro-n.d1 { background: color-mix(in srgb, var(--brand) 3%, var(--surface)); } .taro-n.d2 { background: color-mix(in srgb, var(--brand) 5%, var(--surface)); } .taro-n.d3, .taro-n.d4 { background: color-mix(in srgb, var(--brand) 7%, var(--surface)); }
-  .taro-n > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 10px; padding: 12px 14px; } .taro-n > summary::-webkit-details-marker { display: none; }
-  .taro-t { flex: 1; min-width: 0; display: grid; gap: 2px; } .taro-t b { font-size: 15.5px; } .taro-t small { color: var(--muted); font-size: 12.5px; line-height: 1.35; }
-  .taro-count { flex: none; font-size: 11.5px; font-weight: 800; color: var(--brand); background: color-mix(in srgb, var(--brand) 11%, var(--surface)); border-radius: 999px; padding: 3px 9px; }
-  .taro-arrow { flex: none; display: grid; color: var(--muted); transition: transform .2s; } .taro-arrow svg { width: 18px; height: 18px; } .taro-n[open] > summary .taro-arrow { transform: rotate(90deg); }
-  .taro-tree, .taro-tree .taro-tree { border-left: 0 !important; padding-left: 0 !important; margin: 0; list-style: none; }
-  .taro-n > summary::before { content: none !important; display: none !important; } .taro-n > summary small { flex-basis: auto !important; }
-  .taro-kids { padding: 0 8px 8px 8px; } .taro-kids > .taro-n { margin: 6px 0; } .taro-n.on-path > summary b { color: var(--brand); } .taro-n.on-path { border-color: color-mix(in srgb, var(--gold, #d8b25e) 70%, var(--line)); }
-  .taro-margas { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 0 2px; }
+  .tt-n.d1 > .tt-card .tt-t b { font-size: 16.5px; }
+  .tt-count { flex: none; font-size: 11px; font-weight: 800; color: var(--brand); background: color-mix(in srgb, var(--brand) 11%, var(--surface)); border-radius: 999px; padding: 3px 8px; }
+  .tt-tog { flex: none; width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--tl); color: var(--tl); display: grid; place-items: center; font-weight: 900; font-size: 16px; line-height: 1; }
+  .tt-tog::before { content: "+"; } .tt-n[open] > summary .tt-tog::before { content: "−"; }
+  .tt-n[open] > summary.tt-card { border-color: color-mix(in srgb, var(--tl) 45%, var(--line)); }
+  .tt-n[open] > .tt-kids { animation: ttIn .18s ease-out; } @keyframes ttIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+  .tt-n.on-path > .tt-card { border-color: var(--gold, #c99a2e); box-shadow: 0 0 0 3px color-mix(in srgb, var(--gold, #c99a2e) 25%, transparent); } .tt-n.on-path > .tt-card .tt-t b { color: var(--brand); } .tt-n.d0.on-path > .tt-card .tt-t b { color: #fff; }
+  .tt-margas { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 10px; border-radius: 14px; border: 1px dashed color-mix(in srgb, var(--tl) 55%, var(--line)); background: color-mix(in srgb, var(--tl) 5%, var(--surface)); max-width: 560px; }
+  .tt-margas-h { flex-basis: 100%; font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+  .tt-leaf { display: inline-block; padding: 5px 11px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line); font-size: 13.5px; font-weight: 700; color: var(--ink); }
+  .tt-leaf.hit { background: var(--gold, #d8b25e); border-color: var(--gold, #d8b25e); color: #111; box-shadow: 0 0 0 4px rgba(216,178,94,.3); }
+  @media (max-width: 420px) { .tt { --ind: 12px; } .tt-card { padding: 9px 10px; gap: 8px; } .tt-t b { font-size: 14.5px; } .tt-tog { width: 24px; height: 24px; } }
+  @media (min-width: 900px) { .tt { --ind: 22px; } }
   .taro-chip { display: inline-block; padding: 6px 12px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line); font-size: 13.5px; font-weight: 700; color: var(--ink); }
   .taro-chip.hit { background: var(--gold, #d8b25e); border-color: var(--gold, #d8b25e); color: #111; box-shadow: 0 0 0 4px rgba(216,178,94,.3); }
   .taro-sug { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 12px; } .taro-chip.pick { cursor: pointer; background: color-mix(in srgb, var(--brand) 8%, var(--surface)); border-color: transparent; color: var(--brand); }
@@ -1913,12 +1928,6 @@ try { document.head.insertAdjacentHTML("beforeend", `<style>
   .rpp-ans { border-left: 5px solid #8a8f99; } .rpp-ans.yes { border-left-color: #c2410c; } .rpp-ans.no { border-left-color: #1f8a4c; } .rpp-ans.maybe { border-left-color: #b7791f; }
   .rpp-v { font-size: 19px; margin-bottom: 8px; } .rpp-h { font-weight: 700; } .rpp-ans h4 { margin: 14px 0 6px; } .rpp-rule { background: var(--surface-2); border-radius: 12px; padding: 10px 12px; margin: 6px 0; } .rpp-rule blockquote { margin: 6px 0; font-style: italic; color: var(--brand); }
   .badge.warn { background: #fde7d9; color: #9a3412; }
-  .taro-tree { list-style: none; margin: 0; padding-left: 14px; border-left: 2px solid var(--line); } .taro-tree.root { padding-left: 0; border-left: 0; }
-  .taro-n > details { margin: 6px 0; } .taro-n summary { cursor: pointer; list-style: none; display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 8px; padding: 8px 12px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); }
-  .taro-n summary::-webkit-details-marker { display: none; } .taro-n summary::before { content: "▸"; color: var(--brand); font-weight: 900; } .taro-n details[open] > summary::before { content: "▾"; }
-  .taro-n summary small { flex-basis: 100%; color: var(--muted); font-size: 12.5px; } .taro-count { margin-left: auto; font-size: 11px; font-weight: 800; background: var(--brand-soft); color: var(--brand); border-radius: 999px; padding: 2px 8px; }
-  .taro-margas { list-style: none; display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 0 4px 14px; margin: 0; } .taro-chip { display: inline-block; padding: 5px 10px; border-radius: 999px; background: color-mix(in srgb, var(--brand) 9%, var(--surface)); font-size: 13px; font-weight: 700; }
-  .taro-m.hit .taro-chip { background: var(--gold, #d8b25e); color: #111; box-shadow: 0 0 0 3px rgba(216,178,94,.4); }
   .taro-box { margin-top: 10px; padding: 10px 12px; border-radius: 12px; background: var(--surface-2); } .taro-path { font-size: 12.5px; color: var(--muted); margin: 4px 0 0; } .taro-path b { color: var(--ink); }
   .tutur-ref summary { cursor: pointer; } .tref-r { display: grid; grid-template-columns: 9.5em 1fr; gap: 8px; padding: 8px 0; border-top: 1px solid var(--line); font-size: 14px; } .tref-r b { color: var(--brand); }
 </style>`); } catch (e) {}
@@ -2089,15 +2098,21 @@ function taroRel(a, b) {
 const taroPath = (p, m) => `<p class="taro-path">${p.map((x) => `<span>${esc(x)}</span>`).join(" › ")} › <b>${esc(m)}</b></p>`;
 R.tarombo = () => {
   const countM = (n) => (typeof n === "string" ? 1 : n[2].reduce((s2, c) => s2 + countM(c), 0));
-  const node = (n, depth) => { if (typeof n === "string") return `<span class="taro-chip" data-n="${esc(mnorm(n))}">${esc(n)}</span>`;
+  // A family tree: a card per person, connector lines down to the children, tap to open or close. Margas under one parent sit together at the end of that branch.
+  const node = (n, depth, line) => {
     const kids = n[2]; const margas = kids.filter((k) => typeof k === "string"), subs = kids.filter((k) => typeof k !== "string");
-    return `<details class="taro-n d${Math.min(depth, 4)}" data-name="${esc(n[0])}" data-def="${depth < 2 ? 1 : 0}"${depth < 2 ? " open" : ""}><summary><span class="taro-t"><b>${esc(n[0])}</b>${n[1] ? `<small>${esc(n[1])}</small>` : ""}</span>${kids.length ? `<span class="taro-count">${countM(n)}</span>` : ""}<span class="taro-arrow">${ic("chev")}</span></summary>
-      <div class="taro-kids">${subs.map((c) => node(c, depth + 1)).join("")}${margas.length ? `<div class="taro-margas">${margas.map((c) => node(c, depth + 1)).join("")}</div>` : ""}</div></details>`; };
+    const cls = `tt-n d${Math.min(depth, 4)}${line != null ? ` l${line % 3}` : ""}`;
+    const head = `<span class="tt-t"><b>${esc(n[0])}</b>${n[1] ? `<small>${esc(n[1])}</small>` : ""}</span>`;
+    if (!kids.length) return `<div class="${cls}" data-name="${esc(n[0])}"><div class="tt-card">${head}</div></div>`;
+    const items = subs.map((c, i) => `<li>${node(c, depth + 1, depth === 0 ? i : line)}</li>`);
+    if (margas.length) items.push(`<li><div class="tt-margas"><span class="tt-margas-h">${esc(L3("Marga", "Marga", "Margas"))} · ${margas.length}</span>${margas.map((m) => `<span class="tt-leaf taro-leaf" data-n="${esc(mnorm(m))}">${esc(m)}</span>`).join("")}</div></li>`);
+    return `<details class="${cls}" data-name="${esc(n[0])}" data-def="${depth < 2 ? 1 : 0}"${depth < 2 ? " open" : ""}><summary class="tt-card">${head}<span class="tt-count">${countM(n)}</span><span class="tt-tog" aria-hidden="true"></span></summary>
+      <ul class="tt-kids">${items.join("")}</ul></details>`; };
   return shell("#/more", `<h2 class="page-h">🌳 Tarombo</h2><p class="lead">${esc(L3("Silsilah marga Batak dari Si Raja Batak. Ketuk untuk membuka dan menutup cabang.", "Tarombo sian Si Raja Batak. Ketuk asa terbuka manang tertutup.", "The Batak margas from Si Raja Batak. Tap to open and close each branch."))}</p>
     <div class="taro-search">${ic("search")}<input type="search" id="taroFind" placeholder="${esc(L3("Cari marga…", "Lului marga…", "Find a marga…"))}" autocomplete="off" autocapitalize="off" spellcheck="false"><button type="button" class="taro-x" data-act="taroClear" aria-label="${esc(L3("Hapus", "Apus", "Clear"))}" hidden>✕</button></div>
     <div class="taro-tools"><button class="btn sm" data-act="taroAll" data-o="1">⊕ ${esc(L3("Buka semua", "Bukka sude", "Open all"))}</button><button class="btn sm" data-act="taroAll" data-o="0">⊖ ${esc(L3("Tutup semua", "Tutup sude", "Close all"))}</button></div>
     <div id="taroHit"></div>
-    <div class="taro-tree">${node(TAROMBO, 0)}</div>
+    <div class="taro-tree tt">${node(TAROMBO, 0, null)}</div>
     <h3 class="sec-h">🤝 ${esc(L3("Dongan sapadan (marga yang terikat janji)", "Dongan sapadan", "Dongan sapadan (margas bound by a pact)"))}</h3>
     <div class="card"><p class="small">${esc(L3("“Togu urat ni bulu, toguan urat ni padang; togu nidok ni uhum, toguan nidok ni padan.” Marga yang marpadan saling menganggap dongan sabutuha dan tidak saling menikah:", "Togu urat ni bulu, toguan urat ni padang; togu nidok ni uhum, toguan nidok ni padan.", "“Strong are the roots of bamboo, stronger the roots of grass; strong is the word of law, stronger the word of a pact.” Margas bound by a pact count as dongan sabutuha and do not intermarry:"))}</p>
       <div class="chips">${PADAN.map(([a2, b2]) => `<span class="chip">${esc(a2)} ⇄ ${esc(b2)}</span>`).join("")}</div></div>
@@ -2106,16 +2121,16 @@ R.tarombo = () => {
 };
 const TARO_ALL = (() => { const s2 = new Set(); const w = (n) => (typeof n === "string" ? s2.add(n) : n[2].forEach(w)); w(TAROMBO); return [...s2].sort((a, b) => a.localeCompare(b)); })();
 function taroReset() {
-  document.querySelectorAll(".taro-chip.hit").forEach((x) => x.classList.remove("hit"));
-  document.querySelectorAll(".taro-n.on-path").forEach((x) => x.classList.remove("on-path"));
-  document.querySelectorAll(".taro-n").forEach((x) => (x.open = x.dataset.def === "1"));
+  document.querySelectorAll(".taro-leaf.hit").forEach((x) => x.classList.remove("hit"));
+  document.querySelectorAll(".tt-n.on-path").forEach((x) => x.classList.remove("on-path"));
+  document.querySelectorAll("details.tt-n").forEach((x) => (x.open = x.dataset.def === "1"));
   const hit = document.getElementById("taroHit"); if (hit) hit.innerHTML = "";
 }
 function taroShow(m) {
   taroReset(); const k = mnorm(m); const p = taroFind(m); if (!p) return false;
-  const chips = [...document.querySelectorAll(".taro-tree .taro-chip")];
+  const chips = [...document.querySelectorAll(".taro-tree .taro-leaf")];
   const chip = chips.find((c) => c.dataset.n === k) || chips.find((c) => c.dataset.n.endsWith(k) || k.endsWith(c.dataset.n));
-  if (chip) { chip.classList.add("hit"); let el = chip.parentElement; while (el) { if (el.tagName === "DETAILS") { el.open = true; el.classList.add("on-path"); } el = el.parentElement; } setTimeout(() => chip.scrollIntoView({ block: "center", behavior: "smooth" }), 80); }
+  if (chip) { chip.classList.add("hit"); let el = chip.parentElement; while (el) { if (el.classList && el.classList.contains("tt-n")) { if (el.tagName === "DETAILS") el.open = true; el.classList.add("on-path"); } el = el.parentElement; } setTimeout(() => chip.scrollIntoView({ block: "center", behavior: "smooth" }), 80); }
   const name = chip ? chip.textContent : m; const hit = document.getElementById("taroHit");
   if (hit) hit.innerHTML = `<div class="taro-res"><div class="taro-res-h"><b>${esc(name)}</b><small>${esc(L3("Garis keturunan", "Tarombo", "Line of descent"))}</small></div><ol class="taro-steps">${p.map((x) => `<li>${esc(x)}</li>`).join("")}<li class="me">${esc(name)}</li></ol></div>`;
   return true;
@@ -2128,7 +2143,7 @@ document.addEventListener("input", (e) => { if (!e.target || e.target.id !== "ta
   if (hit) hit.innerHTML = sug.length ? `<div class="taro-sug">${sug.map((m) => `<button class="taro-chip pick" data-act="taroPick" data-m="${esc(m)}">${esc(m)}</button>`).join("")}</div>` : `<p class="small muted taro-none">${esc(L3("Marga tidak ditemukan di tarombo ini.", "Marga ndang dapot.", "Marga not found in this tarombo."))}</p>`; });
 A.taroPick = (d) => { const i = document.getElementById("taroFind"); if (i) { i.value = d.m; const x = document.querySelector(".taro-x"); if (x) x.hidden = false; i.blur(); } taroShow(d.m); };
 A.taroClear = () => { const i = document.getElementById("taroFind"); if (i) i.value = ""; const x = document.querySelector(".taro-x"); if (x) x.hidden = true; taroReset(); window.scrollTo({ top: 0, behavior: "smooth" }); if (i) i.focus(); };
-A.taroAll = (d) => document.querySelectorAll(".taro-n").forEach((x) => (x.open = d.o === "1"));
+A.taroAll = (d) => document.querySelectorAll("details.tt-n").forEach((x) => (x.open = d.o === "1"));
 // Partuturan reference: who calls whom, including in-laws (from published guides to Batak Toba kinship terms).
 const TUTUR_REF = [
   ["Amang / Inang", "Ayah / ibu; sapaan hormat untuk laki-laki / perempuan yang lebih tua.", "Father / mother; a respectful address for older men / women."],
