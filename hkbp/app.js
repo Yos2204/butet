@@ -400,6 +400,7 @@ R.login = async () => {
         <button class="btn primary block">${esc(t("setupBtn"))}</button>
       </form>
       <button class="btn block ghost" data-act="seedDemo">${ic("spark")} ${esc(t("demoBtn"))}</button>` : `
+      <div class="pk-slot"></div>
       <form class="card form" data-form="login">
         <label>${esc(t("f_phone"))}<div class="phone-in"><span>+65</span><input name="phone" inputmode="numeric" required placeholder="8123 4567" autocomplete="username" data-phonecheck value="${esc(LS.get("remote.phone") || "")}"></div></label>
         <p class="small muted pc-hint" aria-live="polite"></p>
@@ -977,6 +978,7 @@ R.more = () => {
       ${serveOn() && manage() ? `<button class="li" data-act="servePick">${ic("calendar")}<span class="grow"><b>${esc(t("svTitle"))}</b><small>${esc((me().profile || {}).serve ? me().profile.serve.map((id) => gname(G(id))).filter(Boolean).join(", ") || t("svNone") : t("pfNotYet"))}</small></span>${ic("chev", "chev")}</button>` : ""}
       ${pfSkipped() && manage() ? `<button class="li" data-act="pfTest">${ic("spark")}<span class="grow"><b>${esc(t(LS.get("pfTest") ? "pfTestEnd" : "pfTestStart"))}</b><small>${esc(t(LS.get("pfTest") ? "pfTestOnSub" : "pfTestSub"))}</small></span>${ic("chev", "chev")}</button>` : ""}
       ${profileOn() ? `<button class="li" data-act="profile">${ic("people")}<span class="grow"><b>${esc(t("pfTitle"))}</b><small>${esc(me().profile ? profileCats(me().profile).map((id) => gname(G(id))).filter(Boolean).join(", ") : t("pfNotYet"))}</small></span>${ic("chev", "chev")}</button>` : ""}
+      ${typeof pkMenuItem === "function" ? pkMenuItem() : ""}
       ${manage() ? `<button class="li" data-act="password">${ic("key")}<span class="grow"><b>${esc(t("changePw"))}</b></span>${ic("chev", "chev")}</button>` : ""}
       <button class="li" data-act="install">${ic("phone")}<span class="grow"><b>${esc(t("installTitle"))}</b><small>${esc(standalone() ? t("installed") : t("installHint"))}</small></span>${ic("chev", "chev")}</button>
       ${isYB() && manage() ? `<button class="li" data-act="settings">${ic("gear")}<span class="grow"><b>${esc(t("settings"))}</b><small>${esc(api.mode === "remote" ? t("modeRemote") : t("modeLocal"))}</small></span>${ic("chev", "chev")}</button>` : ""}
@@ -5377,6 +5379,7 @@ F.login = async (f) => {
 };
 function afterSignIn() {
   if (viewMode() === "admin" && D && !hasRights()) { LS.set("view", "member"); toast(t("notAdmin")); }
+  if (typeof pkOffer === "function" && pkOffer()) return; // Face ID / fingerprint offer first; it asks for notifications after (passkey.js)
   // Right after signing in, ask once for notifications (the phone only allows this after a tap).
   if ("Notification" in window && Notification.permission === "default") setTimeout(() => sheet(t("notifyAskTitle"), `<p class="muted">${esc(t("notifyAskBody"))}</p><button class="btn primary block" data-act="notifyNow">${ic("bell")} ${esc(t("notifyAskTitle"))}</button>`), 600);
 }
@@ -6732,4 +6735,165 @@ const qs = new URLSearchParams(location.search);
   await render(); localReminders();
 })();
 document.addEventListener("visibilitychange", async () => { if (document.visibilityState === "visible" && D && !/^#\/login/.test(location.hash)) { try { await refresh(); if (!$("#sheet").classList.contains("open")) render(); localReminders(); } catch {} } });
+
+// ---------- Face ID / fingerprint sign-in ----------
+// Face ID / fingerprint sign-in (YB 2026-10-31). Uses passkeys (WebAuthn): iPhone asks for Face ID (or Touch ID),
+// Android for face unlock or the fingerprint. The face or fingerprint never leaves the phone; the phone signs a
+// one-time challenge and the edge function hkbp-passkey checks it, then hands out a normal 10-year session.
+// Server side: backend/edge/hkbp-passkey. Tables hk_passkeys, hk_passkey_challenges.
+(() => {
+  const CFG = window.HKBP_CONFIG || {};
+  const FN = (CFG.supabaseUrl || "").replace(/\/$/, "") + "/functions/v1/hkbp-passkey";
+  const ua = navigator.userAgent;
+  const IOS = /iP(hone|ad|od)/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+  const ANDROID = /Android/.test(ua);
+  // What the phone calls it, in the member's language.
+  const bio = () => IOS ? "Face ID" : ANDROID ? L3("sidik jari / wajah", "sidik jari / bohi", "fingerprint / face") : L3("Face ID / sidik jari", "Face ID / sidik jari", "Face ID / fingerprint");
+  const device = () => IOS ? (/iPad/.test(ua) ? "iPad" : "iPhone") : ANDROID ? "Android" : /Mac/.test(ua) ? "Mac" : /Windows/.test(ua) ? "Windows" : "Browser";
+
+  let ok = null, srv = false; // does this phone have Face ID / fingerprint for websites? is the sign-in service up?
+  const okP = (async () => {
+    try { ok = !!(window.PublicKeyCredential && PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable && await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()); }
+    catch { ok = false; }
+    if (ok && CFG.supabaseUrl) srv = await fetch(FN, { method: "POST", headers: { "content-type": "application/json" }, body: '{"action":"ping"}' }).then((r) => r.ok, () => false);
+    if (srv && D && /^#\/more/.test(location.hash)) try { render(); } catch {} // show the Profile menu entry
+    return ok;
+  })();
+  const usable = () => ok && srv && api.mode === "remote" && !!CFG.supabaseUrl;
+
+  const b64u = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  const unb64u = (s) => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4)), (c) => c.charCodeAt(0)).buffer;
+  class PkError extends Error { constructor(code) { super(code); this.code = code; } }
+
+  async function call(body) {
+    let r;
+    try { r = await fetch(FN, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }); }
+    catch { throw new PkError("offline"); }
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || j.error) throw new PkError(j.error || "server");
+    return j;
+  }
+  const msg = (e) => {
+    const c = (e && (e.code || e.name)) || "";
+    if (c === "NotAllowedError" || c === "AbortError") return L3("Dibatalkan.", "Dibatalkan.", "Cancelled.");
+    if (c === "InvalidStateError") return L3("Face ID sudah aktif di HP ini.", "Face ID nunga aktif di HP on.", "Already turned on on this phone.");
+    if (c === "no_passkey") return L3("Kunci ini tidak terhubung lagi. Masuk dengan nomor HP, lalu aktifkan lagi di Profil.", "Kunci on ndang tarhubung be. Bongot ma pake nomor HP, dungi aktifhon muse di Profil.", "This key isn't linked any more. Sign in with your phone number, then turn it on again in Profile.");
+    if (c === "expired") return L3("Waktu habis. Coba lagi.", "Nunga lewat tingkina. Coba muse.", "That took too long. Please try again.");
+    if (c === "offline") return typeof t === "function" ? t("err_offline") : "Offline";
+    return L3("Tidak berhasil. Coba lagi atau masuk dengan nomor HP.", "Ndang boi. Coba muse manang bongot pake nomor HP.", "That didn't work. Try again or sign in with your phone number.");
+  };
+
+  // The phone wants the Face ID prompt to follow the tap straight away (iPhone is strict about this),
+  // so the challenge is fetched before the tap and kept for a few minutes.
+  const pre = { login: null, reg: null };
+  const fresh = (p) => p && Date.now() - p.at < 240e3;
+  async function prefetch(kind) {
+    const j = await call(kind === "login" ? { action: "login_options" } : { action: "reg_options", token: api.token });
+    pre[kind] = { at: Date.now(), ...j };
+    return pre[kind];
+  }
+  async function take(kind) { const p = fresh(pre[kind]) ? pre[kind] : await prefetch(kind); pre[kind] = null; return p; }
+
+  // ---- sign in ----
+  async function login(btn) {
+    const p = await take("login");
+    const o = p.options;
+    const cred = await navigator.credentials.get({ publicKey: {
+      challenge: unb64u(o.challenge), rpId: o.rpId, timeout: o.timeout, userVerification: "required",
+      allowCredentials: (o.allowCredentials || []).map((c) => ({ ...c, id: unb64u(c.id) })),
+    } });
+    const r = cred.response;
+    const res = await busy(btn, () => call({ action: "login_verify", cid: p.cid, response: {
+      id: cred.id, rawId: b64u(cred.rawId), type: cred.type, clientExtensionResults: cred.getClientExtensionResults ? cred.getClientExtensionResults() : {},
+      authenticatorAttachment: cred.authenticatorAttachment || undefined,
+      response: { clientDataJSON: b64u(r.clientDataJSON), authenticatorData: b64u(r.authenticatorData), signature: b64u(r.signature), userHandle: r.userHandle ? b64u(r.userHandle) : undefined },
+    } }));
+    api.setToken(res.token); LS.set("remote.phone", res.phone); LS.set("pk.on", 1); LS.set("pk.offered", 1);
+    D = null; await refresh(); afterSignIn(); backAfterLogin(); localReminders();
+  }
+  A.pkLogin = async (d, btn) => {
+    try { await login(btn); }
+    catch (e) { toast(msg(e), e.name !== "NotAllowedError"); prefetch("login").catch(() => {}); }
+  };
+
+  function fillSlot(el) {
+    el.dataset.pk = "1";
+    okP.then(() => {
+      if (!usable() || api.hasSession()) return;
+      prefetch("login").then(() => {
+        el.innerHTML = `<button type="button" class="btn block pk-btn" data-act="pkLogin">${ic("lock")} ${esc(L3("Masuk dengan ", "Bongot pake ", "Sign in with ") + bio())}</button>
+          <p class="small muted center pk-or">${esc(L3("atau masuk dengan nomor HP", "manang bongot pake nomor HP", "or sign in with your phone number"))}</p>`;
+        clearInterval(fillSlot.h); fillSlot.h = setInterval(() => { if (!el.isConnected) return clearInterval(fillSlot.h); prefetch("login").catch(() => {}); }, 200e3);
+      }).catch(() => {}); // the sign-in service isn't reachable: keep the phone-number sign-in only
+    });
+  }
+  new MutationObserver(() => { const el = document.querySelector(".pk-slot:not([data-pk])"); if (el) fillSlot(el); }).observe(document.body, { childList: true, subtree: true });
+  { const el = document.querySelector(".pk-slot:not([data-pk])"); if (el) fillSlot(el); }
+
+  // ---- turn on / manage (Profile) ----
+  window.pkMenuItem = () => {
+    if (!usable() || typeof isGuest === "function" && isGuest()) return "";
+    const on = LS.get("pk.on");
+    return `<button class="li" data-act="pkManage">${ic("lock")}<span class="grow"><b>${esc(L3("Masuk dengan ", "Bongot pake ", "Sign in with ") + bio())}</b><small>${esc(on ? L3("Aktif di HP ini", "Aktif di HP on", "On for this phone") : L3("Masuk tanpa mengetik, cukup pakai wajah atau jari", "Bongot ndang pake mangetik", "Sign in without typing, just your face or finger"))}</small></span>${ic("chev", "chev")}</button>`;
+  };
+  async function register(btn) {
+    const p = await take("reg");
+    const o = p.options;
+    const cred = await navigator.credentials.create({ publicKey: {
+      ...o, challenge: unb64u(o.challenge), user: { ...o.user, id: unb64u(o.user.id) },
+      excludeCredentials: (o.excludeCredentials || []).map((c) => ({ ...c, id: unb64u(c.id) })),
+    } });
+    const r = cred.response;
+    await busy(btn, () => call({ action: "reg_verify", token: api.token, cid: p.cid, device: device(), response: {
+      id: cred.id, rawId: b64u(cred.rawId), type: cred.type, clientExtensionResults: cred.getClientExtensionResults ? cred.getClientExtensionResults() : {},
+      authenticatorAttachment: cred.authenticatorAttachment || undefined,
+      response: { clientDataJSON: b64u(r.clientDataJSON), attestationObject: b64u(r.attestationObject), transports: r.getTransports ? r.getTransports() : undefined },
+    } }));
+    LS.set("pk.on", 1); LS.set("pk.offered", 1);
+  }
+  const cap = (x) => x.charAt(0).toUpperCase() + x.slice(1);
+  const doneTxt = () => L3(`${cap(bio())} aktif. Lain kali tekan "Masuk dengan ${bio()}".`, `${cap(bio())} nunga aktif.`, `${cap(bio())} is on. Next time tap "Sign in with ${bio()}".`);
+  A.pkAdd = async (d, btn) => {
+    try { await register(btn); closeSheet(); toast(doneTxt()); if (d.next) setTimeout(pkNext, 700); else render(); }
+    catch (e) { toast(msg(e), e.name !== "NotAllowedError"); prefetch("reg").catch(() => {}); }
+  };
+  A.pkManage = async () => {
+    sheet(L3("Masuk dengan ", "Bongot pake ", "Sign in with ") + bio(), `<div class="center pad">${skel(2)}</div>`);
+    let keys = [];
+    try { [{ keys }] = await Promise.all([call({ action: "list", token: api.token }), prefetch("reg")]); }
+    catch (e) { closeSheet(); toast(msg(e), true); return; }
+    const fmtD = (s) => s ? new Date(s).toLocaleDateString(lang === "en" ? "en-GB" : "id-ID", { day: "numeric", month: "short", year: "numeric" }) : "";
+    sheet(L3("Masuk dengan ", "Bongot pake ", "Sign in with ") + bio(), `
+      <p class="muted">${esc(L3(`Masuk ke Sada tanpa mengetik: HP akan meminta ${bio()}. Wajah dan sidik jari Anda tetap di HP, tidak dikirim ke mana pun.`, `Bongot tu Sada ndang pake mangetik: HP mangido ${bio()}. Bohi dohot sidik jarimu tetap di HP.`, `Sign in to Sada without typing: your phone asks for ${bio()}. Your face and fingerprint stay on your phone and are never sent anywhere.`))}</p>
+      <button class="btn primary block" data-act="pkAdd">${ic("lock")} ${esc(L3("Aktifkan di HP ini", "Aktifhon di HP on", "Turn on for this phone"))}</button>
+      ${keys.length ? `<h4>${esc(L3("HP yang sudah aktif", "HP na nunga aktif", "Phones that are on"))}</h4><div class="menu card">${keys.map((k) => `<div class="li">${ic("phone")}<span class="grow"><b>${esc(k.device || "—")}</b><small>${esc(L3("Sejak ", "Sian ", "Since ") + fmtD(k.created_at))}${k.last_used ? esc(" · " + L3("terakhir ", "parpudi ", "last used ") + fmtD(k.last_used)) : ""}</small></span><button class="btn sm ghost" data-act="pkDel" data-id="${esc(k.id)}">${esc(L3("Hapus", "Apus", "Remove"))}</button></div>`).join("")}</div>` : ""}`);
+  };
+  A.pkDel = async (d, btn) => {
+    if (!confirm(L3("Hapus Face ID / sidik jari untuk HP ini?", "Apus?", "Remove sign-in with this phone?"))) return;
+    await busy(btn, () => call({ action: "remove", token: api.token, id: d.id }));
+    LS.set("pk.on", null); toast(L3("Dihapus.", "Nunga diapus.", "Removed.")); A.pkManage();
+  };
+
+  // Right after a normal sign-in, offer it once (then the notification question, as before).
+  function pkNext() {
+    if ("Notification" in window && Notification.permission === "default") sheet(t("notifyAskTitle"), `<p class="muted">${esc(t("notifyAskBody"))}</p><button class="btn primary block" data-act="notifyNow">${ic("bell")} ${esc(t("notifyAskTitle"))}</button>`);
+  }
+  A.pkLater = (d) => { closeSheet(); if (d.next) setTimeout(pkNext, 400); };
+  window.pkOffer = (quiet) => {
+    if (!usable() || LS.get("pk.on") || LS.get("pk.offered") || !api.hasSession()) return false;
+    LS.set("pk.offered", 1);
+    setTimeout(() => {
+      if (quiet && (!document.querySelector("#sheet")?.hidden || /^#\/login/.test(location.hash))) return;
+      prefetch("reg").then(() => sheet(L3("Masuk lebih cepat?", "Bongot lobi hatop?", "Faster sign-in?"), `
+        <p class="muted">${esc(L3(`Lain kali masuk dengan ${bio()}, tanpa mengetik nomor atau kata sandi.`, `Sogot masuk pake ${bio()}, ndang pake mangetik.`, `Next time, sign in with ${bio()} instead of typing your number or password.`))}</p>
+        <button class="btn primary block" data-act="pkAdd"${quiet ? "" : ` data-next="1"`}>${ic("lock")} ${esc(L3("Pakai ", "Pake ", "Use ") + bio())}</button>
+        <button class="btn block ghost" data-act="pkLater"${quiet ? "" : ` data-next="1"`}>${esc(L3("Nanti saja", "Annon ma", "Not now"))}</button>`)).catch(() => { if (!quiet) pkNext(); });
+    }, quiet ? 0 : 600);
+    return true;
+  };
+  // Members who are already signed in see the offer once, a few seconds after opening the app from the home screen.
+  addEventListener("load", () => setTimeout(() => okP.then(() => {
+    try { if (standalone() && D && !isGuest()) pkOffer(true); } catch {}
+  }), 5000));
+})();
 })();
