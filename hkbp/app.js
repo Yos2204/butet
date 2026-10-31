@@ -30,6 +30,7 @@ const standalone = () => matchMedia("(display-mode: standalone)").matches || nav
 
 // ---------- icons (24px line icons) ----------
 const IC = {
+  gallery: '<rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-9 9"/>',
   redo: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>',
   home: '<path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/>',
   groups: '<circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><path d="M15 14.5c3 0 6 1.8 6 5.5"/>',
@@ -962,6 +963,7 @@ R.more = () => {
       <button class="avatar-btn" data-act="photoPick" aria-label="${esc(L3("Foto profil", "Foto profil", "Profile photo"))}">${avatarOf(m, "lg")}<i class="avatar-edit">${ic("camera")}</i></button>
       <div class="grow"><h3>${esc(m.name)}</h3><p class="small muted">${esc(fmtPhone(m.phone))}${m.dob ? " · " + esc(fmt(m.dob, { day: "numeric", month: "long" })) : ""}</p>
         <div class="chips">${m.is_admin && manage() ? `<span class="badge admin">${esc(t("role_admin"))}</span>` : ""}${roles.map(([g, r]) => `<span class="chip" style="--gc:${(G(g) || {}).color}">${esc(gname(G(g)))}${r === "chair" && manage() ? " · " + esc(t("role_chair")) : ""}</span>`).join("")}</div>
+        <button class="btn sm pf-photo" data-act="photoPick">${ic("camera")} ${esc(D.photos && D.photos[m.id] ? L3("Ganti foto profil", "Ganti foto profil", "Change profile photo") : L3("Tambah foto profil", "Tambah foto profil", "Add a profile photo"))}</button>
         <button class="btn sm pf-reset" data-act="pfReset">${ic("redo")} ${esc(t("pfReset"))}</button></div>
     </section>
     <div class="menu card">
@@ -989,6 +991,9 @@ R.more = () => {
 };
 // Admin only: who has signed in to the app, installed it and turned notifications on.
 let AS = { rows: null, tries: [], f: "all" };
+// WhatsApp nudge for numbers that tried and failed to get in (YB 2026-10-31, after the Register button fix in PR #103).
+// Opens WhatsApp on the admin's own phone with this text filled in; the admin taps Send for each person.
+const AS_NUDGE = "Shalom! Aplikasi Sada HKBPS sudah diperbaiki. Silakan buka lagi https://yos2204.github.io/butet/hkbp/ , masukkan nomor HP Anda, tulis nama Anda, lalu tekan Daftar.\n\nSada HKBPS is fixed now. Please open https://yos2204.github.io/butet/hkbp/ again, enter your phone number, type your name and tap Register.";
 const asDot = (on, label) => `<span class="as-pill ${on ? "on" : "off"}"><i></i>${esc(label)}</span>`;
 function asFill() {
   const el = $("#asList"); if (!el || !AS.rows) return;
@@ -999,7 +1004,7 @@ function asFill() {
     <div class="chips">${[["all", "asAll"], ["noapp", "asNoApp"], ["nonotif", "asNoNotif"]].map(([f, k]) => `<button class="chip ${AS.f === f ? "on" : ""}" data-act="asFilter" data-f="${f}">${esc(t(k))}</button>`).join("")}</div>
     <div class="card menu">${show.length ? show.map((r) => `<div class="li as-row">${avatarOf(r)}<span class="grow"><b>${esc(r.name)}</b>${r.self_reg ? ` <span class="badge chair">${esc(t("asSelfReg"))}</span>` : ""}<small>${esc(fmtPhone(r.phone))} · ${esc(r.last_seen ? t("asLast") + " " + fmt(r.last_seen, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : t("asNever"))}</small></span><span class="as-pills">${asDot(r.signed_in, t("asApp"))}${asDot(r.notif, t("asNotif"))}</span></div>`).join("") : empty(t("asNone"))}</div>
     <h3 class="sec-h">${esc(t("asOthers"))}</h3>
-    <div class="card menu">${AS.tries.length ? AS.tries.map((r) => `<div class="li as-row"><span class="avatar">?</span><span class="grow"><b>${esc(fmtPhone(r.phone))}</b><small>${esc(t("asTried", r.tries))} · ${esc(t("asLastTry") + " " + fmt(r.last_at, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }))}</small></span><span class="as-pills">${asDot(false, t("asNotListed"))}</span></div>`).join("") : `<p class="small muted pad">${esc(t("asNoOthers"))}</p>`}</div>
+    <div class="card menu">${AS.tries.length ? AS.tries.map((r) => `<div class="li as-row"><span class="avatar">?</span><span class="grow"><b>${esc(fmtPhone(r.phone))}</b><small>${esc(t("asTried", r.tries))} · ${esc(t("asLastTry") + " " + fmt(r.last_at, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }))}</small></span><span class="as-pills">${asDot(false, t("asNotListed"))}</span><a class="icon-btn wa" href="${wa(AS_NUDGE, r.phone)}" target="_blank" rel="noopener" aria-label="${esc(L3("Ingatkan lewat WhatsApp", "Ingothon marhite WhatsApp", "Nudge on WhatsApp"))}">${ic("wa")}</a></div>`).join("") : `<p class="small muted pad">${esc(t("asNoOthers"))}</p>`}</div>
     <p class="small muted pad">${esc(t("asNote"))}</p>`;
 }
 R.appstatus = () => {
@@ -4504,14 +4509,20 @@ async function resizeImage(file, max, q, square) {
 }
 
 // Profile photo: tap your picture on More.
+// YB 2026-10-31: pick one from the phone's photo library or take a new one with the camera. Stored (square, small JPEG) on the member's row.
 A.photoPick = () => {
-  if (!(D.photos && D.photos[D.me.id])) return A.photoNew();
-  sheet(L3("Foto profil", "Foto profil", "Profile photo"), `<div class="stack"><button class="opt-card" data-act="photoNew">${ic("camera")}<span><b>${esc(L3("Ganti foto", "Ganti foto", "Change photo"))}</b></span>${ic("chev", "chev")}</button>
-    <button class="opt-card" data-act="photoRemove">${ic("trash")}<span><b>${esc(L3("Hapus foto", "Hapus foto", "Remove photo"))}</b></span>${ic("chev", "chev")}</button></div>`);
+  const has = !!(D.photos && D.photos[D.me.id]);
+  sheet(L3("Foto profil", "Foto profil", "Profile photo"), `<div class="pf-prev">${avatarOf(D.me, "xl")}</div><div class="stack">
+    <button class="opt-card" data-act="photoNew" data-src="camera">${ic("camera")}<span><b>${esc(L3("Ambil foto", "Buat foto", "Take a photo"))}</b><small>${esc(L3("Pakai kamera ponsel", "Pake kamera", "Use the phone's camera"))}</small></span>${ic("chev", "chev")}</button>
+    <button class="opt-card" data-act="photoNew" data-src="library">${ic("gallery")}<span><b>${esc(L3("Pilih dari galeri", "Pilih sian galeri", "Choose from library"))}</b><small>${esc(L3("Foto yang sudah ada di ponsel", "Foto na adong di ponsel", "A photo already on your phone"))}</small></span>${ic("chev", "chev")}</button>
+    ${has ? `<button class="opt-card" data-act="photoRemove">${ic("trash")}<span><b>${esc(L3("Hapus foto", "Hapus foto", "Remove photo"))}</b></span>${ic("chev", "chev")}</button>` : ""}</div>`);
 };
-A.photoNew = () => {
+A.photoNew = (d) => {
   closeSheet(); const inp = document.createElement("input"); inp.type = "file"; inp.accept = "image/*";
-  inp.onchange = async () => { const f = inp.files[0]; if (!f) return; try { const data = await resizeImage(f, 192, 0.8, true); await api.save("photo", { photo: data }); D.photos = { ...(D.photos || {}), [D.me.id]: data }; toast(t("saved")); render(); } catch (e) { toast(errMsg(e), true); } };
+  if (d && d.src === "camera") inp.setAttribute("capture", "user");
+  inp.onchange = async () => { const f = inp.files[0]; if (!f) return;
+    try { let data = await resizeImage(f, 256, 0.82, true); if (data.length > 78000) data = await resizeImage(f, 192, 0.7, true);
+      await api.save("photo", { photo: data }); D.photos = { ...(D.photos || {}), [D.me.id]: data }; toast(t("saved")); render(); } catch (e) { toast(errMsg(e), true); } };
   inp.click();
 };
 A.photoRemove = async () => { closeSheet(); try { await api.save("photo", { photo: "" }); if (D.photos) delete D.photos[D.me.id]; render(); } catch (e) { toast(errMsg(e), true); } };
@@ -4754,6 +4765,16 @@ try { document.head.insertAdjacentHTML("beforeend", `<style>
   .ch-acts button { border: 0; background: transparent; font-size: 18px; padding: 4px 6px; border-radius: 10px; }
   .ch-acts button:nth-last-child(-n+2) { font-size: 13px; font-weight: 700; color: var(--brand); }
   .ch-time { font-size: 11.5px; color: var(--muted); padding: 0 8px; }
+  .ch-msg.has-av { position: relative; padding-left: 40px; max-width: calc(82% + 40px); }
+  .ch-msg.ch-head { margin-top: 6px; }
+  .ch-av { position: absolute; left: 0; top: 20px; }
+  .ch-av .avatar { width: 32px; height: 32px; font-size: 12px; }
+  .ch-av .pres { width: 10px; height: 10px; border-width: 2px; }
+  .pf-prev { display: grid; place-items: center; margin: 4px 0 14px; }
+  .avatar.xl { width: 112px; height: 112px; font-size: 36px; }
+  .avatar.xl .pres { display: none; }
+  .pf-photo { display: inline-flex; align-items: center; gap: 6px; margin-top: 6px; }
+  .pf-photo .ic { width: 15px; height: 15px; }
   .ch-online { display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 12.5px; color: var(--muted); margin: 6px 0 0; min-height: 18px; }
   .ch-online i { width: 9px; height: 9px; border-radius: 50%; background: #22c55e; display: inline-block; }
   .ch-bar { position: fixed; left: 0; right: 0; bottom: calc(66px + env(safe-area-inset-bottom)); z-index: 19; display: grid; gap: 6px; padding: 8px max(12px, env(safe-area-inset-left)); background: color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-top: 1px solid var(--line); }
@@ -4826,7 +4847,10 @@ function chatHtml() {
     const chips = Object.keys(rx).map((e) => `<button class="ch-rx${rx[e].includes(me) ? " me" : ""}" data-act="chatReact" data-id="${m.id}" data-e="${e}" title="${esc(rx[e].join(", "))}">${e} ${rx[e].length}</button>`).join("");
     const dm = String(CH.room || "").startsWith("dm:"); const lastMine = dm && mine && !CH.msgs.slice(CH.msgs.indexOf(m) + 1).some((x) => x.member_id === D.me.id);
     const seen = lastMine ? `<small class="ch-seen">${CH.otherRead >= m.id ? "✓✓ " + esc(L3("Dilihat", "Dibereng", "Seen")) : "✓ " + esc(L3("Terkirim", "Tarkirim", "Sent"))}</small>` : "";
-    return `${sep}<div class="ch-msg${mine ? " mine" : ""}${sel ? " sel" : ""}">${mine || dm ? "" : `<b class="ch-name">${presDot(m.member_id)}${esc(m.name || "")}</b>`}
+    // Profile photo beside other people's messages (YB 2026-10-31): photo + name on the first message of a run, a gap under it after that.
+    const prev = CH.msgs[CH.msgs.indexOf(m) - 1]; const head = !!sep || !prev || prev.member_id !== m.member_id;
+    const av = !mine && !dm; const who = (D.people || []).find((q) => q.id === m.member_id) || { id: m.member_id, name: m.name };
+    return `${sep}<div class="ch-msg${mine ? " mine" : ""}${sel ? " sel" : ""}${av ? " has-av" : ""}${av && head ? " ch-head" : ""}">${av && head ? `<span class="ch-av">${avatarOf(who)}</span><b class="ch-name">${esc(m.name || "")}</b>` : ""}
       <div class="ch-bubble" data-act="chatMsg" data-id="${m.id}">${m.reply ? `<span class="ch-quote"><b>${esc(m.reply.name || "")}</b>${esc(m.reply.body || "")}</span>` : ""}${m.image ? `<img class="ch-img" src="${esc(m.image)}" alt="" data-act="chatImg" data-id="${m.id}">` : ""}${m.body ? `<span>${esc(m.body).replace(/\n/g, "<br>")}</span>` : ""}</div>
       ${chips ? `<div class="ch-rxs">${chips}</div>` : ""}
       ${sel ? `<div class="ch-acts">${REACTS.map((e) => `<button data-act="chatReact" data-id="${m.id}" data-e="${e}">${e}</button>`).join("")}<button data-act="chatReply" data-id="${m.id}">↩︎ ${esc(L3("Balas", "Balas", "Reply"))}</button>${mine || D.me.is_admin ? `<button data-act="chatDel" data-id="${m.id}">${esc(t("delete"))}</button>` : ""}</div>` : ""}
@@ -5653,7 +5677,7 @@ function pcShow(f, kind) {
   q(".pc-pw").hidden = kind !== "maker"; if (kind === "maker" && typeof pkPwBtn === "function") pkPwBtn(q(".pk-pw"), S.phone8(f.phone.value)); q(".pc-new").hidden = kind !== "maker_new"; q(".pc-forgot").hidden = kind !== "maker"; q(".pc-reg").hidden = q(".pc-browse").hidden = kind !== "unknown"; q(".pc-note").hidden = !!kind;
   q(".pc-hint").textContent = kind ? t("pc_" + kind) : "";
   q(".pc-btn").textContent = t(kind === "maker_new" ? "firstPwBtn" : kind === "unknown" ? "pcRegister" : "signIn");
-  q("button").disabled = !kind;
+  q(".pc-btn").closest("button").disabled = !kind; // the submit button, not the Face ID one above it
   const focus = kind === "maker" ? f.pw : kind === "maker_new" ? f.npw : kind === "unknown" ? f.rname : null; if (focus) setTimeout(() => focus.focus(), 50);
 }
 async function pcCheck(f) {
