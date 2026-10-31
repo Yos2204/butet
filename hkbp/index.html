@@ -548,6 +548,48 @@ body.gated { overflow: hidden; }
 #gate .gsmall { font-size: 13px; color: var(--muted); }
 #gate .gdone { width: 84px; height: 84px; border-radius: 50%; background: var(--good); color: #fff; display: grid; place-items: center; }
 #gate .gdone .ic { width: 44px; height: 44px; }
+
+/* ---------- Phone and computer polish (YB 2026-10-31) ---------- */
+/* Phone tab bar: every icon sits in the same box, so the labels line up whether a tab is on or not. */
+nav.tabs a .ic { width: 46px; height: 27px; padding: 2px 11px; border-radius: 10px; }
+nav.tabs a { transition: color .15s, background .15s; }
+/* Sidebar-only pieces stay hidden on phones. */
+nav.tabs .nav-brand, nav.tabs .nav-chat, nav.tabs .nav-foot { display: none; }
+/* Computers (1100px and wider): a full sidebar with names, chat and language; content centred and roomy. */
+@media (min-width: 1100px) {
+  :root { --navw: 248px; }
+  body { padding-left: var(--navw); }
+  nav.tabs { width: var(--navw); padding: 18px 14px 16px; align-items: stretch; background: var(--surface); border-right: 1px solid var(--line); }
+  nav.tabs .in { display: flex; flex-direction: column; gap: 3px; height: 100%; max-width: none; }
+  nav.tabs a { flex-direction: row; justify-content: flex-start; align-items: center; gap: 12px; padding: 9px 12px; min-height: 44px; font-size: 14.5px; font-weight: 700; border-radius: 12px; color: var(--muted); }
+  nav.tabs a span { font-size: 14.5px !important; }
+  nav.tabs a .ic, nav.tabs a.on .ic { width: 22px; height: 22px; padding: 0; background: none; border-radius: 0; }
+  nav.tabs a:hover { background: var(--surface-2); color: var(--ink); }
+  nav.tabs a.on { background: var(--brand-soft); color: var(--brand); }
+  nav.tabs a .tab-dot { position: static; order: 2; margin-left: auto; }
+  nav.tabs .nav-brand { display: flex; position: relative; gap: 12px; padding: 2px 6px 18px; margin-bottom: 12px; min-height: 0; color: var(--ink); border-radius: 0; }
+  nav.tabs .nav-brand:hover { background: none; color: var(--ink); }
+  nav.tabs .nav-brand::after { content: ""; position: absolute; left: -14px; right: -14px; bottom: 0; height: 4px; background: repeating-linear-gradient(90deg, var(--red) 0 14px, #111 14px 17px, #fbf3e4 17px 21px, #111 21px 24px); opacity: .85; }
+  nav.tabs .nav-brand img { width: 44px; height: 44px; padding: 5px; object-fit: contain; border-radius: 12px; background: #fff; box-shadow: var(--shadow); flex: none; }
+  nav.tabs .nav-brand span { display: block; min-width: 0; }
+  nav.tabs .nav-brand b { display: block; font-family: var(--display); font-size: 19px; line-height: 1.2; }
+  nav.tabs .nav-brand small { display: block; font-size: 10.5px !important; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); white-space: normal; line-height: 1.3; }
+  nav.tabs .nav-chat { display: flex; }
+  nav.tabs .nav-foot { display: flex; justify-content: center; margin-top: auto; padding-top: 14px; border-top: 1px solid var(--line); }
+  #chatFab { display: none !important; }
+  body #view { margin: 0 auto !important; max-width: 1180px !important; padding-left: 36px; padding-right: 36px; padding-bottom: 48px; }
+  header.top { margin: 0 -36px; padding: 14px 36px 12px; }
+  header.top > .langs, header.top > .logo-sm { display: none; }
+  header.top.plain { display: none; }
+  header.top.plain ~ main { padding-top: 20px; }
+  .brand b { font-size: 21px; }
+  body .ch-bar { left: var(--navw); }
+  .toast { left: calc(50% + var(--navw) / 2); }
+  .sheet-card { max-width: 640px; }
+  .card { border-radius: 20px; }
+  a.card:hover, a.gtile:hover, button.li:hover { filter: brightness(.985); }
+}
+@media (min-width: 1100px) and (prefers-color-scheme: dark) { :root:not([data-theme="light"]) nav.tabs .nav-brand img { background: #fff; } }
 </style>
 </head>
 <body>
@@ -559,6 +601,6 @@ body.gated { overflow: hidden; }
 <script src="i18n.js?v=62"></script>
 <script src="store.js?v=60"></script>
 <script src="parse.js?v=60"></script>
-<script src="app.js?v=115"></script>
+<script src="app.js?v=116"></script>
 </body>
 </html>
