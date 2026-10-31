@@ -166,8 +166,8 @@ const gname = (g) => (g ? g["name_" + lang] || g.name_en || g.id : t("wholeChurc
 const firstName = (n) => String(n || "").replace(/^(Pdt|St|Sintua|Bapak|Ibu|Kak|Bang|Ev|Dr)\.?\s+/i, "").split(/\s+/)[0];
 
 // ---------- toast / sheets ----------
-function toast(msg, bad) { const el = $("#toast"); el.textContent = msg; el.className = "toast show" + (bad ? " bad" : ""); clearTimeout(toast.h); toast.h = setTimeout(() => (el.className = "toast"), 2600); }
-function errMsg(e) { if (e && e.viewOnly) return e.message; const c = (e && e.code) || (e && e.message) || "server"; return t("err_" + c) !== "err_" + c ? t("err_" + c) : t("err_server"); }
+function toast(msg, bad) { const el = $("#toast"); el.textContent = msg; el.className = "toast show" + (bad ? " bad" : ""); clearTimeout(toast.h); toast.h = setTimeout(() => (el.className = "toast"), String(msg).length > 90 ? 6500 : 2600); }
+function errMsg(e) { if (e && e.viewOnly) return e.message; if (e && e.code === "roster_clash") return clashText(e.clash || []); const c = (e && e.code) || (e && e.message) || "server"; return t("err_" + c) !== "err_" + c ? t("err_" + c) : t("err_server"); }
 function sheet(title, body, onMount) {
   const el = $("#sheet");
   el.innerHTML = `<div class="sheet-card" role="dialog" aria-modal="true" aria-label="${esc(title)}"><div class="sheet-head"><h3>${esc(title)}</h3><button class="icon-btn" data-act="closeSheet" aria-label="${esc(t("close"))}">${ic("x")}</button></div><div class="sheet-body">${body}</div></div>`;
@@ -4462,6 +4462,8 @@ A.rosterDraft = async (d) => {
   const load = {}; const since = addDays(today(), -92);
   (D.rosters || []).filter((r) => r.group_id === gid).forEach((r) => (r.table_json || []).forEach((tb) => (tb.rows || []).slice(1).forEach((row) => { const iso = rowDate(row, r.month); if (!iso || iso < since) return; people.forEach((n) => { if (row.some((c, j) => j && hit(c, myNames({ name: n })))) load[n] = (load[n] || 0) + 1; }); })));
   const busyMap = {}; sundays.forEach((s0) => { const away = [...(D.voyages || []).filter((v) => v.start <= s0 && v.end >= s0).map((v) => v.name), ...(D.grief || []).map((x) => x.family)]; if (away.length) busyMap[s0] = away; });
+  // Nobody already serving in another section or category that Sunday (YB 2026-10-31); the server checks the rest on save.
+  (D.rosters || []).filter((r) => r.group_id !== gid).forEach((r) => (r.table_json || []).forEach((tb) => (tb.rows || []).slice(1).forEach((row) => { const iso = rowDate(row, r.month); if (!iso || !sundays.includes(iso)) return; people.forEach((n) => { if (row.some((c, j) => j && hit(c, myNames({ name: n })))) (busyMap[iso] = busyMap[iso] || []).push(n); }); })));
   const keep = {}; if (old) { const head = old.table_json[0].rows[0]; old.table_json[0].rows.slice(1).forEach((row) => { const iso = rowDate(row, ym); if (!iso) return; head.forEach((h, j) => { if (j && row[j]) (keep[iso] = keep[iso] || {})[h] = row[j]; }); }); }
   busySheet("✨ " + L3("Draf roster", "Draf roster", "Roster draft"), L3("Menyusun roster yang adil…", "Manyusun roster…", "Drafting a fair roster…"));
   try {
@@ -5769,15 +5771,16 @@ A.uploadRoster = (d) => {
     <div class="rr-del" hidden><button type="button" class="btn block danger" data-act="rrDel">${ic("trash")} ${esc(L3("Hapus Minggu ini dari roster", "Hapus Minggu on sian roster", "Remove this Sunday from the roster"))}</button></div></form>
     ${d.edit ? "" : `<p class="or"><span>${esc(t("or"))}</span></p>`}
     ${d.edit ? "" : `<button class="btn block ghost" data-act="uploadRosterFile" data-g="${esc(d.g)}" data-m="${esc(m)}">${ic("upload")} ${esc(L3("Unggah file atau link", "Upload file manang link", "Upload a file or link"))}</button>`}`, (el) => {
-    const f = el.querySelector("form"); rrFill(f); f.day.addEventListener("change", () => rrFill(f));
+    const f = el.querySelector("form"); rrFill(f); rrCheckNow(f); f.day.addEventListener("change", () => { rrFill(f); rrCheckNow(f); });
+    f.addEventListener("input", (e) => { if (e.target.matches("[name=who], [name=job]")) rrCheckSoon(f); });
   });
 };
 A.rrAdd = (d, btn) => { const box = btn.closest("form").querySelector(".rr-rows"); box.insertAdjacentHTML("beforeend", rrRow()); box.lastElementChild.querySelector("input").focus(); };
-A.rrRm = (d, btn) => { const r = btn.closest(".rr-row"); if (r) r.remove(); };
-F.rosterday = async (f) => {
-  const gid = f.dataset.g; const day = f.day.value; if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) throw new S.AppError("bad_date");
+A.rrRm = (d, btn) => { const r = btn.closest(".rr-row"); if (!r) return; const f = r.closest("form"); const nx = r.nextElementSibling; if (nx && nx.classList.contains("rr-clash")) nx.remove(); r.remove(); if (f && f.dataset.form === "rosterday") rrCheckSoon(f); };
+// The month's table with this form's Sunday put in (used by the live check and by Save).
+function rrBuild(f) {
+  const gid = f.dataset.g; const day = f.day.value; if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return null;
   const pairs = [...f.querySelectorAll(".rr-row")].map((r) => [r.querySelector("[name=job]").value.trim(), r.querySelector("[name=who]").value.trim()]).filter(([j]) => j);
-  if (!pairs.some(([, w]) => w)) { toast(L3("Isi minimal satu nama.", "Isi ma nang sada goar.", "Fill in at least one name."), true); return; }
   const ym = day.slice(0, 7); const old = manualRoster(gid, ym);
   const head = old ? old.table_json[0].rows[0].slice() : [L3("Tanggal", "Tanggal", "Date")];
   pairs.forEach(([j]) => { if (!head.slice(1).some((h) => norm(h) === norm(j))) head.push(j); });
@@ -5785,6 +5788,52 @@ F.rosterday = async (f) => {
   const others = old ? old.table_json[0].rows.slice(1).filter((x) => rowDate(x, ym) !== day).map(pad) : [];
   const mine = head.map((h, i) => (i === 0 ? rDateCell(day) : (pairs.find(([j]) => norm(j) === norm(h)) || [, ""])[1]));
   const rows = [...others, mine].sort((a, b) => (rowDate(a, ym) || "").localeCompare(rowDate(b, ym) || ""));
+  return { gid, day, ym, old, head, rows, pairs };
+}
+// No double booking (YB 2026-10-31): one person, one duty per date, across every category, section and roster.
+// The server does the matching ("Helmi S" = "St. Helmi Sihombing"), sees every roster, and refuses a save that clashes.
+function clashLine(c) {
+  const g = G(c.group_id); const where = g ? gname(g) : lang === "en" ? c.group_en || c.group : c.group || c.group_en;
+  const day = fmt(c.day, { weekday: "short", day: "numeric", month: "short" });
+  return L3(`${c.who} sudah bertugas ${day} di ${where}${c.other_job ? " (" + c.other_job + ")" : ""}.`,
+    `${c.who} nunga marhobas ${day} di ${where}${c.other_job ? " (" + c.other_job + ")" : ""}.`,
+    `${c.who} is already serving on ${day} in ${where}${c.other_job ? " (" + c.other_job + ")" : ""}.`);
+}
+function clashText(list) {
+  const lines = [...new Set((list || []).map(clashLine))];
+  if (!lines.length) return L3("Ada nama yang sudah bertugas di tempat lain pada tanggal yang sama.", "Adong goar na nunga marhobas di inganan na asing di tanggal na sarupa.", "Someone here is already serving somewhere else on the same date.");
+  return lines.slice(0, 3).join(" ") + (lines.length > 3 ? ` (+${lines.length - 3})` : "") + " " + L3("Pilih orang lain.", "Pillit ma na asing.", "Please choose someone else.");
+}
+const RR_CHECK = { t: 0, n: 0 };
+function rrCheckSoon(f) { clearTimeout(RR_CHECK.t); RR_CHECK.t = setTimeout(() => rrCheckNow(f), 350); }
+// Asks the server, then marks each clashing name in the form and holds the Save button. Returns the clashes,
+// or null when the check could not run (offline, or a server without it): then the save itself still checks.
+async function rrCheckNow(f) {
+  const b = rrBuild(f); const n = ++RR_CHECK.n; if (!b) return rrPaint(f, []);
+  if (!b.pairs.some(([, w]) => w)) return rrPaint(f, []);
+  let list;
+  try { list = await api.save("roster_check", { id: b.old ? b.old.id : undefined, group_id: b.gid, month: b.ym, table_json: [{ name: monthName(b.ym), rows: [b.head, ...b.rows] }] }); }
+  catch (e) { return null; }
+  if (n !== RR_CHECK.n || !f.isConnected) return null;
+  return rrPaint(f, (Array.isArray(list) ? list : []).filter((c) => c.day === b.day));
+}
+function rrPaint(f, list) {
+  f.querySelectorAll(".rr-clash").forEach((x) => x.remove());
+  f.querySelectorAll(".rr-row [name=who]").forEach((x) => { x.removeAttribute("aria-invalid"); x.style.borderColor = ""; });
+  list.forEach((c) => {
+    const row = [...f.querySelectorAll(".rr-row")].find((r) => norm(r.querySelector("[name=job]").value) === norm(c.job)); if (!row) return;
+    const inp = row.querySelector("[name=who]"); inp.setAttribute("aria-invalid", "true"); inp.style.borderColor = "#dc2626";
+    let box = row.nextElementSibling; if (!box || !box.classList.contains("rr-clash")) { row.insertAdjacentHTML("afterend", `<p class="small rr-clash" role="alert" style="color:#dc2626;margin:-2px 0 8px"></p>`); box = row.nextElementSibling; }
+    const line = "⚠ " + clashLine(c); if (!box.textContent.includes(line.slice(2))) box.textContent += (box.textContent ? " " : "") + line;
+  });
+  const save = f.querySelector("button.primary"); if (save) { save.disabled = list.length > 0; save.title = list.length ? clashText(list) : ""; }
+  return list;
+}
+F.rosterday = async (f) => {
+  const b = rrBuild(f); if (!b) throw new S.AppError("bad_date");
+  const { gid, day, ym, old, head, rows, pairs } = b;
+  if (!pairs.some(([, w]) => w)) { toast(L3("Isi minimal satu nama.", "Isi ma nang sada goar.", "Fill in at least one name."), true); return; }
+  const clash = await rrCheckNow(f); if (clash && clash.length) { toast(clashText(clash), true); return; }
   await rosterWrite(gid, ym, old, head, rows, f.notify.checked, day);
   closeSheet(); LS.set("ym." + gid, ym); await refresh(); toast(t("saved"));
   location.hash = rosterHome(gid, ym);
