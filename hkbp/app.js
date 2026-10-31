@@ -189,7 +189,13 @@ async function busy(btn, fn) { if (btn) { btn.disabled = true; btn.dataset.label
 
 // ---------- sharing / calendar ----------
 const wa = (text, phone) => `https://wa.me/${phone ? "65" + S.phone8(phone) : ""}?text=${encodeURIComponent(text)}`;
-function breadText(b) { return `📖 *${t("breadTitle")} · HKBP Singapore*\n${fmtDay(b.day)}\n\n*${b.title || ""}*\n${b.verse || ""}\n\n${b.body || ""}\n\n${appUrl()}#/bread/${b.day}`; }
+// The verse of the day comes in all three languages (YB 2026-10-31): b.langs = {id, bt, en: {verse, title, body}}.
+// The reader's pick (LS breadLang) wins, then the app language. An elder's own devotion has one language only.
+const BREAD_LANGS = ["id", "bt", "en"];
+function breadLangs(b) { return b && b.langs && b.author_name === "Ayat Harian" ? BREAD_LANGS.filter((l) => b.langs[l] && b.langs[l].body) : []; }
+function breadPick(b) { const ls = breadLangs(b); const want = LS.get("breadLang", lang); return ls.includes(want) ? want : ls.includes(lang) ? lang : ls[0] || ""; }
+function breadOf(b) { const l = breadPick(b); return l ? { ...b, ...b.langs[l], lang: l } : b; }
+function breadText(b) { b = breadOf(b); return `📖 *${t("breadTitle")} · HKBP Singapore*\n${fmtDay(b.day)}\n\n*${b.title || ""}*\n${b.verse || ""}\n\n${b.body || ""}\n\n${appUrl()}#/bread/${b.day}`; }
 function ics(events) {
   const z = (d) => new Date(d).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
   const c = (s) => String(s || "").replace(/([,;\\])/g, "\\$1").replace(/\n/g, "\\n");
@@ -317,7 +323,7 @@ async function localReminders() {
   if (api.mode === "remote" && LS.get("pushOn") && vapid()) return; // the server sends these
   const reg = await swReg(); if (!reg) return;
   const shown = LS.get("shown", {}); const day = today(); const once = (k) => { if (shown[k]) return false; shown[k] = day; return true; };
-  const b = D.bread.find((x) => x.day === day);
+  const b = breadOf(D.bread.find((x) => x.day === day));
   if (b && once("bread:" + day)) reg.showNotification(`📖 ${t("breadTitle")}: ${b.title || ""}`, { body: `${b.verse || ""}\n${(b.body || "").slice(0, 140)}`, icon: "icon-192.png", tag: "bread", data: { url: "#/bread" } });
   if (me().dob && me().dob.slice(5) === day.slice(5) && once("bday:" + day)) reg.showNotification(t("hbdTitle", firstName(me().name)), { body: t("hbdBody"), icon: "icon-192.png", tag: "bday" });
   if (me().wed && me().wed.slice(5) === day.slice(5) && once("anniv:" + day)) reg.showNotification(t("annivTitle", firstName(me().name)), { body: t("annivBody"), icon: "icon-192.png", tag: "anniv" });
@@ -456,9 +462,9 @@ R.home = () => {
     <article class="card bread-card">
       <div class="kicker">${ic("bread")} ${esc(t("breadTitle"))}</div>
       ${b ? `
-        <p class="verse-ref">${esc(b.verse || "")}</p>
-        <h2>${esc(b.title || "")}</h2>
-        <p class="clamp">${esc(b.body || "")}</p>
+        <p class="verse-ref">${esc(breadOf(b).verse || "")}</p>
+        <h2>${esc(breadOf(b).title || "")}</h2>
+        <p class="clamp">${esc(breadOf(b).body || "")}</p>
         ${isGuest() ? `<div class="row"><a class="btn primary" href="#/bread/${b.day}">${esc(t("seeMore"))}</a></div>` : `<div class="row"><a class="btn primary" href="#/bread/${b.day}">${esc(t("readMore"))}</a><a class="btn wa" href="${wa(breadText(b))}" target="_blank" rel="noopener">${ic("wa")} WhatsApp</a></div>`}` : `
         <p class="muted">${esc(t("noBread"))}</p>
         ${isGuest() ? `<a class="btn" href="#/bread">${esc(t("seeMore"))}</a>` : isBreadMaker() ? `<a class="btn primary" href="#/bread/new">${ic("edit")} ${esc(t("writeBread"))}</a>` : `<a class="btn" href="#/bread">${esc(t("breadArchive"))}</a>`}`}
@@ -839,13 +845,16 @@ R.bread = (arg) => {
   const list = D.bread.filter((b) => isBreadMaker() || b.day <= day);
   const b = list.find((x) => x.day === (arg || day)) || (!arg ? list.find((x) => x.day <= day) : null);
   const future = isBreadMaker() ? D.bread.filter((x) => x.day > day).sort((a, c) => a.day.localeCompare(c.day)) : [];
+  const bls = breadLangs(b), bl = b ? breadOf(b) : null;
   return shell("#/home", `
-    ${b ? `<article class="bread-full">
-      <div class="kicker">${ic("bread")} ${esc(t("breadTitle"))} · ${esc(fmtDay(b.day))}</div><p>${speakBtn(".bread-full")}</p>
-      <h1>${esc(b.title || "")}</h1>
-      <p class="verse-ref big">${esc(b.verse || "")}</p>
-      <div class="pre body">${esc(b.body || "")}</div>
-      <p class="small muted">${esc(b.author_name || "")}</p>
+    ${b ? `<article class="bread-full" lang="${esc(bl.lang === "bt" ? "bbc" : bl.lang || lang)}">
+      <div class="kicker">${ic("bread")} ${esc(t("breadTitle"))} · ${esc(fmtDay(b.day))}</div>
+      ${bls.length > 1 ? `<div class="chips bread-langs" role="group" aria-label="${esc(L3("Bahasa", "Hata", "Language"))}">${bls.map((l) => `<button class="chip${l === bl.lang ? " on" : ""}" data-act="breadLang" data-l="${l}" aria-pressed="${l === bl.lang}">${esc({ id: "Indonesia", bt: "Batak", en: "English" }[l])}</button>`).join("")}</div>` : ""}
+      <p>${speakBtn(".bread-full")}</p>
+      <h1>${esc(bl.title || "")}</h1>
+      <p class="verse-ref big">${esc(bl.verse || "")}</p>
+      <div class="pre body">${esc(bl.body || "")}</div>
+      ${bls.length ? "" : `<p class="small muted">${esc(b.author_name || "")}</p>`}
       ${/[?&]wa=1/.test(location.hash) ? `<div class="card wa-send"><b>${ic("wa")} ${esc(t("waSendTitle"))}</b><p class="small">${esc(t("waSendSteps"))}</p><a class="btn wa block" href="${wa(breadText(b))}" target="_blank" rel="noopener">${ic("wa")} ${esc(t("waSendBtn"))}</a></div>` : ""}
       <div class="row two"><a class="btn wa" href="${wa(breadText(b))}" target="_blank" rel="noopener">${ic("wa")} ${esc(t("shareWa"))}</a><button class="btn" data-act="copyBread" data-day="${b.day}">${ic("share")} ${esc(t("copy"))}</button></div>
       ${isBreadMaker() ? `<div class="row two"><a class="btn" href="#/bread/edit-${b.day}">${ic("edit")} ${esc(t("edit"))}</a><button class="btn danger" data-act="del" data-kind="bread" data-id="${b.day}">${ic("trash")} ${esc(t("delete"))}</button></div>` : ""}
@@ -856,7 +865,7 @@ R.bread = (arg) => {
       <div class="row two"><a class="btn primary" href="#/bread/new">${ic("plus")} ${esc(t("writeBread"))}</a><button class="btn" data-act="genWeek">${ic("ai")} ${esc(t("genWeek"))}</button></div>
       ${future.length ? `<div class="chips">${future.map((x) => `<a class="chip" href="#/bread/${x.day}">${esc(fmtShort(x.day))}</a>`).join("")}</div>` : ""}</div>` : ""}
     <h3 class="sec-h">${esc(t("breadArchive"))}</h3>
-    <div class="card">${list.filter((x) => x.day <= day).slice(0, 40).map((x) => `<a class="li" href="#/bread/${x.day}"><span class="date-chip"><b>${esc(fmt(x.day, { day: "numeric" }))}</b><small>${esc(fmt(x.day, { month: "short" }))}</small></span><span class="grow"><b>${esc(x.title || "")}</b><small>${esc(x.verse || "")}</small></span></a>`).join("") || `<p class="muted small">${esc(t("noBread"))}</p>`}</div>`,
+    <div class="card">${list.filter((x) => x.day <= day).slice(0, 40).map((x) => `<a class="li" href="#/bread/${x.day}"><span class="date-chip"><b>${esc(fmt(x.day, { day: "numeric" }))}</b><small>${esc(fmt(x.day, { month: "short" }))}</small></span><span class="grow"><b>${esc(breadOf(x).title || "")}</b><small>${esc(breadOf(x).verse || "")}</small></span></a>`).join("") || `<p class="muted small">${esc(t("noBread"))}</p>`}</div>`,
     { back: "#/home", title: t("breadTitle"), sub: "HKBP Singapore" });
 };
 function breadEditor(day) {
@@ -5489,6 +5498,7 @@ A.openFile = async (d, btn) => {
     if (/pdf|image/.test(f.mime || "")) window.open(URL.createObjectURL(blob), "_blank"); else download(f.file_name || "roster", blob);
   });
 };
+A.breadLang = (d) => { LS.set("breadLang", d.l); render(); };
 A.copyBread = async (d) => { const b = D.bread.find((x) => x.day === d.day); try { await navigator.clipboard.writeText(breadText(b)); toast(t("copied")); } catch { toast(t("err_server"), true); } };
 A.genOne = async (d, btn) => {
   const f = btn.closest("form");

@@ -2,7 +2,8 @@
 // The database calls it every 15 minutes (pg_cron + pg_net), and also right away whenever a notification is queued in hk_outbox.
 // It sends phone notifications (Web Push):
 //  - daily bread at the hour the admin chose in the setup pop-up (default 06:00 Singapore time). When no elder wrote one, the
-//    verse of the day is used (YB 2026-10-30, free, no AI): a well-known passage, read from SABDA in TB or Toba, with a short prayer;
+//    verse of the day is used (YB 2026-10-30, free, no AI): a well-known passage with a short prayer, read from SABDA in all three
+//    languages (YB 2026-10-31: Indonesian TB, Batak Toba, English ESV, stored in hk_bread.langs; the app shows the reader's pick);
 //    the members picked as WhatsApp senders also get a "tap to post it in the WhatsApp group" notification
 //  - 08:00: birthday and wedding-anniversary wishes to the member, a "today in your category" notice to the rest of the category,
 //    and to each category leader a "tap to send the wishes to the WhatsApp group" notification
@@ -14,7 +15,7 @@
 //  - duty reminders written for the lock screen (YB 2026-10-30): Saturday 19:00 "Serving tomorrow · <jobs>",
 //    Sunday 06:00-10:00 "Serving today · <jobs>", one per member and section, from every roster
 //  - Saturday 18:00 weekly digest (YB 2026-10-30): tomorrow's Sunday and preacher, and this week's birthdays
-// All texts are in English (YB 2026-10-31), except the birthday and anniversary wishes, which keep the church's own wording.
+// All texts are in English (YB 2026-10-31), the birthday and anniversary wishes too.
 // Every message is logged in hk_sent (or marked sent in hk_outbox), so nothing is sent twice even if two runs overlap.
 //
 // SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY and SUPABASE_ANON_KEY are provided by Supabase. Everything else lives in the locked
@@ -30,12 +31,12 @@ const H = { apikey: KEY, authorization: "Bearer " + KEY, "content-type": "applic
 const BDAY_HOUR = 8;
 const WISH_HOUR = 19;
 const DIGEST_HOUR = 18;
-// Birthday and anniversary wishes (wording chosen by the church): a short title, and the full wish in the body,
+// Birthday and anniversary wishes (the church's wording, in English since YB 2026-10-31): a short title, and the full wish in the body,
 // because iPhone cuts long titles short on the lock screen but shows several lines of body text.
-const BDAY_TITLE = "🎂 Selamat Ulang Tahun!";
-const ANNIV_TITLE = "💍 Selamat Ulang Tahun Pernikahan!";
-const bdayBody = (name: string) => `Majelis dan Jemaat HKBP Singapore mengucapkan selamat ulang tahun untuk ${name}. Selalu hidup beriman, penuh kasih dan berpengharapan. Tuhan memberkati.`;
-const annivBody = (name: string) => `Majelis dan Jemaat HKBP Singapore mengucapkan selamat ulang tahun pernikahan untuk ${name} terkasih. Selalu hidup beriman, penuh kasih dan berpengharapan. Tuhan memberkati.`;
+const BDAY_TITLE = "🎂 Happy Birthday!";
+const ANNIV_TITLE = "💍 Happy Wedding Anniversary!";
+const bdayBody = (name: string) => `The Church Council and Congregation of HKBP Singapore wish ${name} a happy birthday. May you always live in faith, love and hope. God bless you.`;
+const annivBody = (name: string) => `The Church Council and Congregation of HKBP Singapore wish ${name} a happy wedding anniversary. May you always live in faith, love and hope. God bless you.`;
 
 // Verse of the day: well-known passages (TB book names); never the same within 120 days.
 const VERSES = ["Mazmur 23:1-4", "Yohanes 3:16-17", "Roma 8:28", "Filipi 4:6-7", "Yesaya 41:10", "Amsal 3:5-6", "Matius 11:28-30", "Yeremia 29:11", "Mazmur 46:2-4", "2 Korintus 5:17",
@@ -97,19 +98,39 @@ async function db(path: string, opt: RequestInit = {}) {
 const claim = async (key: string) =>
   (await db("hk_sent", { method: "POST", headers: { Prefer: "return=representation,resolution=ignore-duplicates" }, body: JSON.stringify({ key }) })).length > 0;
 
-// The verse of the day, read through the church's own Bible function (SABDA: TB for id/en, Toba for bt).
+// The verse of the day in all three languages, read from SABDA's passage API (the same source as hkbp-bible). SABDA understands
+// the TB book names in every version and answers with the reference in that version's own words ("John 3:16-17").
+const SABDA: Record<string, string> = { id: "tb", bt: "toba", en: "esv" };
+const BREAD_TITLE: Record<string, string> = { id: "Ayat Harian", bt: "Ayat Siganup Ari", en: "Verse of the Day" };
+const unent = (t: string) => t.replace(/&quot;/g, '"').replace(/&apos;|&#39;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&#(\d+);/g, (_, n) => String.fromCharCode(+n)).replace(/&amp;/g, "&");
+const clean = (t: string) => unent(t).replace(/<[^>]+>/g, "").replace(/^\s*(?:\((?:[IVXL]+\.?|\d+-\d+)\)\s*)+/, "").replace(/\s+/g, " ").trim();
+async function sabda(ref: string, l: string) {
+  const r = await fetch(`https://alkitab.sabda.org/api/passage.php?passage=${encodeURIComponent(ref)}&version=${SABDA[l]}`, { headers: { "user-agent": "Mozilla/5.0 (Sada HKBPS)" } });
+  if (!r.ok) throw new Error("sabda " + r.status);
+  const xml = await r.text();
+  const out: string[] = []; const vre = /<verse>\s*<number>(\d+)<\/number>(?:\s*<title>[\s\S]*?<\/title>)?\s*<text>([\s\S]*?)<\/text>/g;
+  let v; while ((v = vre.exec(xml))) { const t = clean(v[2]); if (t) out.push(`${v[1]} ${t}`); }
+  if (!out.length) throw new Error("sabda empty " + l);
+  const title = clean((xml.match(/<bible>\s*<title>([\s\S]*?)<\/title>/) || [])[1] || "");
+  return { verse: title || ref, title: BREAD_TITLE[l], body: `${out.join(" ")}\n\n${PRAYER[l]}` };
+}
+async function verseLangs(ref: string, only = Object.keys(SABDA)) {
+  const langs: Record<string, any> = {};
+  await Promise.all(only.map(async (l) => {
+    for (let i = 0; i < 2 && !langs[l]; i++) { try { langs[l] = await sabda(ref, l); } catch (e) { console.warn("verse", l, (e as Error).message); } }
+  }));
+  return langs;
+}
 async function verseBread(day: string, lang: string) {
   const recent = new Set((await db(`hk_bread?select=verse&day=gte.${new Date(Date.parse(day) - 120 * 864e5).toISOString().slice(0, 10)}`)).map((b: any) => b.verse));
   const idx = Math.floor(Date.parse(day + "T00:00:00Z") / 864e5);
   let ref = VERSES[idx % VERSES.length];
   for (let i = 1; recent.has(ref) && i < VERSES.length; i++) ref = VERSES[(idx + i * 7) % VERSES.length];
-  const auth = ANON ? { apikey: ANON, authorization: "Bearer " + ANON } : { apikey: KEY, authorization: "Bearer " + KEY };
-  const r = await fetch(`${BASE}/functions/v1/hkbp-bible?ref=${encodeURIComponent(ref)}&lang=${lang === "bt" ? "bbc" : "id"}`, { headers: auth });
-  const j = await r.json().catch(() => ({}));
-  if (!r.ok || !j.verses || !j.verses.length) throw new Error("bible " + r.status);
-  const text = j.verses.map((v: any) => `${v.v} ${v.t}`).join(" ");
-  const title = ({ id: "Ayat Harian", bt: "Ayat Siganup Ari", en: "Verse of the Day" } as Record<string, string>)[lang] || "Ayat Harian";
-  const b = { day, verse: ref, title, body: `${text}\n\n${PRAYER[lang] || PRAYER.id}`, author_name: "Ayat Harian" };
+  const langs = await verseLangs(ref);
+  const main = langs[lang] || langs.id || langs.en || langs.bt;
+  if (!main) throw new Error("bible unavailable");
+  // verse keeps the TB reference, so the 120-day check above keeps working whatever the main language is
+  const b = { day, verse: ref, title: main.title, body: main.body, langs, author_name: "Ayat Harian" };
   await db("hk_bread", { method: "POST", headers: { Prefer: "resolution=ignore-duplicates" }, body: JSON.stringify(b) });
   return b;
 }
@@ -170,10 +191,17 @@ async function run(S: Record<string, any>) {
   }
   if (hour >= breadHour) {
     const [b] = await db(`hk_bread?day=eq.${today}&removed_at=is.null&select=*`);
+    // a verse of the day made before the three languages, or with one that SABDA did not answer: fill in what is missing
+    const miss = b && b.author_name === "Ayat Harian" && b.verse ? Object.keys(SABDA).filter((l) => !(b.langs || {})[l]) : [];
+    if (miss.length) {
+      try { const got = await verseLangs(b.verse, miss); if (Object.keys(got).length) { b.langs = { ...(b.langs || {}), ...got }; await db(`hk_bread?day=eq.${today}`, { method: "PATCH", body: JSON.stringify({ langs: b.langs }) }); } }
+      catch (e) { console.warn("verse langs", (e as Error).message); }
+    }
     if (b && await claim("bread:" + today)) {
-      await push(members, { title: `📖 ${b.title || "Daily Bread"} · ${b.verse || ""}`, body: (b.body || "").slice(0, 220), url: `#/bread/${today}`, tag: "bread" });
+      const pb = (b.author_name === "Ayat Harian" && b.langs && b.langs.en) || b;   // the push is in English
+      await push(members, { title: `📖 ${pb.title || "Daily Bread"} · ${pb.verse || ""}`, body: (pb.body || "").slice(0, 220), url: `#/bread/${today}`, tag: "bread" });
       const who = members.filter((m: any) => senders.includes(m.id));
-      await push(who, { title: "📲 Share the devotion in the WhatsApp group", body: `${b.title || ""}: tap to share it in the "Daily Bread" group.`, url: `#/bread/${today}?wa=1`, tag: "bread-wa" });
+      await push(who, { title: "📲 Share the devotion in the WhatsApp group", body: `${pb.title || ""}: tap to share it in the "Daily Bread" group.`, url: `#/bread/${today}?wa=1`, tag: "bread-wa" });
     }
   }
   // 2. Birthdays and wedding anniversaries (08:00 to 21:00 only, so a late run never wakes anyone)
