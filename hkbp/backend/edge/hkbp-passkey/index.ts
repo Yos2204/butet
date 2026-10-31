@@ -21,8 +21,8 @@ const BASE = (E.SUPABASE_URL || "").replace(/\/$/, "");
 const KEY = E.SUPABASE_SERVICE_ROLE_KEY || "";
 const H = { apikey: KEY, authorization: "Bearer " + KEY, "content-type": "application/json" };
 const CORS = { "access-control-allow-origin": "*", "access-control-allow-headers": "authorization, apikey, content-type", "access-control-allow-methods": "POST, OPTIONS" };
-// The app's address decides the passkey's home (RP ID). Only these may use it.
-const ORIGINS: Record<string, string> = { "https://yos2204.github.io": "yos2204.github.io", "http://localhost:8080": "localhost" };
+// The app's address decides the passkey's home (RP ID). Only the live app may use it.
+const ORIGINS: Record<string, string> = { "https://yos2204.github.io": "yos2204.github.io" };
 
 async function db(path: string, opt: RequestInit = {}) {
   const r = await fetch(`${BASE}/rest/v1/${path}`, { ...opt, headers: { ...H, ...(opt.headers || {}) } });
