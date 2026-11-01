@@ -73,16 +73,22 @@ begin
   end loop;
 end $$;
 
+-- Is this roster name a Multimedia Maker (or the admin)? Matched on name or alias, like hk__same.
+create or replace function hk__mm_maker(pn text) returns boolean language sql stable set search_path = public as $$
+  select exists (select 1 from hk_members m where m.removed_at is null and hk__maker(m)
+    and (hk__same(hk__pn(m.name), pn) or exists (select 1 from unnest(regexp_split_to_array(coalesce(m.alias, ''), '[,;/]')) a where hk__same(hk__pn(a), pn))))
+$$;
+
 -- Names in this roster that already serve elsewhere on the same date (another roster, or another job here).
 -- Only names that are new in this save count, so an older clash never blocks editing another Sunday.
 create or replace function hk__roster_clash(p_rid uuid, p_gid text, tj jsonb, ym text) returns jsonb language sql stable set search_path = public as $$
-  -- Multimedia slide makers (job "Slides", not "Operator Slide") may be double-booked (YB 2026-11-01), like practices.
-  with nw as (select * from hk__roster_slots(tj, ym) x where not (p_gid = 'multimedia' and lower(x.job) ~ 'slide' and lower(x.job) !~ 'operat')),
+  -- A Multimedia Maker on a Multimedia slides job may be double-booked (YB 2026-11-01); slides people who are not Makers may not.
+  with nw as (select * from hk__roster_slots(tj, ym) x where not (p_gid = 'multimedia' and lower(x.job) ~ 'slide' and hk__mm_maker(x.pn))),
   od as (select s.* from hk_rosters r, hk__roster_slots(r.table_json, r.month) s where r.id = p_rid and r.group_id = p_gid),
   fresh as (select n.* from nw n where not exists (select 1 from od o where o.day = n.day and o.job = n.job and o.pn = n.pn)),
   oth as (select r.group_id, s.* from hk_rosters r, hk__roster_slots(r.table_json, r.month) s
           where r.removed_at is null and r.table_json is not null and r.id is distinct from p_rid
-            and not (r.group_id = 'multimedia' and lower(s.job) ~ 'slide' and lower(s.job) !~ 'operat')
+            and not (r.group_id = 'multimedia' and lower(s.job) ~ 'slide' and hk__mm_maker(s.pn))
             and r.month in (to_char(to_date(ym || '-01', 'YYYY-MM-DD') - interval '1 month', 'YYYY-MM'), ym, to_char(to_date(ym || '-01', 'YYYY-MM-DD') + interval '1 month', 'YYYY-MM'))),
   hits as (
     select f.day, f.job, f.who, o.group_id as other_group, o.job as other_job, o.who as other_who from fresh f join oth o on o.day = f.day and hk__same(f.pn, o.pn)
@@ -93,4 +99,4 @@ create or replace function hk__roster_clash(p_rid uuid, p_gid text, tj jsonb, ym
   from (select * from hits limit 40) h left join hk_groups g on g.id = h.other_group
 $$;
 
-revoke all on function hk__pn(text), hk__same(text, text), hk__cell_date(text, text), hk__roster_slots(jsonb, text), hk__roster_clash(uuid, text, jsonb, text) from public, anon, authenticated;
+revoke all on function hk__mm_maker(text), hk__pn(text), hk__same(text, text), hk__cell_date(text, text), hk__roster_slots(jsonb, text), hk__roster_clash(uuid, text, jsonb, text) from public, anon, authenticated;

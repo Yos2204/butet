@@ -102,8 +102,11 @@ function rosterSlots(tj, ym) {
   });
   return out;
 }
-function rosterClash(rosters, groups, rid, gid, tj, ym) {
-  const slideOk = (g, s) => g === "multimedia" && /slide/i.test(s.job) && !/operat/i.test(s.job);   // Multimedia slide makers (not Operator Slide) may be double-booked (YB 2026-11-01)
+function rosterClash(rosters, groups, rid, gid, tj, ym, members) {
+  // A Multimedia Maker on a Multimedia slides job may be double-booked (YB 2026-11-01); slides people who are not Makers may not.
+  const mk = (members || []).filter((m) => !m.removed_at && (m.is_admin || ["maker", "chair"].includes((m.groups || {}).multimedia)));
+  const isMk = (pn) => mk.some((m) => rcSame(rcPn(m.name), pn) || String(m.alias || "").split(/[,;\/]/).some((a) => rcSame(rcPn(a), pn)));
+  const slideOk = (g, s) => g === "multimedia" && /slide/i.test(s.job) && isMk(s.pn);
   const nw = rosterSlots(tj, ym).filter((s) => !slideOk(gid, s)); const self = rosters.find((r) => r.id === rid && r.group_id === gid);
   const od = self ? rosterSlots(self.table_json, self.month) : [];
   const fresh = nw.filter((n) => !od.some((o) => o.day === n.day && o.job === n.job && o.pn === n.pn));
@@ -256,10 +259,10 @@ const Local = {
       res = upsert(db.posts, { id: d.id || uid(), group_id: gid, kind: d.kind || "news", title: d.title, verse: d.verse, body: d.body, day: d.day || null, author_name: m.name, created_at: d.created_at || now });
     } else if (kind === "roster_check") {
       if (!this.chair(m, gid)) deny();
-      return rosterClash(db.rosters, db.groups, d.id, gid, d.table_json, d.month);
+      return rosterClash(db.rosters, db.groups, d.id, gid, d.table_json, d.month, db.members);
     } else if (kind === "roster") {
       if (!this.chair(m, gid)) deny();
-      const clash = rosterClash(db.rosters, db.groups, d.id, gid, d.table_json, d.month);
+      const clash = rosterClash(db.rosters, db.groups, d.id, gid, d.table_json, d.month, db.members);
       if (clash.length) { const e = new AppError("roster_clash"); e.clash = clash; throw e; }
       res = upsert(db.rosters, { id: d.id || uid(), group_id: gid, month: d.month, title: d.title, file_name: d.file_name, mime: d.mime, file_b64: d.file_b64 || null, link: d.link || null, table_json: d.table_json || null, text_content: d.text_content || "", author_name: m.name, created_at: now });
     } else if (kind === "bread") {
