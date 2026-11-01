@@ -61,6 +61,12 @@ try { document.head.insertAdjacentHTML("beforeend", `<style>
   .nt-show.idle .nt-bar { opacity: 0; transition: opacity .6s; }
   .nt-x { position: absolute; top: calc(10px + env(safe-area-inset-top)); right: calc(10px + env(safe-area-inset-right)); z-index: 3; width: 48px; height: 48px; border-radius: 50%; border: 0; background: rgba(0,0,0,.55); color: #fff; font-size: 22px; line-height: 48px; padding: 0; cursor: pointer; }
   .nt-show.inv .nt-x { background: rgba(255,255,255,.25); }
+  .nt-dfull { position: fixed; inset: 0; z-index: 9999; background: #fff; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+  .nt-dfull .nt-page { max-width: 900px; margin: 0 auto; padding: calc(64px + env(safe-area-inset-top)) 12px calc(40px + env(safe-area-inset-bottom)); color: #111; }
+  .nt-dfull .nt-page img { display: block; width: 100%; height: auto; }
+  .nt-dfull .nt-x { position: fixed; }
+  .nt-dfull .nt-plyr .card { background: none; box-shadow: none; border: 0; padding: 8px 4px 0; }
+  .nt-dfull.inv { background: #000; } .nt-dfull.inv .nt-page { color: #eee; } .nt-dfull.inv .nt-page img { filter: invert(1); }
   .nt-tap { position: absolute; top: 0; bottom: 48px; width: 35%; z-index: 1; } .nt-tap.l { left: 0; } .nt-tap.r { right: 0; }
 </style>`); } catch (e) {}
 
@@ -115,6 +121,7 @@ function ntSong(book, n) {
         <button class="btn sm" data-act="ntZoom" data-d="-0.25" aria-label="${esc(L3("Perkecil", "Perkecil", "Smaller"))}">A−</button>
         <button class="btn sm" data-act="ntZoom" data-d="0.25" aria-label="${esc(L3("Perbesar", "Perbesar", "Bigger"))}">A+</button>
         <button class="btn sm" data-act="ntInv" aria-label="${esc(L3("Warna gelap", "Warna gelap", "Dark colours"))}">🌓</button>
+        <button class="btn sm" data-act="ntDocFull" aria-label="${esc(L3("Layar penuh", "Layar penuh", "Full screen"))}">⛶ ${esc(L3("Layar penuh", "Layar penuh", "Full screen"))}</button>
       </div>
       <div class="nt-doc${inv ? " inv" : ""}" style="--z:${z}"><img src="${ntImg(book, s.n)}" alt="${esc(b.name + " " + s.n + ". " + s.t)}" width="${ix.w}" height="${s.h}" loading="eager" decoding="async"></div>
       <div id="ntLyrics"></div>
@@ -162,6 +169,18 @@ function ntPaint() {
   el.querySelector(".nt-bar b").textContent = `${NT_BOOKS[sh.book].name} ${sh.s.n}. ${sh.s.t} · ${sh.i + 1}/${sh.cuts.length - 1}`;
 }
 A.ntGo = (d) => { const sh = NT.show; if (!sh) return; sh.i = Math.max(0, Math.min(sh.cuts.length - 2, sh.i + +d.d)); ntPaint(); ntIdle(); };
+// Full-screen Doc: the whole song as one white page you scroll top to bottom, like a Word document; one X closes it.
+A.ntDocFull = () => {
+  const src = document.querySelector(".nt-doc img"); if (!src) return;
+  let el = document.getElementById("ntDocFull"); if (el) el.remove();
+  el = document.createElement("div"); el.id = "ntDocFull"; el.className = "nt-dfull" + (LS.get("ntInv", false) ? " inv" : "");
+  el.setAttribute("role", "dialog");
+  const ly = document.getElementById("ntLyrics");
+  el.innerHTML = `<button class="nt-x" data-act="ntDocClose" aria-label="${esc(L3("Tutup", "Tutup", "Close"))}">✕</button>
+    <div class="nt-page"><img alt="" src="${src.getAttribute("src")}">${ly && ly.innerHTML.trim() ? `<div class="nt-plyr">${ly.innerHTML}</div>` : ""}</div>`;
+  document.body.appendChild(el); document.documentElement.style.overflow = "hidden";
+};
+A.ntDocClose = () => { const el = document.getElementById("ntDocFull"); if (el) el.remove(); document.documentElement.style.overflow = ""; };
 A.ntClose = () => { const el = document.getElementById("ntShow"); if (el) el.remove(); NT.show = null; try { if (document.fullscreenElement) document.exitFullscreen(); } catch (e) {} };
 A.ntInvShow = () => { const v = !LS.get("ntInvShow", false); LS.set("ntInvShow", v); const el = document.getElementById("ntShow"); if (el) el.classList.toggle("inv", v); };
 A.ntFull = async () => { const el = document.getElementById("ntShow"); try { if (document.fullscreenElement) await document.exitFullscreen(); else if (el && el.requestFullscreen) await el.requestFullscreen(); } catch (e) {} };
@@ -173,11 +192,13 @@ document.addEventListener("keydown", (e) => {
   else if (e.key === "Home") { NT.show.i = 0; ntPaint(); } else if (e.key === "End") { NT.show.i = NT.show.cuts.length - 2; ntPaint(); }
   else if (e.key === "Escape" && !document.fullscreenElement) A.ntClose();
 });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && document.getElementById("ntDocFull")) A.ntDocClose();
+});
 document.addEventListener("mousemove", () => { if (NT.show) ntIdle(); });
 (() => { let x0 = null, y0 = null;
   document.addEventListener("touchstart", (e) => { if (!NT.show || !e.target.closest("#ntShow")) return; x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; ntIdle(); }, { passive: true });
   document.addEventListener("touchend", (e) => { if (!NT.show || x0 == null) return; const dx = e.changedTouches[0].clientX - x0, dy = e.changedTouches[0].clientY - y0; x0 = null;
     if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy)) A.ntGo({ d: dx < 0 ? 1 : -1 }); }, { passive: true });
 })();
-addEventListener("hashchange", () => { if (NT.show) A.ntClose(); });
+addEventListener("hashchange", () => { if (NT.show) A.ntClose(); if (document.getElementById("ntDocFull")) A.ntDocClose(); });
 };
