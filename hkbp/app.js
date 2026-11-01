@@ -7714,6 +7714,7 @@ const NO_DL_FRAME = `<style>*{-webkit-user-select:none!important;user-select:non
 
 // Not angka hymnals (notasi.js, loaded before this file)
 if (window.SADA_NOTASI) window.SADA_NOTASI({ R, A, L3, shell, tile, skel, empty, ic, LS, norm, esc, isGuest, songsLoad });
+if (window.SADA_FIELDS) window.SADA_FIELDS({ D: () => D, L3, norm, esc, avatarOf, closeSheet, render, rosterJobs, ROSTER_JOBS });
 
 // ---------- start ----------
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
