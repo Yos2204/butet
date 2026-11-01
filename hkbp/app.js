@@ -458,6 +458,7 @@ R.home = () => {
       ${isGuest() ? "" : `<a class="search-entry hero-search" href="#/search">${ic("search")}<span>${esc(L3("Cari anggota, lagu, dokumen, acara…", "Lului ruas, ende, dokumen…", "Search members, songs, documents, events…"))}</span></a>`}
     </section>
     ${isGuest() ? `<button class="card notify-ask" data-act="signIn">${ic("lock")}<span><b>${esc(t("guestTitle"))}</b><small>${esc(L3("Masuk untuk melihat Tata Ibadah, kalender, roster, kategorial dan tugas Anda.", "Bongot jolo asa diida Tata Ibadah, kalender, roster, kategorial dohot ulaonmu.", "Sign in to see the Tata Ibadah, calendar, rosters, your categories and your duties."))}</small></span>${ic("chev", "chev")}</button>` : ""}
+    ${isGuest() ? `<a class="card notify-ask" href="#/notasi"><span style="font-size:24px">🎼</span><span><b>${esc(L3("Not Angka lagu gereja", "Not Angka ende", "Hymn number notation"))}</b><small>Buku Ende · Buku Nyanyian HKBP · Kidung Jemaat</small></span>${ic("chev", "chev")}</a>` : ""}
     ${mine ? `<div class="card hbd">${ic("cake")}<div><h2>${esc(t("hbdTitle", firstName(m.name)))}</h2><p>${esc(t("hbdBody"))}</p></div></div>` : ""}
     ${wishesCard()}
     ${m.wed && m.wed.slice(5) === day.slice(5) ? `<div class="card hbd">💍<div><h2>${esc(t("annivTitle", firstName(m.name)))}</h2><p>${esc(t("annivBody"))}</p></div></div>` : ""}
@@ -1042,8 +1043,8 @@ async function render() {
     if (!api.hasSession() && await api.needsSetup()) { await R.login(); return; }
     if (!D) await refresh();
     if (!r) { history.replaceState(null, "", "#/home"); r = "home"; }
-    if (isGuest() && !["home", "bread", "checkin"].includes(r)) { history.replaceState(null, "", "#/home"); r = "home"; arg = undefined; }
-    const map = { quizwb: R.quizwb, sunday: R.sunday, usage: R.usage, tarombo: R.tarombo, rpp: R.rpp, lit: R.lit, litwb: R.litwb, doc: R.doc, library: R.library, song: R.song, access: R.access, sswb: R.sswb, ssdeck: R.ssdeck, fx: R.fx, meet: R.meet, tutur: R.tutur, ende: R.ende, stories: R.stories, voyage: R.voyage, live: R.live, grief: R.grief, care: R.care, search: R.search, prayer: R.prayer, checkin: R.checkin, checkinqr: R.checkinqr, chat: R.chat, call: R.call, tata: R.tata, home: R.home, groups: R.groups, g: R.group, serve: R.serve, s: R.section, calendar: R.calendar, bread: R.bread, elders: R.elders, berita: R.berita, people: R.people, more: R.more, appstatus: R.appstatus, o: R.office, warta: R.warta };
+    if (isGuest() && !["home", "bread", "checkin", "notasi"].includes(r)) { history.replaceState(null, "", "#/home"); r = "home"; arg = undefined; }
+    const map = { quizwb: R.quizwb, sunday: R.sunday, usage: R.usage, tarombo: R.tarombo, rpp: R.rpp, lit: R.lit, litwb: R.litwb, doc: R.doc, library: R.library, song: R.song, notasi: R.notasi, access: R.access, sswb: R.sswb, ssdeck: R.ssdeck, fx: R.fx, meet: R.meet, tutur: R.tutur, ende: R.ende, stories: R.stories, voyage: R.voyage, live: R.live, grief: R.grief, care: R.care, search: R.search, prayer: R.prayer, checkin: R.checkin, checkinqr: R.checkinqr, chat: R.chat, call: R.call, tata: R.tata, home: R.home, groups: R.groups, g: R.group, serve: R.serve, s: R.section, calendar: R.calendar, bread: R.bread, elders: R.elders, berita: R.berita, people: R.people, more: R.more, appstatus: R.appstatus, o: R.office, warta: R.warta };
     try { usageTick(r); } catch (e) {}
     const html = (map[r] || R.notFound)(arg);
     if (typeof html === "string") view().innerHTML = html;
@@ -2561,6 +2562,12 @@ function docsHome() {
       ${tile("#/library?s=BE", "🎶", "Buku Ende", L3("Nomor & judul", "Nomor & judul", "By number and title"))}
       ${tile("#/library?s=BN", "🎼", "Buku Nyanyian", "HKBP")}
     </div>
+    <h3 class="sec-h">${esc(L3("Not Angka", "Not Angka", "Number notation"))}</h3>
+    <div class="doc-grid">
+      ${tile("#/notasi/BE", "🎶", "Buku Ende", L3("Not angka · Doc & Slides", "Not angka · Doc & Slides", "Notation · Doc & Slides"))}
+      ${tile("#/notasi/BN", "🎼", "Buku Nyanyian HKBP", L3("Not angka · Doc & Slides", "Not angka · Doc & Slides", "Notation · Doc & Slides"))}
+      ${tile("#/notasi/KJ", "🎵", "Kidung Jemaat", L3("Not angka · Doc & Slides", "Not angka · Doc & Slides", "Notation · Doc & Slides"))}
+    </div>
     <h3 class="sec-h">${esc(L3("Buku gereja", "Buku ni huria", "Church books"))}</h3>
     <div class="doc-grid" id="docTiles">${docTiles()}</div>`, {});
 }
@@ -2901,6 +2908,7 @@ R.song = (key) => {
     box.innerHTML = `<div class="song-head"><span class="song-book">${esc((SONG_BOOKS[x.b] || [x.b])[0])}${x.n != null ? " · " + x.n : ""}</span><h2>${esc(x.t || "")}</h2></div>
       <div class="song-text" style="font-size:${fs}px">${nums.map((n, i) => `<div class="sv"><span class="svn">${n}</span><div>${x.v[n].map((l) => `<p>${esc(l)}</p>`).join("")}</div></div>${i === 0 && (x.r || []).length ? `<div class="sv reff"><span class="svn">Reff</span><div>${x.r.map((l) => `<p>${esc(l)}</p>`).join("")}</div></div>` : ""}`).join("")}</div>
       <div class="row two" style="margin-top:14px"><button class="btn" data-act="songFs" data-d="-2">A−</button><button class="btn" data-act="songFs" data-d="2">A+</button></div>
+      ${x.n != null && ["BE", "BN", "KJ"].includes(x.b) ? `<a class="btn block" href="#/notasi/${x.b}/${x.n}">🎼 ${esc(L3("Lihat not angka", "Ida not angka", "See the number notation"))}</a>` : ""}
       ${x.b === "BE" ? `<button class="btn block" data-act="songMeaning" data-k="${esc(x.k)}">🎵 ${esc(L3("Arti setiap baris", "Lapatan", "The meaning of each line"))}</button>` : ""}
       ${canSongs() ? `<button class="btn ghost block" data-act="songEdit" data-k="${esc(x.k)}">✏️ ${esc(L3("Ubah lagu ini", "Ubah", "Edit this song"))}</button>` : ""}`; }, 0);
   return shell("#/library", `<div id="songBox">${skel(3)}</div>`, { back: "#/library", title: L3("Nyanyian", "Ende", "Songs") });
@@ -7465,6 +7473,9 @@ document.addEventListener("bip", () => { if (gateState !== "done") gateRender();
 document.addEventListener("hk-installed", () => { gateState = "done"; gateRender(); });
 try { matchMedia("(display-mode: standalone)").addEventListener("change", () => gateRender()); } catch {}
 gateRender();
+
+// Not angka hymnals (notasi.js, loaded before this file)
+if (window.SADA_NOTASI) window.SADA_NOTASI({ R, A, L3, shell, tile, skel, empty, ic, LS, norm, esc, isGuest });
 
 // ---------- start ----------
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
