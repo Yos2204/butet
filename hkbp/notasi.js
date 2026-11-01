@@ -28,7 +28,7 @@ addEventListener("pageshow", (e) => { if (e.persisted) ntResume(); });
 try { ["BE", "BN", "KJ", "PKJ"].forEach((b) => LS.set("ntq:" + b, null)); } catch (e) {}
 async function ntIndex(book) {
   if (NT.idx[book]) return NT.idx[book];
-  const r = await fetch(`notasi/${book.toLowerCase()}/index.json?v=1`); if (!r.ok) throw new Error("index " + r.status);
+  const r = await fetch(`notasi/${book.toLowerCase()}/index.json?v=2`); if (!r.ok) throw new Error("index " + r.status);
   const j = await r.json(); j.songs = j.songs.map(([n, t, h, cuts]) => ({ n, t, h, cuts })); NT.idx[book] = j; return j;
 }
 const ntImg = (book, n) => `notasi/${book.toLowerCase()}/${encodeURIComponent(n)}.png?v=1`;
