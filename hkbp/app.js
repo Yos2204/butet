@@ -2921,7 +2921,7 @@ R.song = (key) => {
     box.innerHTML = `<div class="song-head"><span class="song-book">${esc((SONG_BOOKS[x.b] || [x.b])[0])}${x.n != null ? " · " + x.n : ""}</span><h2>${esc(x.t || "")}</h2></div>
       <div class="song-text" style="font-size:${fs}px">${nums.map((n, i) => `<div class="sv"><span class="svn">${n}</span><div>${x.v[n].map((l) => `<p>${esc(l)}</p>`).join("")}</div></div>${i === 0 && (x.r || []).length ? `<div class="sv reff"><span class="svn">Reff</span><div>${x.r.map((l) => `<p>${esc(l)}</p>`).join("")}</div></div>` : ""}`).join("")}</div>
       <div class="row two" style="margin-top:14px"><button class="btn" data-act="songFs" data-d="-2">A−</button><button class="btn" data-act="songFs" data-d="2">A+</button></div>
-      ${x.n != null && ["BE", "BN", "KJ", "PKJ"].includes(x.b) ? `<a class="btn block" href="#/notasi/${x.b}/${x.n}">🎼 ${esc(L3("Lihat not angka", "Ida not angka", "See the number notation"))}</a>` : ""}
+      ${["BE", "BN", "KJ", "PKJ"].includes(x.b) && (x.n != null || x.k === "PKJ:ES") ? `<a class="btn block" href="#/notasi/${x.b}/${x.n != null ? x.n : x.k.split(":")[1]}">🎼 ${esc(L3("Lihat not angka", "Ida not angka", "See the number notation"))}</a>` : ""}
       ${x.b === "BE" ? `<button class="btn block" data-act="songMeaning" data-k="${esc(x.k)}">🎵 ${esc(L3("Arti setiap baris", "Lapatan", "The meaning of each line"))}</button>` : ""}
       ${canSongs() ? `<button class="btn ghost block" data-act="songEdit" data-k="${esc(x.k)}">✏️ ${esc(L3("Ubah lagu ini", "Ubah", "Edit this song"))}</button>` : ""}`; }, 0);
   return shell("#/library", `<div id="songBox">${skel(3)}</div>`, { back: "#/library", title: L3("Nyanyian", "Ende", "Songs") });
