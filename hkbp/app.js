@@ -1049,21 +1049,10 @@ async function render() {
     if (typeof html === "string") view().innerHTML = html;
     draftRestore(view()); wAutoBase();
     document.title = r === "home" ? "Sada HKBPS" : `${$(".brand b") ? $(".brand b").textContent : ""} · Sada HKBPS`;
-    hydrate(); crispHeader();
+    hydrate();
   } catch (e) { console.error(e); view().innerHTML = `<div class="login">${empty(errMsg(e))}<button class="btn primary" data-act="retry">${esc(t("retry"))}</button></div>`; }
   finally { rendering = false; }
 }
-// iPhones sometimes paint the sticky header title blurry and faded until the page is scrolled (YB 2026-11-01).
-// Scrolling makes Safari redraw the header layer; this does the same redraw by itself, right after a page opens,
-// when the fonts finish loading, and when the app comes back to the front.
-function crispHeader() {
-  const go = () => { const h = document.querySelector("header.top"); if (!h) return; const b = h.querySelector(".brand b");
-    if (b) b.replaceWith(b.cloneNode(true));
-    h.style.transform = "translateZ(0)"; requestAnimationFrame(() => requestAnimationFrame(() => { h.style.transform = ""; })); };
-  requestAnimationFrame(go); setTimeout(go, 350); setTimeout(go, 1200);
-}
-try { if (document.fonts) { document.fonts.ready.then(crispHeader); document.fonts.addEventListener("loadingdone", crispHeader); } } catch (e) {}
-addEventListener("pageshow", crispHeader); document.addEventListener("visibilitychange", () => { if (!document.hidden) crispHeader(); });
 function hydrate() {
   // Jarvis "go" (YB 2026-10-26) opens #/s/multimedia?wb=1: open the workbench straight away for a Multimedia Maker.
   if (/^#\/s\/multimedia\?(.*&)?wb=1\b/.test(location.hash) && D && !isGuest() && !document.getElementById("wb")) {
