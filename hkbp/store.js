@@ -103,13 +103,14 @@ function rosterSlots(tj, ym) {
   return out;
 }
 function rosterClash(rosters, groups, rid, gid, tj, ym) {
-  const nw = rosterSlots(tj, ym); const self = rosters.find((r) => r.id === rid && r.group_id === gid);
+  const slideOk = (g, s) => g === "multimedia" && /slide/i.test(s.job) && !/operat/i.test(s.job);   // Multimedia slide makers (not Operator Slide) may be double-booked (YB 2026-11-01)
+  const nw = rosterSlots(tj, ym).filter((s) => !slideOk(gid, s)); const self = rosters.find((r) => r.id === rid && r.group_id === gid);
   const od = self ? rosterSlots(self.table_json, self.month) : [];
   const fresh = nw.filter((n) => !od.some((o) => o.day === n.day && o.job === n.job && o.pn === n.pn));
   const sh = (k) => { const d = new Date((ym || "2000-01") + "-15T12:00:00Z"); d.setUTCMonth(d.getUTCMonth() + k); return d.toISOString().slice(0, 7); };
   const months = [sh(-1), ym, sh(1)]; const out = []; const seen = new Set();
   const add = (f, g, o) => { const k = [f.day, f.job, f.who, g, o.job, o.who].join("|"); if (seen.has(k)) return; seen.add(k); const G = groups.find((x) => x.id === g) || {}; out.push({ day: f.day, job: f.job, who: f.who, group_id: g, group: G.name_id || g, group_en: G.name_en || G.name_id || g, other_job: o.job, other_who: o.who }); };
-  rosters.filter((r) => !r.removed_at && r.table_json && r.id !== rid && months.includes(r.month)).forEach((r) => rosterSlots(r.table_json, r.month).forEach((o) => fresh.forEach((f) => { if (o.day === f.day && rcSame(f.pn, o.pn)) add(f, r.group_id, o); })));
+  rosters.filter((r) => !r.removed_at && r.table_json && r.id !== rid && months.includes(r.month)).forEach((r) => rosterSlots(r.table_json, r.month).filter((o) => !slideOk(r.group_id, o)).forEach((o) => fresh.forEach((f) => { if (o.day === f.day && rcSame(f.pn, o.pn)) add(f, r.group_id, o); })));
   fresh.forEach((f) => nw.forEach((n) => { if (n.day === f.day && n.job !== f.job && rcSame(f.pn, n.pn)) add(f, gid, n); }));
   return out.sort((a, b) => a.day.localeCompare(b.day) || a.who.localeCompare(b.who)).slice(0, 40);
 }
