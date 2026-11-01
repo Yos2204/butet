@@ -9,6 +9,7 @@ const NT_BOOKS = {
   BE: { name: "Buku Ende", sub: ["Not angka · Bahasa Batak", "Not angka · Hata Batak", "Number notation · Batak"], icon: "🎶" },
   BN: { name: "Buku Nyanyian HKBP", sub: ["Not angka · Bahasa Indonesia", "Not angka · Hata Indonesia", "Number notation · Indonesian"], icon: "🎼" },
   KJ: { name: "Kidung Jemaat", sub: ["Not angka · Bahasa Indonesia", "Not angka · Hata Indonesia", "Number notation · Indonesian"], icon: "🎵" },
+  PKJ: { name: "Pelengkap Kidung Jemaat", sub: ["Not angka · Bahasa Indonesia", "Not angka · Hata Indonesia", "Number notation · Indonesian"], icon: "🎹" },
 };
 const NT = { idx: {}, show: null };
 // The search text lives only in memory, so it is empty whenever the app starts again. iPhone often keeps the app
@@ -16,7 +17,7 @@ const NT = { idx: {}, show: null };
 // comes back after being away for 20 seconds or more.
 const NTQ = {};
 const ntQ = { get: (b) => NTQ[b] || "", set: (b, v) => { NTQ[b] = v; } };
-try { ["BE", "BN", "KJ"].forEach((b) => sessionStorage.removeItem("ntq:" + b)); } catch (e) {}
+try { ["BE", "BN", "KJ", "PKJ"].forEach((b) => sessionStorage.removeItem("ntq:" + b)); } catch (e) {}
 let ntAway = 0;
 const ntResume = () => {
   for (const k in NTQ) delete NTQ[k];
@@ -24,7 +25,7 @@ const ntResume = () => {
 };
 document.addEventListener("visibilitychange", () => { if (document.hidden) ntAway = Date.now(); else if (ntAway && Date.now() - ntAway >= 20000) { ntAway = 0; ntResume(); } });
 addEventListener("pageshow", (e) => { if (e.persisted) ntResume(); });
-try { ["BE", "BN", "KJ"].forEach((b) => LS.set("ntq:" + b, null)); } catch (e) {}
+try { ["BE", "BN", "KJ", "PKJ"].forEach((b) => LS.set("ntq:" + b, null)); } catch (e) {}
 async function ntIndex(book) {
   if (NT.idx[book]) return NT.idx[book];
   const r = await fetch(`notasi/${book.toLowerCase()}/index.json?v=1`); if (!r.ok) throw new Error("index " + r.status);
