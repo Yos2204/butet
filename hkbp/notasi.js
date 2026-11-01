@@ -28,7 +28,7 @@ addEventListener("pageshow", (e) => { if (e.persisted) ntResume(); });
 try { ["BE", "BN", "KJ", "PKJ"].forEach((b) => LS.set("ntq:" + b, null)); } catch (e) {}
 async function ntIndex(book) {
   if (NT.idx[book]) return NT.idx[book];
-  const r = await fetch(`notasi/${book.toLowerCase()}/index.json?v=4`); if (!r.ok) throw new Error("index " + r.status);
+  const r = await fetch(`notasi/${book.toLowerCase()}/index.json?v=5`); if (!r.ok) throw new Error("index " + r.status);
   const j = await r.json(); j.songs = j.songs.map(([n, t, h, cuts]) => ({ n, t, h, cuts })); NT.idx[book] = j; return j;
 }
 const ntImg = (book, n) => `notasi/${book.toLowerCase()}/${encodeURIComponent(n)}.png?v=1`;
@@ -136,7 +136,7 @@ function ntSong(book, n) {
 async function ntLyrics(book, n) {
   if (isGuest() || !songsLoad) return;
   let list = []; try { list = await songsLoad(false); } catch (e) { return; }
-  const num = parseInt(n, 10), x = (list || []).find((y) => y.b === book && +y.n === num);
+  const num = parseInt(n, 10), x = (list || []).find((y) => y.b === book && (y.k === book + ":" + n || (!isNaN(num) && +y.n === num)));
   const box = document.getElementById("ntLyrics"); if (!box || !x || !x.v) return;
   const nums = Object.keys(x.v).map(Number).sort((a, b) => a - b); if (!nums.length) return;
   const fs = LS.get("songFs", 20);
