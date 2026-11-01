@@ -4553,7 +4553,7 @@ try { document.head.insertAdjacentHTML("beforeend", `<style>
     const sh = document.getElementById("sheet"); if (sh && !sh.hidden) return true;
     if (document.getElementById("wb")) return true;
     const tg = e.target; if (!tg || !tg.closest) return true;
-    if (tg.closest("input, textarea, select, [contenteditable], nav.tabs, .ch-bar, iframe")) return true;
+    if (tg.closest("input, textarea, select, [contenteditable], nav.tabs, .ch-bar, iframe, #ntShow")) return true;
     return scrollsSideways(tg);
   };
   addEventListener("touchstart", (e) => {

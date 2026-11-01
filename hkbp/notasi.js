@@ -32,7 +32,7 @@ try { document.head.insertAdjacentHTML("beforeend", `<style>
   .nt-doc.inv img, .nt-show.inv .nt-slide img { filter: invert(1); }
   .nt-doc.inv { background: #000; }
   .nt-nav { display: flex; gap: 8px; margin-top: 12px; } .nt-nav .btn { flex: 1; }
-  .nt-show { position: fixed; inset: 0; z-index: 9999; background: #fff; display: flex; flex-direction: column; user-select: none; -webkit-user-select: none; touch-action: pan-y; }
+  .nt-show { position: fixed; inset: 0; z-index: 9999; background: #fff; display: flex; flex-direction: column; user-select: none; -webkit-user-select: none; touch-action: none; overscroll-behavior: contain; }
   .nt-show.inv { background: #000; color: #fff; }
   .nt-stage { flex: 1; display: flex; align-items: center; justify-content: center; overflow: hidden; padding: 1.5vh 1.5vw; }
   .nt-slide { position: relative; overflow: hidden; width: min(97vw, calc(var(--ar) * 86vh)); aspect-ratio: var(--ar); }
@@ -41,6 +41,8 @@ try { document.head.insertAdjacentHTML("beforeend", `<style>
   .nt-bar b { flex: 1; text-align: center; font-weight: 600; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   .nt-bar button { background: none; border: 1px solid currentColor; color: inherit; border-radius: 10px; padding: 6px 12px; font: inherit; cursor: pointer; }
   .nt-show.idle .nt-bar { opacity: 0; transition: opacity .6s; }
+  .nt-x { position: absolute; top: calc(10px + env(safe-area-inset-top)); right: calc(10px + env(safe-area-inset-right)); z-index: 3; width: 48px; height: 48px; border-radius: 50%; border: 0; background: rgba(0,0,0,.55); color: #fff; font-size: 22px; line-height: 48px; padding: 0; cursor: pointer; }
+  .nt-show.inv .nt-x { background: rgba(255,255,255,.25); }
   .nt-tap { position: absolute; top: 0; bottom: 48px; width: 35%; z-index: 1; } .nt-tap.l { left: 0; } .nt-tap.r { right: 0; }
 </style>`); } catch (e) {}
 
@@ -114,7 +116,8 @@ A.ntShow = async (d) => {
   el.innerHTML = `<div class="nt-stage"><div class="nt-slide"><img alt="" src="${ntImg(d.book, s.n)}"></div></div>
     <button class="nt-tap l" data-act="ntGo" data-d="-1" aria-label="${esc(L3("Sebelumnya", "Na parjolo", "Previous"))}" style="background:none;border:0"></button>
     <button class="nt-tap r" data-act="ntGo" data-d="1" aria-label="${esc(L3("Berikutnya", "Na mangihut", "Next"))}" style="background:none;border:0"></button>
-    <div class="nt-bar"><button data-act="ntClose">✕</button><button data-act="ntGo" data-d="-1">‹</button><b></b><button data-act="ntGo" data-d="1">›</button><button data-act="ntInvShow" aria-label="${esc(L3("Warna gelap", "Warna gelap", "Dark colours"))}">🌓</button><button data-act="ntFull" aria-label="${esc(L3("Layar penuh", "Layar penuh", "Full screen"))}">⛶</button></div>`;
+    <button class="nt-x" data-act="ntClose" aria-label="${esc(L3("Tutup", "Tutup", "Close"))}">✕</button>
+    <div class="nt-bar"><button data-act="ntGo" data-d="-1">‹</button><b></b><button data-act="ntGo" data-d="1">›</button><button data-act="ntInvShow" aria-label="${esc(L3("Warna gelap", "Warna gelap", "Dark colours"))}">🌓</button><button data-act="ntFull" aria-label="${esc(L3("Layar penuh", "Layar penuh", "Full screen"))}">⛶</button></div>`;
   document.body.appendChild(el); ntPaint(); ntIdle();
   try { if (el.requestFullscreen && !document.fullscreenElement && matchMedia("(min-width: 700px)").matches) await el.requestFullscreen(); } catch (e) {}
 };
