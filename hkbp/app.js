@@ -3234,7 +3234,8 @@ function ssRender(lang, day, secs) {
       slide("song-t", `<p class="kick">♪ ♫</p><h1>${e(title)}</h1>${x.extra ? `<p class="sub">${e(x.extra)}</p>` : ""}`);
       (x.images || []).forEach((src) => S.push(`<section class="dk-slide pic"><img src="${src}" alt=""><footer>${e(foot)}</footer></section>`));
       if (x.body) { const r = HYMN.splitHymn(title + " " + (x.extra || ""), String(x.body).split(/\r?\n/));
-        (r.ok ? r.slides : chunk(String(x.body).split(/\n/).filter(Boolean), 6).map((ls, i) => ({ kind: "verse", verse: i + 1, lines: ls }))).forEach((v) => {
+        // the Reff always gets a slide of its own, never shared with a verse (YB 2026-11-01)
+        (r.ok ? r.slides.flatMap((v) => v.withReff ? [{ ...v, withReff: false, lines: v.lines.slice(0, v.reffFrom) }, { kind: "reff", verse: null, lines: v.lines.slice(v.reffFrom) }] : [v]) : chunk(String(x.body).split(/\n/).filter(Boolean), 6).map((ls, i) => ({ kind: "verse", verse: i + 1, lines: ls }))).forEach((v) => {
           const ref = v.kind === "reff"; const tag = v.withReff ? v.reffFrom : -1;
           slide("lyric" + (ref ? " reff" : ""), `<p class="vn">${ref ? "Reff" : e(v.verse)}</p><div class="ly">${v.lines.map((l, i) => (i === tag ? `<p class="tag">Reff</p>` : "") + `<p>${e(l)}</p>`).join("")}</div>`); }); }
       return;
