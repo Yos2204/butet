@@ -422,6 +422,8 @@ label.f select{padding:7px 8px}
 .dk-qrslide .dk-qr{width:calc(37 * var(--u));flex:none;margin:0;align-self:center}
 .dk-qrtext{display:flex;flex-direction:column;gap:calc(1.4 * var(--u));width:calc(23 * var(--u));max-width:calc(23 * var(--u))}
 .dk-qrtext .dk-title{font-size:calc(3.9 * var(--u));line-height:1.12;overflow-wrap:break-word}
+.dk-musict{font-family:var(--dk-display);font-weight:700;font-size:calc(6.4 * var(--u));line-height:1;color:var(--dk-ochre)}
+.dk.portrait .dk-musict{font-size:calc(4.6 * var(--u))}
 .dk-qrcap{margin:calc(1 * var(--u)) 0 0;font-weight:800;font-size:calc(2.1 * var(--u));letter-spacing:.08em;text-transform:uppercase;color:var(--dk-bone);line-height:1.25}
 .dk-qrcap::before{content:"\2190  ";font-size:1.1em}
 .dk[data-verse="stack"] .dk-qrslide .dk-qr{position:static;width:calc(37 * var(--u));align-self:center}
@@ -436,6 +438,12 @@ label.f select{padding:7px 8px}
 .dk-qr figcaption{font-weight:700;font-size:calc(1.45 * var(--u));letter-spacing:.12em;text-wrap:balance;max-width:100%;text-transform:uppercase;color:var(--dk-bone);text-align:center;line-height:1.3}
 .has-qr .dk-cue{right:calc(24 * var(--u))}
 .has-qr .dk-vnum{min-width:calc(7 * var(--u))}
+/* lyrics beside the QR (YB 2026-11-01): the verse sits as one block in the middle of the free space, so there is no empty gap
+   on one side; lines start on the left (a right-aligned verse would push against the QR) */
+.dk:not(.portrait) .has-qr .dk-fit{display:flex;flex-direction:column}
+.dk:not(.portrait) .has-qr .dk-lyric{margin:auto;max-width:100%}
+.dk:not(.portrait):not([data-verse="right"]) .has-qr.dk-al-right .dk-lyric{text-align:left;align-items:stretch}
+.dk:not(.portrait):not([data-verse="right"]) .has-qr.dk-al-right .dk-lyric p{padding-left:1.1em;text-indent:-1.1em}
 .dk-cue{position:absolute;top:0;right:0;display:flex;align-items:center;gap:calc(.6 * var(--u));font-weight:700;text-transform:uppercase;letter-spacing:.12em;font-size:calc(1.5 * var(--u));color:var(--dk-red-soft);border:calc(.14 * var(--u)) solid currentColor;border-radius:calc(.3 * var(--u));padding:calc(.35 * var(--u)) calc(.9 * var(--u))}
 .dk-cue svg{width:calc(1.4 * var(--u));height:calc(1.4 * var(--u))}
 .dk-foot{display:flex;justify-content:space-between;align-items:center;font-size:calc(1.35 * var(--u));color:var(--dk-bone-dim);letter-spacing:.06em;min-height:calc(2.3 * var(--u))}
@@ -886,6 +894,15 @@ function Presenter(root, DATA, OPTS){
       h = '<div class="dk-slide dk-qrslide"><figure class="dk-qr"><div class="dk-qr-card"><img src="' + qq.src + '" alt="Offering QR code"></div></figure>' +
           '<div class="dk-qrtext"><div class="dk-eyebrow"><b>' + esc(sec.offering || sec.title) + '</b></div><div class="dk-title">' + esc(sec.name || sec.ref) + '</div>' +
           ((qq.caption || word('give')) ? '<p class="dk-qrcap">' + esc(qq.caption || word('give')) + '</p>' : '') + '</div></div>';
+    } else if (VS(sec)[s.vi] && VS(sec)[s.vi].music) {
+      // offering hymn: the music interlude is a slide of its own (YB 2026-11-01), with the large QR when it is on
+      var mv = VS(sec)[s.vi], mq = DATA.qr || {}, mQr = !!(sec.offering && mq.src && mq.show !== false && sec.qr !== false);
+      var mt = DATA.commands === 'en' || !mv.cueText ? 'Music' : mv.cueText;
+      h = mQr
+        ? '<div class="dk-slide dk-qrslide dk-music"><figure class="dk-qr"><div class="dk-qr-card"><img src="' + mq.src + '" alt="Offering QR code"></div></figure>' +
+          '<div class="dk-qrtext"><div class="dk-eyebrow"><b>' + esc(sec.offering || sec.title) + '</b></div><div class="dk-musict">♪ ' + esc(mt) + '</div><div class="dk-title">' + esc(sec.name || sec.ref) + '</div>' +
+          ((mq.caption || word('give')) ? '<p class="dk-qrcap">' + esc(mq.caption || word('give')) + '</p>' : '') + '</div></div>'
+        : '<div class="dk-slide dk-center dk-music"><div class="dk-eyebrow"><b>' + esc(sec.offering || sec.title) + '</b>' + (sec.name ? ' · ' + esc(sec.name) : '') + '</div><div class="dk-big">♪ ' + esc(mt) + '</div></div>';
     } else {
       var v = VS(sec)[s.vi];
       var tagged = false, lines = v.lines.map(function(l){ var tag = !v.ref && l.ref && !tagged ? (tagged = true, '<div class="dk-rtag">Reff</div>') : ''; return tag + '<p' + (l.ref ? ' class="ref"' : '') + '>' + rich(l.t) + '</p>'; }).join('');
@@ -935,14 +952,15 @@ function Presenter(root, DATA, OPTS){
     if (el) {
       var over = function(){ return el.scrollHeight > el.clientHeight + 1 || el.scrollWidth > el.clientWidth + 1; };
       var lyr = !!el.querySelector('.dk-lyric');   // song verses may grow larger than reading text
-      var lo = 1.6, hi = Math.min(9, (por || lyr ? 7 : 5.4) * sc), setF = function(x){ el.style.fontSize = (x * curU) + 'px'; };
+      var withQr = lyr && !por && slide.classList.contains('has-qr');   // beside the offering QR: text in proportion to the QR (YB 2026-11-01)
+      var lo = 1.6, hi = Math.min(9, (withQr ? 5 : por || lyr ? 7 : 5.4) * sc), setF = function(x){ el.style.fontSize = (x * curU) + 'px'; };
       var best = hi; setF(hi);
       if (over()) { for (var i = 0; i < 14; i++) { var mid = (lo + hi) / 2; setF(mid); if (over()) hi = mid; else lo = mid; } best = lo; setF(lo); }
       // hymn lines: rather a little smaller than a line breaking in two, as long as it stays easy to read
       // and still fills the slide (at most about a fifth smaller; long lines otherwise wrap so the verse fills the space)
       var ps = [].slice.call(el.querySelectorAll('.dk-lyric p'));
       var wraps = function(){ return ps.some(function(x){ return x.offsetHeight > parseFloat(getComputedStyle(x).lineHeight) * 1.5; }); };
-      var floor = Math.max(1.6, (por ? 4.2 : 3) * Math.min(sc, 1.2), best * .8);
+      var floor = Math.max(1.6, (por ? 4.2 : 3) * Math.min(sc, 1.2), best * (withQr ? .7 : .8));
       if (ps.length && wraps() && best > floor) {
         var a = floor, z = best; setF(a);
         if (!wraps()) { for (var j = 0; j < 12; j++) { var m2 = (a + z) / 2; setF(m2); if (wraps()) z = m2; else a = m2; } setF(a); }
@@ -1903,11 +1921,11 @@ function spillItems(items){
   });
   return out;
 }
-/* hymn slides (YB 2026-10-29): each verse on its own slide(s), the Reff on its own slide(s) labelled "Reff" (a short verse and a
-   short Reff share one slide when they fit neatly: verse up to 4 lines, Reff up to 4, together up to 6, with a small REFF tag),
-   never more than 6 lines on a slide (a longer part is split evenly: 7 = 4+3, 8 = 4+4, 9 = 5+4, 12 = 6+6).
-   The "Reff:" word itself is not shown in the lyrics, because the slide is labelled Reff. */
-function hymnSlides(verses){
+/* hymn slides (YB 2026-10-29): each verse on its own slide(s), the Reff always on its own slide(s) labelled "Reff"
+   (YB 2026-11-01: never shared with a verse), never more than 6 lines on a slide (a longer part is split evenly:
+   7 = 4+3, 8 = 4+4, 9 = 5+4, 12 = 6+6). The "Reff:" word itself is not shown in the lyrics, because the slide is labelled Reff.
+   Offering hymns (YB 2026-11-01): a -Musik- interlude becomes a slide of its own before that verse, instead of a tag on the verse. */
+function hymnSlides(verses, offering){
   var out = [], REF = typeof MARK_REF !== 'undefined' ? MARK_REF : /^\s*(?:reff?|refrain|koor|chorus)\b\s*:?\s*/i, MAX = 6;
   var even = function(ls){ if (ls.length <= MAX) return [ls]; var parts = Math.ceil(ls.length / MAX), r = [], i = 0; for (var p = 0; p < parts; p++) { var size = Math.ceil((ls.length - i) / (parts - p)); r.push(ls.slice(i, i + size)); i += size; } return r; };
   (verses || []).forEach(function(v, k){
@@ -1921,16 +1939,13 @@ function hymnSlides(verses){
     });
     if (!groups.length) groups = [{ref: false, lines: [{t: ''}]}];
     if (groups.length === 1 && groups[0].ref) { groups[0].ref = false; groups[0].lines = groups[0].lines.map(function(l){ return {t: l.t}; }); }   // the whole verse repeated is not a refrain
-    // a short verse with a short Reff after it: one tidy slide (verse, a small REFF tag, then the Reff), when together at most 6 lines
-    if (groups.length === 2 && !groups[0].ref && groups[1].ref && groups[0].lines.length <= 4 && groups[1].lines.length <= 4 && groups[0].lines.length + groups[1].lines.length <= MAX) {
-      out.push({n: v.n, label: String(v.n), cue: v.cue, cueText: v.cueText, lines: groups[0].lines.concat(groups[1].lines), k: k, part: 1, parts: 1, withReff: true});
-      return;
-    }
+    var cue = v.cue, cueText = v.cueText;
+    if (offering && cue === 'music') { out.push({n: v.n, label: '♪', music: true, cue: 'music', cueText: cueText || 'Musik', lines: [], k: k, part: 1, parts: 1}); cue = null; cueText = ''; }
     var verseParts = groups.filter(function(g){ return !g.ref; }).reduce(function(n, g){ return n + even(g.lines).length; }, 0), vp = 0;
     groups.forEach(function(g, gi){
       even(g.lines).forEach(function(ls, i, arr){
         if (g.ref) out.push({n: v.n, label: 'Reff', ref: true, cue: null, cueText: '', lines: ls, k: k, part: arr.length > 1 ? i + 1 : 1, parts: arr.length});
-        else { out.push({n: v.n, label: partLabel(v.n, vp, verseParts), cue: vp ? null : v.cue, cueText: vp ? '' : v.cueText, lines: ls, k: k, part: vp + 1, parts: verseParts}); vp++; }
+        else { out.push({n: v.n, label: partLabel(v.n, vp, verseParts), cue: vp ? null : cue, cueText: vp ? '' : cueText, lines: ls, k: k, part: vp + 1, parts: verseParts}); vp++; }
       });
     });
   });
@@ -1957,7 +1972,7 @@ function normalize(sec){
     sec.legend = roles.length === 2 ? roles[0] + ' reads · ' + roles[1] + ' responds' : '';
   } else if (sec.type === 'hymn') {
     if (!sec.verses || !sec.verses.length) sec.verses = [{n:1, cue:null, lines:[{t:''}]}];
-    sec.slides = hymnSlides(sec.verses);
+    sec.slides = hymnSlides(sec.verses, !!sec.offering);
     sec.title = sec.title || ''; sec.ref = sec.ref || ''; sec.name = sec.name || ''; sec.offering = sec.offering || '';
   } else if (sec.type === 'text') {
     if (!sec.lines || !sec.lines.length) sec.lines = [''];
@@ -3095,6 +3110,7 @@ function staticHTML(data){
     }
     var showQr = sec.offering && qr.src && qr.show !== false && sec.qr !== false;
     (sec.slides || sec.verses).forEach(function(v){
+      if (v.music) { page(si, 'vr' + (showQr ? ' hq' : ''), head() + '<p class="mu">♪ ' + e(en || !v.cueText ? 'Music' : v.cueText) + '</p>' + (showQr ? qrBox : '')); return; }
       page(si, 'vr' + (showQr ? ' hq' : ''), head() + '<div class="bd"><div class="vn' + (v.ref ? ' reff' : '') + '">' + e(v.ref ? 'Reff' : v.n) + (v.parts > 1 ? '<small>' + v.part + ' / ' + v.parts + '</small>' : '') + cueText(v) + '</div><div class="ly">' +
         (function(){ var tg = false; return v.lines.map(function(l){ var tag = !v.ref && l.ref && !tg ? (tg = true, '<span class="rtag">Reff</span>') : ''; return tag + '<p' + (l.ref ? ' class="ref"' : '') + '>' + rich(l.t) + '</p>'; }).join(''); })() + '</div>' + (showQr ? qrBox : '') + '</div>');
     });
@@ -3126,6 +3142,7 @@ var STATIC_CSS = 'html:not(.js),html:not(.js) body{height:auto;overflow:auto}htm
   '.qr{grid-column:1/-1;margin:12px 0 0;display:flex;flex-direction:column;align-items:center;gap:10px}.qri{width:min(92%,440px);aspect-ratio:1;background:#fff center/88% no-repeat;border-radius:14px;outline:3px solid #f3ece1;outline-offset:4px}' +
   '.ly .rtag{display:inline-block;margin:8px 0 6px;font:800 11px/1 "Alegreya Sans",sans-serif;letter-spacing:.16em;text-transform:uppercase;border:1.5px solid currentColor;border-radius:5px;padding:4px 7px;opacity:.9}' +
   '.qr figcaption{color:inherit;font-size:15px;letter-spacing:.1em;text-transform:uppercase;text-align:center}.vn.reff{font:700 13px/1 "Alegreya Sans",sans-serif;letter-spacing:.14em;text-transform:uppercase;border:2px solid currentColor;border-radius:6px;padding:5px 7px;color:inherit}' +
+  '.st .mu{font:700 30px/1.2 Alegreya,Georgia,serif;text-align:center;margin:14px 0 4px}' +
   '.st .hint{color:#8d8177;font-size:13px;font-weight:500;text-align:center;margin:18px 8px}' +
   /* phones in a browser: upright shows the list, sideways shows the slideshow */
   '@media (max-width:760px) and (orientation:portrait){html.js,.js body{height:auto;overflow:auto}.js .st{display:block}.js .dk{display:none}.js .st .hint{display:none}}' +
@@ -3707,7 +3724,7 @@ async function takeSharedFile(){
    Automatic looks, in order: a file shared into the installed app (Android: WhatsApp → Share → Tata Ibadah),
    the watched folder (Chrome / Edge on a computer), then Google Drive (after connecting it once).
    A web app cannot open WhatsApp's own storage, so a WhatsApp file reaches us by sharing or by saving it to Drive. */
-var APP_VERSION = '2026-10-31 · 20';
+var APP_VERSION = '2026-11-01 · 22';
 var GDRIVE_CLIENT_ID = '';   // Google OAuth client ID (Web application); can also be pasted in the pop-up
 var IS_ANDROID = /Android/i.test(navigator.userAgent);
 var IS_STANDALONE = (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
