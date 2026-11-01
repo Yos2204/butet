@@ -7507,7 +7507,7 @@ try { document.head.insertAdjacentHTML("beforeend", `<style>
 const NO_DL_FRAME = `<style>*{-webkit-user-select:none!important;user-select:none!important;-webkit-touch-callout:none!important}img{pointer-events:none;-webkit-user-drag:none}@media print{body{display:none!important}}</style><script>["contextmenu","dragstart","copy","cut","selectstart"].forEach(function(n){document.addEventListener(n,function(e){e.preventDefault()},true)});document.addEventListener("keydown",function(e){if((e.ctrlKey||e.metaKey)&&/^[spc]$/i.test(e.key))e.preventDefault()},true);<\/script>`;
 
 // Not angka hymnals (notasi.js, loaded before this file)
-if (window.SADA_NOTASI) window.SADA_NOTASI({ R, A, L3, shell, tile, skel, empty, ic, LS, norm, esc, isGuest });
+if (window.SADA_NOTASI) window.SADA_NOTASI({ R, A, L3, shell, tile, skel, empty, ic, LS, norm, esc, isGuest, songsLoad });
 
 // ---------- start ----------
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
