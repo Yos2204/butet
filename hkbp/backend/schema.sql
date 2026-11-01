@@ -879,3 +879,6 @@ create table if not exists hk_passkey_challenges (
 alter table hk_passkeys enable row level security;
 alter table hk_passkey_challenges enable row level security;
 revoke all on hk_passkeys, hk_passkey_challenges from anon, authenticated;
+
+-- Church structure / councils (YB 2026-11-01): see backend/sql/councils.sql (applied live as migration hk_councils).
+alter table hk_groups add column if not exists council text;

@@ -20,24 +20,36 @@ const uid = () => (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) 
 const sgToday = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Singapore" }).format(new Date());
 
 const DEFAULT_GROUPS = [
-  ["sekolah-minggu", "sermon", "Sekolah Minggu", "Sikola Minggu", "Sunday School", "#e8913a", "child", 1],
-  ["remaja", "sermon", "Remaja", "Remaja", "Teens", "#9333ea", "star", 2],
-  ["naposo", "sermon", "Naposobulung (Pemuda)", "Naposobulung", "Youth", "#4f6bed", "spark", 3],
-  ["ina", "sermon", "Ina (Kaum Perempuan)", "Parompuan / Ina", "Mothers", "#c94f8a", "heart", 4],
-  ["ama", "sermon", "Ama (Kaum Bapak)", "Ama", "Fathers", "#1f8a70", "shield", 5],
-  ["pelaut", "sermon", "Pelaut & Pekerja", "Parlayar dohot Pangula", "Sailors & Workers", "#2a7fb8", "anchor", 6],
-  ["multimedia", "service", "Multimedia", "Multimedia", "Multimedia", "#7c5cff", "screen", 11],
-  ["jemaat", "service", "Jemaat", "Ruas", "Congregation", "#0f766e", "people", 12],
-  ["parhalado", "service", "Parhalado (Penatua & Pendeta)", "Parhalado", "Elders & Pastor", "#8b5a2b", "book", 13],
-  ["band", "service", "ReNa Band", "ReNa Band", "ReNa Band", "#e11d48", "drum", 14],
-  ["song-leader", "service", "Song Leader", "Song Leader", "Song Leader", "#ca8a04", "mic", 15],
-  ["musik", "service", "Pemusik", "Pargonsi / Pemusik", "Musicians", "#0891b2", "note", 16],
-  ["koor", "service", "Koor", "Koor", "Koor", "#be185d", "mic", 17],
+  // Church councils (YB 2026-11-01): Parhalado on top, then Koinonia, Marturia, Diakonia with their subgroups, then Jemaat. See backend/sql/councils.sql.
+  ["parhalado", "service", "Parhalado (Penatua & Pendeta)", "Parhalado", "Elders & Pastor", "#8b5a2b", "book", 0, "parhalado"],
+  ["spiritual", "sermon", "Komisi Spiritual", "Komisi Spiritual", "Spiritual Committee", "#7c2d12", "book", 1, "spiritual"],
   // Office categories: only the office holders (set by the admin by phone number) and the admin see them.
-  ["secretary", "office", "Sekretaris", "Sekretaris", "Secretary", "#334155", "file", 21],
-  ["treasurer", "office", "Bendahara", "Bendahara", "Treasurer", "#15803d", "coins", 22],
-  ["chairman", "office", "Ketua", "Ketua", "Chairman", "#9f1239", "gavel", 23],
-].map(([id, kind, name_id, name_bt, name_en, color, icon, sort]) => ({ id, kind, name_id, name_bt, name_en, color, icon, sort }));
+  ["chairman", "office", "Ketua", "Ketua", "Chairman", "#9f1239", "gavel", 20, "admin"],
+  ["secretary", "office", "Sekretaris", "Sekretaris", "Secretary", "#334155", "file", 21, "admin"],
+  ["treasurer", "office", "Bendahara", "Bendahara", "Treasurer", "#15803d", "coins", 22, "admin"],
+  ["admin-staff", "sermon", "Anggota Biasa (Admin)", "Anggota Biasa (Admin)", "Ordinary Members (Admin)", "#475569", "file", 23, "admin"],
+  ["auditors", "sermon", "Anggota Biasa (Auditor)", "Anggota Biasa (Auditor)", "Ordinary Members (Auditors)", "#0f766e", "check", 24, "admin"],
+  ["dewan-koinonia", "sermon", "Dewan Koinonia", "Dewan Koinonia", "Koinonia Council", "#b45309", "groups", 10, "koinonia"],
+  ["sekolah-minggu", "sermon", "Sekolah Minggu", "Sikola Minggu", "Sunday School", "#e8913a", "child", 11, "koinonia"],
+  ["remaja", "sermon", "Remaja", "Remaja", "Teens", "#9333ea", "star", 12, "koinonia"],
+  ["naposo", "sermon", "Naposobulung (Pemuda)", "Naposobulung", "Youth", "#4f6bed", "spark", 13, "koinonia"],
+  ["ina", "sermon", "Ina (Kaum Perempuan)", "Parompuan / Ina", "Mothers", "#c94f8a", "heart", 14, "koinonia"],
+  ["ama", "sermon", "Ama (Kaum Bapak)", "Ama", "Fathers", "#1f8a70", "shield", 15, "koinonia"],
+  ["pelaut", "sermon", "Pelaut & Pekerja", "Parlayar dohot Pangula", "Sailors & Workers", "#2a7fb8", "anchor", 16, "koinonia"],
+  ["dewan-marturia", "sermon", "Dewan Marturia", "Dewan Marturia", "Marturia Council", "#1d4ed8", "bell", 30, "marturia"],
+  ["zending", "sermon", "Zending", "Zending", "Mission (Zending)", "#0e7490", "globe", 31, "marturia"],
+  ["musik", "service", "Pemusik", "Pargonsi / Pemusik", "Musicians", "#0891b2", "note", 32, "marturia"],
+  ["band", "service", "ReNa Band", "ReNa Band", "ReNa Band", "#e11d48", "drum", 33, "marturia"],
+  ["song-leader", "service", "Song Leader", "Song Leader", "Song Leader", "#ca8a04", "mic", 34, "marturia"],
+  ["koor", "service", "Koor", "Koor", "Koor", "#be185d", "mic", 35, "marturia"],
+  ["dewan-diakonia", "sermon", "Dewan Diakonia", "Dewan Diakonia", "Diakonia Council", "#047857", "heart", 40, "diakonia"],
+  ["sosial", "sermon", "Sosial Kemasyarakatan", "Sosial Kemasyarakatan", "Social & Community", "#d97706", "people", 41, "diakonia"],
+  ["kesehatan", "sermon", "Kesehatan", "Hahipason", "Health", "#dc2626", "plus", 42, "diakonia"],
+  ["pendidikan", "sermon", "Pendidikan", "Parsingkolaan", "Education", "#4338ca", "book", 43, "diakonia"],
+  ["perlengkapan", "sermon", "Perlengkapan", "Perlengkapan", "Equipment & Facilities", "#57534e", "gear", 44, "diakonia"],
+  ["multimedia", "service", "Multimedia", "Multimedia", "Multimedia", "#7c5cff", "screen", 45, "diakonia"],
+  ["jemaat", "service", "Jemaat", "Ruas", "Congregation", "#0f766e", "people", 60, "jemaat"],
+].map(([id, kind, name_id, name_bt, name_en, color, icon, sort, council]) => ({ id, kind, name_id, name_bt, name_en, color, icon, sort, council }));
 
 // Categories run by teachers (Teacher Makers and Teachers), see hk__teach in backend/schema.sql.
 const TEACH = ["naposo", "sekolah-minggu", "remaja", "ama", "ina", "pelaut"];
@@ -125,8 +137,8 @@ const Local = {
     if (!db) db = { groups: DEFAULT_GROUPS.slice(), members: [], posts: [], rosters: [], bread: [], updates: [], events: [], outbox: [] };
     db.polls = db.polls || []; db.votes = db.votes || [];
     db.birthdays = db.birthdays || []; db.settings = db.settings || {}; db.services = db.services || []; db.files = db.files || [];
-    for (const g of DEFAULT_GROUPS) if ((g.kind === "office" || g.id === "remaja") && !db.groups.some((x) => x.id === g.id)) db.groups.push({ ...g });
-    for (const g of db.groups) { const d = DEFAULT_GROUPS.find((x) => x.id === g.id); if (d && d.kind === "sermon") { g.sort = d.sort; if (g.id === "ina") g.name_id = d.name_id; } }
+    for (const g of DEFAULT_GROUPS) if (!db.groups.some((x) => x.id === g.id)) db.groups.push({ ...g });
+    for (const g of db.groups) { const d = DEFAULT_GROUPS.find((x) => x.id === g.id); if (d) { g.sort = d.sort; g.council = d.council; if (g.id === "ina") g.name_id = d.name_id; } }
     this.dbo = db; return db;
   },
   async commit() { await idb.set("db", this.dbo); },
