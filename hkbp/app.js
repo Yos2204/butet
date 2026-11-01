@@ -1049,7 +1049,7 @@ async function render() {
     if (typeof html === "string") view().innerHTML = html;
     draftRestore(view()); wAutoBase();
     document.title = r === "home" ? "Sada HKBPS" : `${$(".brand b") ? $(".brand b").textContent : ""} · Sada HKBPS`;
-    hydrate(); topSafe();
+    hydrate(); topSafe(); iosNudgeSoon();
   } catch (e) { console.error(e); view().innerHTML = `<div class="login">${empty(errMsg(e))}<button class="btn primary" data-act="retry">${esc(t("retry"))}</button></div>`; }
   finally { rendering = false; }
 }
@@ -1058,6 +1058,16 @@ async function render() {
 function topSafe() { const ts = document.getElementById("topsafe"), hd = document.querySelector("header.top"); if (!ts) return;
   ts.style.height = hd && hd.offsetHeight && innerWidth < 1100 ? hd.offsetHeight + "px" : ""; }
 addEventListener("resize", topSafe);
+// iPhones (iOS 27) draw the header title cloudy until the page is scrolled (YB 2026-11-01). So on iPhone the app makes a
+// 1-pixel scroll and back by itself right after a page opens; nobody sees it, and the title turns sharp.
+const IOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+function iosNudge() {
+  if (!IOS || window.scrollY > 0) return; const de = document.documentElement; clearTimeout(iosNudge.t);
+  de.style.minHeight = "calc(100vh + 4px)"; window.scrollTo(0, 1);
+  requestAnimationFrame(() => requestAnimationFrame(() => { if (window.scrollY <= 1) window.scrollTo(0, 0); iosNudge.t = setTimeout(() => { de.style.minHeight = ""; }, 300); }));
+}
+const iosNudgeSoon = () => { setTimeout(iosNudge, 60); setTimeout(iosNudge, 700); };
+addEventListener("pageshow", iosNudgeSoon); document.addEventListener("visibilitychange", () => { if (!document.hidden) iosNudgeSoon(); });
 function hydrate() {
   // Jarvis "go" (YB 2026-10-26) opens #/s/multimedia?wb=1: open the workbench straight away for a Multimedia Maker.
   if (/^#\/s\/multimedia\?(.*&)?wb=1\b/.test(location.hash) && D && !isGuest() && !document.getElementById("wb")) {
