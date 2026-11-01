@@ -7475,7 +7475,7 @@ try { matchMedia("(display-mode: standalone)").addEventListener("change", () => 
 gateRender();
 
 // Not angka hymnals (notasi.js, loaded before this file)
-if (window.SADA_NOTASI) window.SADA_NOTASI({ R, A, L3, shell, tile, skel, empty, ic, LS, norm, esc, isGuest });
+if (window.SADA_NOTASI) window.SADA_NOTASI({ R, A, L3, shell, tile, skel, empty, ic, LS, norm, esc, isGuest, songsLoad });
 
 // ---------- start ----------
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});

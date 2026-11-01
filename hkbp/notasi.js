@@ -4,7 +4,7 @@
 // Doc view scrolls the whole song; Slides view shows one or two music lines (or verses) at a time, full screen,
 // for the projector. Open to everyone, also to people who are not signed in.
 // Loaded before app.js; app.js calls window.SADA_NOTASI({...}) with its helpers once they exist.
-window.SADA_NOTASI = ({ R, A, L3, shell, tile, skel, empty, ic, LS, norm, esc, isGuest }) => {
+window.SADA_NOTASI = ({ R, A, L3, shell, tile, skel, empty, ic, LS, norm, esc, isGuest, songsLoad }) => {
 const NT_BOOKS = {
   BE: { name: "Buku Ende", sub: ["Not angka · Bahasa Batak", "Not angka · Hata Batak", "Number notation · Batak"], icon: "🎶" },
   BN: { name: "Buku Nyanyian HKBP", sub: ["Not angka · Bahasa Indonesia", "Not angka · Hata Indonesia", "Number notation · Indonesian"], icon: "🎼" },
@@ -117,10 +117,23 @@ function ntSong(book, n) {
         <button class="btn sm" data-act="ntInv" aria-label="${esc(L3("Warna gelap", "Warna gelap", "Dark colours"))}">🌓</button>
       </div>
       <div class="nt-doc${inv ? " inv" : ""}" style="--z:${z}"><img src="${ntImg(book, s.n)}" alt="${esc(b.name + " " + s.n + ". " + s.t)}" width="${ix.w}" height="${s.h}" loading="eager" decoding="async"></div>
+      <div id="ntLyrics"></div>
       <div class="nt-nav">${prev ? `<a class="btn" href="#/notasi/${book}/${encodeURIComponent(prev.n)}">‹ ${esc(prev.n)}</a>` : ""}${next ? `<a class="btn" href="#/notasi/${book}/${encodeURIComponent(next.n)}">${esc(next.n)} ›</a>` : ""}</div>
       <p class="small muted" style="margin-top:12px">${esc(L3("Dari buku cetak", "Sian buku", "From the printed book"))}: ${esc(b.name)}. ${esc(L3("Tekan Slide untuk proyektor; geser atau tekan ← → untuk pindah.", "Slide tu proyektor.", "Tap Slides for the projector; swipe or press ← → to move."))}</p>`;
+    ntLyrics(book, s.n);
   }, 0);
   return shell("#/library", `<div id="ntBox">${skel(3)}</div>`, { back: "#/notasi/" + book, title: `${b.name} ${n}`, sub: L3(...b.sub) });
+}
+// Typed verses under the notes, taken from the text songbook (members only; the songbook needs a sign-in).
+async function ntLyrics(book, n) {
+  if (isGuest() || !songsLoad) return;
+  let list = []; try { list = await songsLoad(false); } catch (e) { return; }
+  const num = parseInt(n, 10), x = (list || []).find((y) => y.b === book && +y.n === num);
+  const box = document.getElementById("ntLyrics"); if (!box || !x || !x.v) return;
+  const nums = Object.keys(x.v).map(Number).sort((a, b) => a - b); if (!nums.length) return;
+  const fs = LS.get("songFs", 20);
+  box.innerHTML = `<h3 class="sec-h" style="margin-top:18px">${esc(L3("Syair", "Hata ni ende", "Lyrics"))}</h3>
+    <div class="card" style="padding:16px 16px 2px"><div class="song-text" style="font-size:${fs}px">${nums.map((v, i) => `<div class="sv"><span class="svn">${v}</span><div>${x.v[v].map((l) => `<p>${esc(l)}</p>`).join("")}</div></div>${i === 0 && (x.r || []).length ? `<div class="sv reff"><span class="svn">Reff</span><div>${x.r.map((l) => `<p>${esc(l)}</p>`).join("")}</div></div>` : ""}`).join("")}</div></div>`;
 }
 A.ntZoom = (d) => { const v = Math.max(1, Math.min(3, (LS.get("ntZoom", 1) || 1) + +d.d)); LS.set("ntZoom", v); const el = document.querySelector(".nt-doc"); if (el) el.style.setProperty("--z", v); };
 A.ntInv = () => { const v = !LS.get("ntInv", false); LS.set("ntInv", v); document.querySelectorAll(".nt-doc, .nt-show").forEach((el) => el.classList.toggle("inv", v)); };
