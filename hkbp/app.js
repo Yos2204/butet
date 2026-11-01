@@ -3531,7 +3531,7 @@ async function nbOverpass(area, timeout) {
 async function nbLoad() {
   if (NB.list) return NB.list;
   let rows = [];
-  try { const r = await fetch("nearest/churches.json?d=" + new Date().toISOString().slice(0, 10)); if (r.ok) { const j = await r.json(); NB.meta = j; rows = (j.c || []).map((c) => nbRow(c, "list")); } } catch (e) {}
+  try { const r = await fetch("nearest/churches.json"); if (r.ok) { const j = await r.json(); NB.meta = j; rows = (j.c || []).map((c) => nbRow(c, "list")); } } catch (e) {}
   if (!rows.length) { try { const x = await (await fetch("nearest/extra.json")).json(); rows = x.map((c) => nbRow([c.name, c.lat, c.lon, c.place, c.street, c.phone, c.cc], "list")); } catch (e) {} }
   const world = LS.get("nbWorld", null);
   if (rows.length < 50 && world && world.c) rows = rows.concat(world.c.map((c) => nbRow(c, "live")));
@@ -3563,6 +3563,7 @@ function nbAll() {
   NB.live.forEach((c) => { if (!all.some((x) => Math.abs(x.lat - c.lat) < 0.002 && Math.abs(x.lon - c.lon) < 0.002 && nbKm(x.lat, x.lon, c.lat, c.lon) < 0.15)) all.push(c); });
   if (NB.pos) { all.forEach((c) => (c.km = nbKm(NB.pos.lat, NB.pos.lon, c.lat, c.lon))); all.sort((a, b) => a.km - b.km); }
   else { all.forEach((c) => (c.km = null)); all.sort((a, b) => a.name.localeCompare(b.name)); }
+  all.forEach((c, i) => (c._i = i));
   return all;
 }
 const nbWhere = (c) => [c.street, c.place, c.cc].filter(Boolean).join(", ");
@@ -3600,15 +3601,15 @@ function nbPaint() {
       <div class="nb-big">${esc(nbFmtKm(top.km))}</div><p class="nb-road" id="nbRoad">${esc(NB.road[nbKey(top)] || "")}</p>
       <div class="nb-btns">${nbGo(top, "btn nb-go")}<button class="btn nb-more" data-act="nbOpen" data-i="0">🗺️ ${esc(L3("Peta & pilihan", "Peta", "Map & options"))}</button></div>
     </div>` : ""}
-    <div id="nbMap" class="nb-map" ${NB.pos ? "" : "hidden"}></div>
+    <div id="nbMapSlot"></div>
     <h3 class="sec-h">${esc(q ? L3(`${rows.length} hasil`, `${rows.length} hasil`, `${rows.length} results`) : NB.pos ? L3(`Semua HKBP (${all.length}), terdekat dulu`, `Sude HKBP (${all.length})`, `All HKBP churches (${all.length}), nearest first`) : L3(`Semua HKBP (${all.length})`, `Sude HKBP (${all.length})`, `All HKBP churches (${all.length})`))}</h3>
-    <div class="card menu nb-list">${rows.slice(0, NB.shown).map((c) => nbItem(c, all.indexOf(c))).join("") || empty(NB.list ? L3("Tidak ada HKBP yang cocok.", "Ndang adong.", "No HKBP church matches.") : L3("Memuat daftar…", "Memuat…", "Loading the list…"), "pin")}</div>
+    <div class="card menu nb-list">${rows.slice(0, NB.shown).map((c) => nbItem(c, c._i)).join("") || empty(NB.list ? L3("Tidak ada HKBP yang cocok.", "Ndang adong.", "No HKBP church matches.") : L3("Memuat daftar…", "Memuat…", "Loading the list…"), "pin")}</div>
     ${rows.length > NB.shown ? `<button class="btn block" id="nbMoreBtn" data-act="nbMore">${esc(L3(`Tampilkan lebih banyak (${rows.length - NB.shown} lagi)`, `Lan torus (${rows.length - NB.shown})`, `Show more (${rows.length - NB.shown} more)`))}</button>` : ""}
-    <div class="row between nb-foot"><small class="muted">${esc((NB.meta ? L3("Daftar diperbarui ", "Diperbarui ", "List updated ") + NB.meta.updated + " · " : "") + "© OpenStreetMap")}</small>
+    <div class="row between nb-foot"><small class="muted">${esc((NB.meta ? L3("Daftar diperbarui ", "Diperbarui ", "List updated ") + NB.meta.updated + " · " : "") + L3("tersimpan di HP ini", "tersimpan di HP on", "saved on this phone") + " · © OpenStreetMap")}</small>
       <button class="btn sm ghost" data-act="nbOnline">🔎 ${esc(L3("Cari online", "Lului online", "Search online"))}</button></div>
     <p class="small muted">${esc(L3("Gereja HKBP yang belum ada? Tambahkan di openstreetmap.org (gratis) dengan nama berawalan “HKBP”; Sada mengambilnya otomatis setiap bulan.", "Tambahkan di openstreetmap.org.", "Missing an HKBP church? Add it at openstreetmap.org (free) with a name starting “HKBP”; Sada picks it up automatically every month."))}</p>`;
   if (top && NB.pos && !q) nbRoadFor(top, "nbRoad");
-  nbMapDraw(rows.slice(0, 60), top);
+  nbMapMain(rows, top, q);
   nbAutoMore();
 }
 // Driving distance and time by road (free OSRM demo server), for the nearest one and any opened church.
@@ -3634,23 +3635,46 @@ function nbLeafletLoad() {
   });
   return nbLeaflet;
 }
-async function nbMapDraw(rows, top, elId = "nbMap") {
-  const el = document.getElementById(elId); if (!el || !NB.pos || el.hidden) return;
+// Every church gets a pin (drawn on a canvas, so thousands stay smooth). Red = nearest, blue = you.
+function nbPins(L, map, layer, rows, top) {
+  const r = map._nbR || (map._nbR = L.canvas({ padding: 0.5 }));
+  if (NB.pos) L.circleMarker([NB.pos.lat, NB.pos.lon], { renderer: r, radius: 8, color: "#fff", weight: 3, fillColor: "#1a73e8", fillOpacity: 1 }).addTo(layer).bindPopup(esc(L3("Anda di sini", "Ho di son", "You are here")));
+  rows.forEach((c) => {
+    if (c === top) return;
+    L.circleMarker([c.lat, c.lon], { renderer: r, radius: 5, color: "#fff", weight: 1.5, fillColor: "#8e24aa", fillOpacity: 0.95 }).addTo(layer).bindPopup(() => nbPop(c));
+  });
+  if (top) L.circleMarker([top.lat, top.lon], { renderer: r, radius: 9, color: "#fff", weight: 2.5, fillColor: "#c62828", fillOpacity: 1 }).addTo(layer).bindPopup(() => nbPop(top));
+}
+const nbPop = (c) => `<b>${esc(c.name)}</b>${nbWhere(c) ? "<br>" + esc(nbWhere(c)) : ""}${c.km != null ? "<br><b>" + esc(nbFmtKm(c.km)) + "</b>" : ""}<br><a href="${esc(nbDirUrl(c))}" target="_blank" rel="noopener">🧭 ${esc(L3("Petunjuk arah", "Dalan", "Directions"))}</a> · <a href="#" data-act="nbOpen" data-i="${c._i}">${esc(L3("Detail", "Detail", "Details"))}</a>`;
+function nbNewMap(L, el) {
+  const map = L.map(el, { zoomControl: true, attributionControl: true, worldCopyJump: true }); map.attributionControl.setPrefix(false);
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap" }).addTo(map);
+  return map;
+}
+// The page map stays the same element between repaints, so typing in the search box doesn't rebuild it.
+async function nbMapMain(rows, top, q) {
+  const slot = document.getElementById("nbMapSlot"); if (!slot) return;
+  if (!NB.mapEl) { NB.mapEl = document.createElement("div"); NB.mapEl.id = "nbMap"; NB.mapEl.className = "nb-map"; NB.mapObj = null; }
+  slot.replaceWith(NB.mapEl);
+  let L; try { L = await nbLeafletLoad(); } catch (e) { NB.mapEl.hidden = true; return; }
+  if (!document.body.contains(NB.mapEl)) return;
+  if (!NB.mapObj) { NB.mapObj = nbNewMap(L, NB.mapEl); NB.layer = L.layerGroup().addTo(NB.mapObj); NB.fitKey = null; } else NB.mapObj.invalidateSize();
+  NB.layer.clearLayers(); nbPins(L, NB.mapObj, NB.layer, rows, NB.pos && !q ? top : null);
+  const key = (NB.pos ? NB.pos.lat + "," + NB.pos.lon : "") + "|" + norm(q || "") + "|" + rows.length;
+  if (key === NB.fitKey) return; NB.fitKey = key;
+  let pts;
+  if (NB.pos && !q) { pts = [[NB.pos.lat, NB.pos.lon]]; if (top) pts.push([top.lat, top.lon]); rows.slice(0, 5).forEach((c) => { if (c.km < 60) pts.push([c.lat, c.lon]); }); }
+  else pts = rows.map((c) => [c.lat, c.lon]);
+  if (pts.length) NB.mapObj.fitBounds(L.latLngBounds(pts).pad(0.2), { maxZoom: 15 }); else NB.mapObj.setView([2.5, 99], 5);
+}
+// The map in a church's sheet: that church in the middle, the other HKBP pins around it.
+async function nbMapSheet(c) {
+  const el = document.getElementById("nbMapS"); if (!el) return;
   let L; try { L = await nbLeafletLoad(); } catch (e) { el.hidden = true; return; }
   if (!document.body.contains(el)) return;
-  const map = L.map(el, { zoomControl: true, attributionControl: true }); map.attributionControl.setPrefix(false);
-  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap" }).addTo(map);
-  const me = L.circleMarker([NB.pos.lat, NB.pos.lon], { radius: 8, color: "#fff", weight: 3, fillColor: "#1a73e8", fillOpacity: 1 }).addTo(map).bindPopup(L3("Anda di sini", "Ho di son", "You are here"));
-  const pts = [[NB.pos.lat, NB.pos.lon]];
-  rows.forEach((c) => {
-    const i = (NB.view || []).indexOf(c);
-    const m = L.circleMarker([c.lat, c.lon], { radius: c === top ? 9 : 6, color: "#fff", weight: 2, fillColor: c === top ? "#c62828" : "#8e24aa", fillOpacity: 0.95 }).addTo(map);
-    m.bindPopup(`<b>${esc(c.name)}</b><br>${esc(nbFmtKm(c.km))}<br><a href="${esc(nbDirUrl(c))}" target="_blank" rel="noopener">🧭 ${esc(L3("Petunjuk arah", "Dalan", "Directions"))}</a> · <a href="#" data-act="nbOpen" data-i="${i}">${esc(L3("Detail", "Detail", "Details"))}</a>`);
-  });
-  if (top) pts.push([top.lat, top.lon]);
-  rows.slice(0, 5).forEach((c) => { if (c.km < 60) pts.push([c.lat, c.lon]); });
-  map.fitBounds(L.latLngBounds(pts).pad(0.25), { maxZoom: 15 });
-  void me;
+  const map = nbNewMap(L, el); const layer = L.layerGroup().addTo(map);
+  nbPins(L, map, layer, NB.view || [c], c);
+  if (NB.pos && c.km < 60) map.fitBounds(L.latLngBounds([[NB.pos.lat, NB.pos.lon], [c.lat, c.lon]]).pad(0.25), { maxZoom: 16 }); else map.setView([c.lat, c.lon], 15);
 }
 // Load more rows when the end of the list scrolls into view.
 function nbAutoMore() {
@@ -3678,7 +3702,7 @@ A.nbOpen = (d) => {
   sheet("⛪ " + c.name, `
     <p class="nb-addr">${esc(nbWhere(c) || L3("Alamat belum tercatat", "Alamat ndang adong", "No street address recorded"))}</p>
     ${c.km != null ? `<p class="nb-dist"><b>${esc(nbFmtKm(c.km))}</b> ${esc(L3("dari Anda (garis lurus)", "sian ho", "from you (straight line)"))}</p><p class="small muted" id="nbRoadS">${esc(NB.road[nbKey(c)] || "")}</p>` : ""}
-    <div id="nbMapS" class="nb-map sm"${NB.pos ? "" : " hidden"}></div>
+    <div id="nbMapS" class="nb-map sm"></div>
     <h4 class="nb-h">🧭 ${esc(L3("Petunjuk arah", "Dalan tu son", "Directions"))}</h4>
     <div class="nb-grid">
       ${IOS ? `      <a class="btn" href="${esc(nbApple(c, "d"))}" target="_blank" rel="noopener">🍎 ${esc(L3("Apple Maps · mobil", "Apple · motor", "Apple Maps · drive"))}</a>
@@ -3700,12 +3724,13 @@ A.nbOpen = (d) => {
       <button class="btn" data-act="nbShare" data-i="${d.i}">📤 ${esc(L3("Bagikan lokasi", "Bagi lokasi", "Share location"))}</button>
       <button class="btn" data-act="nbCopy" data-i="${d.i}">📋 ${esc(L3("Salin alamat", "Salin alamat", "Copy address"))}</button>
       <a class="btn" href="https://www.openstreetmap.org/?mlat=${c.lat}&mlon=${c.lon}#map=18/${c.lat}/${c.lon}" target="_blank" rel="noopener">✏️ ${esc(L3("Lihat/perbaiki di OSM", "Ida di OSM", "View/fix on OSM"))}</a>
-    </div>`, () => { nbRoadFor(c, "nbRoadS"); setTimeout(() => nbMapDraw([c], c, "nbMapS"), 260); });
+    </div>`, () => { nbRoadFor(c, "nbRoadS"); setTimeout(() => nbMapSheet(c), 260); });
 };
 const nbText = (c) => `${c.name}\n${nbWhere(c)}\n${IOS ? nbApple(c) : nbGoogle(c)}`.replace(/\n\n/, "\n");
 A.nbShare = async (d) => { const c = (NB.view || [])[+d.i]; if (!c) return; try { if (navigator.share) { await navigator.share({ title: c.name, text: nbText(c) }); return; } } catch (e) { if (e && e.name === "AbortError") return; } A.nbCopy(d); };
 A.nbCopy = async (d) => { const c = (NB.view || [])[+d.i]; if (!c) return; try { await navigator.clipboard.writeText(nbText(c)); toast(L3("Disalin", "Disalin", "Copied")); } catch (e) { toast(nbText(c)); } };
 R.nearest = () => {
+  if (NB.mapObj) { try { NB.mapObj.remove(); } catch (e) {} } NB.mapObj = null; NB.mapEl = null;
   setTimeout(async () => {
     const lv = LS.get("nbLive", null); if (lv && NB.pos && !NB.live.length && Math.abs(lv.lat - NB.pos.lat) < 0.5 && Math.abs(lv.lon - NB.pos.lon) < 0.5) NB.live = lv.c.map((c) => nbRow(c, "live"));
     await nbLoad(); nbPaint();
@@ -3727,7 +3752,8 @@ try { document.head.insertAdjacentHTML("beforeend", `<style>
   .nb-big { font-size: 40px; font-weight: 800; margin: 8px 0 0; line-height: 1.1; } .nb-road { min-height: 1.2em; margin-top: 4px !important; font-weight: 600; }
   .nb-btns { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; } .nb-btns .btn { flex: 1; justify-content: center; text-align: center; min-width: 140px; }
   .nb-go { background: #fff !important; color: var(--brand) !important; font-weight: 800; border: 0; } .nb-more { background: rgba(255,255,255,.18) !important; color: #fff !important; border: 0; }
-  .nb-map { height: 260px; border-radius: 18px; overflow: hidden; margin: 10px 0; z-index: 0; } .nb-map.sm { height: 200px; }
+  .nb-map img, .nb-map canvas { max-width: none !important; max-height: none !important; }
+  .nb-map { height: 300px; border-radius: 18px; overflow: hidden; margin: 10px 0; z-index: 0; } .nb-map.sm { height: 200px; }
   .nb-li { width: 100%; text-align: left; display: flex; align-items: center; gap: 10px; } .nb-li .grow { flex: 1; min-width: 0; }
   .nb-n { flex: none; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 800; background: color-mix(in srgb, var(--brand) 12%, transparent); color: var(--brand); }
   .nb-km { white-space: nowrap; margin-left: auto; font-size: 15px; }
