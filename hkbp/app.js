@@ -357,9 +357,11 @@ async function claudeBread(day, langCode, recent) {
 // Categories and the office ask for phone number and password when opened.
 const GUEST = () => ({ id: null, name: "", alias: null, phone: null, dob: null, is_admin: false, groups: {}, wa_optin: false });
 async function refresh() {
+  const prevSwaps = D && D.swaps;
   D = await api.data();
   if (D && !D.me) { D.me = GUEST(); D.guest = true; }
   setTimeout(() => { try { tataPrefetch(); } catch (e) {} }, 3000);
+  if (D && !D.guest) { D.swaps = prevSwaps || []; setTimeout(() => swapsLoad(), 0); }
   if (D && !D.guest && api.ping) { let k = "pinged"; try { if (!sessionStorage.getItem(k)) { sessionStorage.setItem(k, "1"); api.ping(standalone()).catch(() => {}); } } catch {} }
 }
 const isGuest = () => !D || !!D.guest;
@@ -491,8 +493,9 @@ R.home = () => {
       ${list.length ? list.map((c) => { const n = Math.round((new Date(c.day + "T12:00:00Z") - new Date(day + "T12:00:00Z")) / 864e5); return `<div class="li"><span class="avatar">${esc(initials(c.name))}</span><span class="grow"><b>${esc(c.name)}</b><small>${esc(n === 0 ? t("today") : n === 1 ? t("tomorrow") : fmt(c.day, { weekday: "long", day: "numeric", month: "short" }))}</small></span>${n === 0 ? `<span class="party">🎉</span>` : ""}</div>`; }).join("") : `<p class="muted small">${esc(t(none))}</p>`}
     </article>`; }).join("") : ""}
 
+    ${swapHomeCard()}
     ${isGuest() ? "" : `<article class="card">
-      <div class="card-h"><h3>${ic("roster")} ${esc(t("myDuties"))}</h3><a class="small" href="#/serve">${esc(t("rosters"))}</a></div>
+      <div class="card-h"><h3>${ic("roster")} ${esc(t("myDuties"))}</h3><span class="small"><a href="#/duties">${esc(L3("Semua", "Sude", "All"))}</a> · <a href="#/serve">${esc(t("rosters"))}</a></span></div>
       ${myDuties.length ? myDuties.map(dutyRow).join("") : `<p class="muted small">${esc(t("noDuties"))}</p>`}
     </article>`}
 
@@ -752,7 +755,7 @@ function madeRosterList(r, rowEdit, canFile, names) {
       <div class="rr-head"><span class="date-chip"><b>${esc(fmt(iso, { day: "numeric" }))}</b><small>${esc(fmt(iso, { month: "short" }))}</small></span>
         <span class="grow"><b>${esc(fmt(iso, { weekday: "long" }))}</b>${mine ? `<small class="rr-you">${ic("check")} ${esc(L3("Anda bertugas", "Ho marhobas", "You're serving"))}</small> <button class="link rr-cant" data-act="cantMake" data-g="${esc(r.group_id)}" data-day="${iso}" data-jobs="${esc(head.filter((h, j) => j && hit(row[j] || "", names)).join(", "))}">${esc(L3("Tidak bisa?", "Ndang boi?", "Can't make it?"))}</button>` : ""}</span>
         ${rowEdit || canFile ? `<span class="rr-acts">${canFile ? act("yAttach", iso, "📎", L3("Tambah file atau video", "Tambah file manang video", "Add a file or video")) : ""}${rowEdit && row ? act("uploadRoster", iso, ic("edit"), t("edit"), "", 'data-edit="1"') + act("rrDelRow", iso, ic("trash"), t("delete"), "danger") : ""}</span>` : ""}</div>
-      ${jobs.length ? `<div class="rr-jobs">${jobs.map(([h, w]) => `<div class="rr-job${hit(w, names) ? " me" : ""}"><small>${esc(h)}</small><b>${esc(w)}</b></div>`).join("")}</div>` : row ? `<p class="small muted" style="margin:8px 0 0">—</p>` : ""}
+      ${jobs.length ? `<div class="rr-jobs">${jobs.map(([h, w]) => `<div class="rr-job${hit(w, names) ? " me" : ""}"><small>${esc(h)}</small><b>${rnCell(r, iso, h, w)}</b></div>`).join("")}</div>` : row ? `<p class="small muted" style="margin:8px 0 0">—</p>` : ""}
       ${files.length || tata.length ? `<div class="chips rr-files">${tata.map((v) => `<a class="chip rr-tata" href="#/tata/${v.id}">📖 ${esc(t("tataTitle"))}</a>`).join("")}${files.map((f) => f.link
         ? `<a class="chip" href="${esc(f.link)}" target="_blank" rel="noopener">🎬 ${esc(f.title || "Video")}</a>`
         : `<button class="chip" data-act="openOffFile" data-id="${f.id}">📎 ${esc(f.title || f.file_name)}</button>`).join("")}</div>` : ""}
@@ -786,7 +789,7 @@ function rosterCard(r, edit) {
   const rowActs = (row, i, j) => { if (!rowEdit || i === 0 || j !== 0) return ""; const iso = rowDate(row, r.month); return iso ? `<span style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">${canFile ? `<button class="icon-btn" style="width:36px;height:36px" data-act="yAttach" data-g="${esc(r.group_id)}" data-day="${iso}" aria-label="${esc(L3("Tambah file atau video", "Tambah file manang video", "Add a file or video"))}">📎</button>` : ""}<button class="icon-btn" style="width:36px;height:36px" data-act="uploadRoster" data-g="${esc(r.group_id)}" data-m="${esc(r.month)}" data-day="${iso}" data-edit="1" aria-label="${esc(t("edit"))}">${ic("edit")}</button><button class="icon-btn danger" style="width:36px;height:36px" data-act="rrDelRow" data-g="${esc(r.group_id)}" data-day="${iso}" aria-label="${esc(t("delete"))}">${ic("trash")}</button></span>` : ""; };
   return `<article class="card roster" style="--gc:${(G(r.group_id) || {}).color}">
     <div class="roster-h">${made ? `<span class="ftype link">${ic("calendar")}</span>` : `<span class="ftype ${fileKind(r)}">${esc(fileKind(r).toUpperCase())}</span>`}<div class="grow"><b>${esc(r.title || r.file_name || "Roster")}</b><small>${esc([r.file_name || r.link, r.author_name].filter(Boolean).join(" · "))}</small></div></div>
-    ${made && tables.length ? madeRosterList(r, rowEdit, canFile, names) : rosterFiles(r) + (tables.length ? tables.map((tb) => `<div class="tbl-wrap"><table class="tbl">${tb.rows.map((row, i) => `<tr class="${row.some((c) => hit(c, names)) ? "me" : ""}">${row.map((c, j) => `<${i === 0 ? "th" : "td"} class="${hit(c, names) ? "me" : ""}">${esc(c)}${rowActs(row, i, j)}</${i === 0 ? "th" : "td"}>`).join("")}</tr>`).join("")}</table></div>${tables.length > 1 ? `<p class="small muted">${esc(tb.name)}</p>` : ""}`).join("") : r.mime && /^image/.test(r.mime) ? `<div class="img-slot" data-img="${r.id}"></div>` : `<p class="small muted">${esc(t("noPreview"))}</p>`)}
+    ${made && tables.length ? madeRosterList(r, rowEdit, canFile, names) : rosterFiles(r) + (tables.length ? tables.map((tb) => `<div class="tbl-wrap"><table class="tbl">${tb.rows.map((row, i) => `<tr class="${row.some((c) => hit(c, names)) ? "me" : ""}">${row.map((c, j) => `<${i === 0 ? "th" : "td"} class="${hit(c, names) ? "me" : ""}">${i && j ? rnCell(r, rowDate(row, r.month), tb.rows[0][j], c) : esc(c)}${rowActs(row, i, j)}</${i === 0 ? "th" : "td"}>`).join("")}</tr>`).join("")}</table></div>${tables.length > 1 ? `<p class="small muted">${esc(tb.name)}</p>` : ""}`).join("") : r.mime && /^image/.test(r.mime) ? `<div class="img-slot" data-img="${r.id}"></div>` : `<p class="small muted">${esc(t("noPreview"))}</p>`)}
     <div class="row end">
       ${r.has_file ? `<button class="btn sm" data-act="openFile" data-id="${r.id}">${ic("file")} ${esc(t("openOriginal"))}</button>` : ""}
       ${r.link ? `<a class="btn sm" href="${esc(r.link)}" target="_blank" rel="noopener">${ic("link")} ${esc(t("openLink"))}</a>` : ""}
@@ -1044,7 +1047,7 @@ async function render() {
     if (!D) await refresh();
     if (!r) { history.replaceState(null, "", "#/home"); r = "home"; }
     if (isGuest() && !["home", "bread", "checkin", "notasi"].includes(r)) { history.replaceState(null, "", "#/home"); r = "home"; arg = undefined; }
-    const map = { quizwb: R.quizwb, sunday: R.sunday, usage: R.usage, tarombo: R.tarombo, rpp: R.rpp, lit: R.lit, litwb: R.litwb, doc: R.doc, library: R.library, song: R.song, notasi: R.notasi, access: R.access, sswb: R.sswb, ssdeck: R.ssdeck, fx: R.fx, meet: R.meet, tutur: R.tutur, ende: R.ende, stories: R.stories, voyage: R.voyage, live: R.live, grief: R.grief, care: R.care, search: R.search, prayer: R.prayer, checkin: R.checkin, checkinqr: R.checkinqr, chat: R.chat, call: R.call, tata: R.tata, home: R.home, groups: R.groups, g: R.group, serve: R.serve, s: R.section, calendar: R.calendar, bread: R.bread, elders: R.elders, berita: R.berita, people: R.people, more: R.more, appstatus: R.appstatus, o: R.office, warta: R.warta };
+    const map = { duties: R.duties, quizwb: R.quizwb, sunday: R.sunday, usage: R.usage, tarombo: R.tarombo, rpp: R.rpp, lit: R.lit, litwb: R.litwb, doc: R.doc, library: R.library, song: R.song, notasi: R.notasi, access: R.access, sswb: R.sswb, ssdeck: R.ssdeck, fx: R.fx, meet: R.meet, tutur: R.tutur, ende: R.ende, stories: R.stories, voyage: R.voyage, live: R.live, grief: R.grief, care: R.care, search: R.search, prayer: R.prayer, checkin: R.checkin, checkinqr: R.checkinqr, chat: R.chat, call: R.call, tata: R.tata, home: R.home, groups: R.groups, g: R.group, serve: R.serve, s: R.section, calendar: R.calendar, bread: R.bread, elders: R.elders, berita: R.berita, people: R.people, more: R.more, appstatus: R.appstatus, o: R.office, warta: R.warta };
     try { usageTick(r); } catch (e) {}
     const html = (map[r] || R.notFound)(arg);
     if (typeof html === "string") view().innerHTML = html;
@@ -3032,7 +3035,7 @@ A.viewAs = async (d, btn) => {
     if (!data || !data.me) throw new Error("not_found");
     if (!VIEWAS.on) { VIEWAS.orig = D; VIEWAS.api = api; }
     VIEWAS.on = true; VIEWAS.data = data; VIEWAS.name = data.me.name;
-    const readOnly = new Set(["save", "del", "pushSave", "setPassword", "membersUpsert", "settingsSave", "logout", "upload", "rosterSave"]);
+    const readOnly = new Set(["swap", "save", "del", "pushSave", "setPassword", "membersUpsert", "settingsSave", "logout", "upload", "rosterSave"]);
     api = new Proxy(VIEWAS.api, { get(t, k) {
       if (k === "data") return () => Promise.resolve(VIEWAS.data);
       if (k === "ping") return () => Promise.resolve();
@@ -4828,7 +4831,7 @@ A.cantMake = (d) => {
   const g = G(d.g); const day = d.day; const taken = [];
   (D.rosters || []).forEach((r) => (r.table_json || []).forEach((tb) => (tb.rows || []).forEach((row) => { if (rowDate(row, r.month) === day) row.forEach((c) => taken.push(c)); })));
   const free = (D.people || []).filter((p) => p.id !== D.me.id && d.g in (p.groups || {}) && !taken.some((c) => hit(c, myNames(p)))).map((p) => p.name);
-  sheet(L3("Tidak bisa bertugas", "Ndang boi marhobas", "Can't make it"), `<form class="form" data-form="cantmake" data-g="${esc(d.g)}" data-day="${esc(day)}" data-jobs="${esc(d.jobs || "")}">
+  sheet(L3("Tidak bisa bertugas", "Ndang boi marhobas", "Can't make it"), `<form class="form" data-form="cantmake" data-g="${esc(d.g)}" data-day="${esc(day)}" data-jobs="${esc(d.jobs || "")}" data-who="${esc(d.who || "")}" data-r="${esc(d.r || "")}">
     <p class="muted">${esc(gname(g))} · ${esc(fmtDay(day))}${d.jobs ? " · " + esc(d.jobs) : ""}</p>
     <label>${esc(L3("Alasan (boleh kosong)", "Alasan", "Reason (optional)"))}<textarea name="note" rows="2" maxlength="200"></textarea></label>
     ${free.length ? `<p class="small muted">${esc(L3("Yang kosong hari itu", "Na so marhobas", "Free that Sunday"))}: <b>${esc(free.join(", "))}</b></p>` : ""}
@@ -4836,9 +4839,192 @@ A.cantMake = (d) => {
     <button class="btn primary block">${esc(L3("Beri tahu makers", "Paboa tu makers", "Tell the makers"))}</button></form>`);
 };
 F.cantmake = async (f) => {
-  const r = await api.save("swap", { group_id: f.dataset.g, label: fmtDay(f.dataset.day), jobs: f.dataset.jobs, note: f.note.value.trim(), free: f.free.value, url: rosterHome(f.dataset.g, f.dataset.day.slice(0, 7)) });
-  closeSheet(); toast(L3(`Terkirim ke ${r.told || 0} makers.`, `Tarkirim tu ${r.told || 0} makers.`, `Sent to ${r.told || 0} makers.`));
+  const url = rosterHome(f.dataset.g, f.dataset.day.slice(0, 7));
+  // Kept open on the server (YB 2026-11-01), so the name shows "can't make it" to the makers until it is sorted.
+  const rid = f.dataset.r || ((D.rosters || []).find((x) => x.group_id === f.dataset.g && (x.table_json || []).some((tb) => (tb.rows || []).some((row) => rowDate(row, x.month) === f.dataset.day))) || {}).id;
+  const r = api.swap ? await api.swap("cant", { group_id: f.dataset.g, roster_id: rid || null, day: f.dataset.day, job: f.dataset.jobs, who: f.dataset.who || D.me.name, note: f.note.value.trim(), free: f.free.value, url })
+    : await api.save("swap", { group_id: f.dataset.g, label: fmtDay(f.dataset.day), jobs: f.dataset.jobs, note: f.note.value.trim(), free: f.free.value, url });
+  closeSheet(); swapsLoad(true); toast(L3(`Terkirim ke ${r.told || 0} makers.`, `Tarkirim tu ${r.told || 0} makers.`, `Sent to ${r.told || 0} makers.`));
 };
+
+// ---------- tap a name on a roster (YB 2026-11-01) ----------
+// Every name in every roster is a button. A tap opens a sheet: ask a teammate to swap, can't make it, add to calendar,
+// message the person, and their duties. Roster makers also get Edit this Sunday and Remove (long-press goes straight there).
+// Swaps and "can't make it" live on the server (hk_swap); a swap changes the roster only when the teammate accepts,
+// and the server checks double booking first, like a maker's save.
+const RN_SKIP = /(tanggal|date|hari|bahasa|language|nama minggu|asal|tema|theme|ayat|nas\b|bacaan|catatan|note|keterangan|pengumuman)/i;
+const RN_SEP = /(\s*(?:,|;|\/|&|\+|·|•|\n|\s+dan\s+|\s+and\s+)\s*)/i;
+// One roster cell with each name as a button (separators kept as they were typed).
+function rnCell(r, iso, job, cell) {
+  const s = String(cell || "");
+  if (!iso || !s.trim() || RN_SKIP.test(job || "") || rowDate([s], r.month)) return esc(s);
+  return s.split(RN_SEP).map((part, i) => {
+    if (i % 2 || !part.trim() || /^\d/.test(part.trim()) || part.trim().length < 2) return esc(part);
+    const sw = rnSwapOf(r.group_id, iso, job, part);
+    return `<button type="button" class="rn${sw ? " rn-" + sw.kind : ""}" data-act="rn" data-r="${esc(r.id)}" data-day="${iso}" data-job="${esc(job || "")}" data-who="${esc(part.trim())}">${esc(part)}${sw ? `<i>${sw.kind === "cant" ? "!" : "⇄"}</i>` : ""}</button>`;
+  }).join("");
+}
+const rnPerson = (who) => { const ps = (D.people || []).filter((p) => hit(who, myNames(p))); return ps.find((p) => norm(p.name) === norm(who)) || ps[0] || null; };
+const rnIsMe = (who) => !isGuest() && hit(who, myNames());
+const rnSwapOf = (gid, iso, job, who) => (D.swaps || []).find((x) => x.status === "open" && x.group_id === gid && x.day === iso && x.job === (job || "") && norm(x.who) === norm(String(who).trim()));
+// The short name to write in a roster for someone: their first name when nobody else shares it, else first two names.
+function rnLabel(p) { const names = myNames(p); const f = firstName(p.name); if (names.includes(norm(f))) return f; return String(p.name).replace(/^(Pdt|St|Sintua|Bapak|Ibu|Kak|Bang|Ev|Dr)\.?\s+/i, "").split(/\s+/).slice(0, 2).join(" "); }
+// Is this person already on a duty that date? (the server makes the final check, with its practice and Slides exceptions)
+function rnBusy(p, iso) {
+  const names = myNames(p); let out = null;
+  (D.rosters || []).forEach((r) => (r.table_json || []).forEach((tb) => { const rows = tb.rows || []; const head = rows[0] || [];
+    if (/(latihan|practi[cs]e|rehearsal|gladi)/i.test(tb.name || "")) return;
+    rows.slice(1).forEach((row) => { if (out || rowDate(row, r.month) !== iso || /(latihan|practi[cs]e|rehearsal|gladi)/i.test(row.join(" "))) return;
+      const j = row.findIndex((c, k) => k && !RN_SKIP.test(head[k] || "") && hit(c, names) && !(r.group_id === "multimedia" && /slide/i.test(head[k] || "") && (p.is_admin || ["maker", "chair"].includes((p.groups || {}).multimedia))));
+      if (j > 0) out = `${gname(G(r.group_id))} (${head[j] || ""})`; }); }));
+  return out;
+}
+const rnRoster = (id) => (D.rosters || []).find((r) => r.id === id);
+const rnMade = (r) => r && !r.file_name && !r.link && ((r.table_json || [])[0] || {}).rows && (r.table_json || []).length === 1;
+function rnMakerOpts(d, r) {
+  if (!r || !canRoster(r.group_id) || !rnMade(r)) return "";
+  return `<h4 class="rn-h">${ic("gear")} ${esc(L3("Untuk pembuat roster", "Tu pambahen roster", "For roster makers"))}</h4>
+    <button class="opt-card" data-act="rnEdit" data-r="${esc(r.id)}" data-day="${esc(d.day)}">${ic("edit")}<span><b>${esc(L3("Ubah Minggu ini", "Ubah Minggu on", "Edit this slot"))}</b><small>${esc(L3("Ganti nama atau tugas di tanggal ini", "", "Change names or jobs on this date"))}</small></span>${ic("chev", "chev")}</button>
+    <button class="opt-card danger" data-act="rnRemove" data-r="${esc(r.id)}" data-day="${esc(d.day)}" data-job="${esc(d.job)}" data-who="${esc(d.who)}">${ic("trash")}<span><b>${esc(L3(`Hapus ${d.who} dari tugas ini`, `Hapus ${d.who}`, `Remove ${d.who} from this slot`))}</b><small>${esc(L3("Ketuk dua kali untuk menghapus", "Tuktuk dua hali", "Tap twice to remove"))}</small></span></button>`;
+}
+A.rn = (d) => {
+  if (isGuest()) return A_signIn();
+  const r = rnRoster(d.r); if (!r) return; const g = G(r.group_id); const p = rnPerson(d.who); const mine = rnIsMe(d.who); const maker = canRoster(r.group_id);
+  const sw = rnSwapOf(r.group_id, d.day, d.job, d.who); const past = d.day < today();
+  const opt = (act, icon, title, sub, extra = "") => `<button class="opt-card" data-act="${act}" data-r="${esc(r.id)}" data-day="${esc(d.day)}" data-job="${esc(d.job)}" data-who="${esc(d.who)}" ${extra}>${icon}<span><b>${esc(title)}</b>${sub ? `<small>${esc(sub)}</small>` : ""}</span>${ic("chev", "chev")}</button>`;
+  sheet(d.who, `<div class="for-chip" style="--gc:${g ? g.color : "var(--brand)"}">${p ? avatarOf(p) : ic(g ? g.icon : "people")}<span class="grow"><small>${esc(gname(g))} · ${esc(fmt(d.day, { weekday: "short", day: "numeric", month: "short" }))}</small><b>${esc(d.job || "")}${p && norm(p.name) !== norm(d.who) ? " · " + esc(p.name) : ""}</b></span></div>
+    ${sw ? `<p class="small rn-note">${sw.kind === "cant" ? `⚠️ ${esc(L3("Sudah memberi tahu: tidak bisa bertugas.", "Nunga dipaboa: ndang boi marhobas.", "Has said they can't make it."))}` : `⇄ ${esc(L3(`Menunggu jawaban ${sw.to_name || ""} untuk tukar.`, `Mangalap alus sian ${sw.to_name || ""}.`, `Waiting for ${sw.to_name || ""} to answer the swap.`))}`}${sw.note ? " " + esc(sw.note) : ""}</p>` : ""}
+    <div class="stack">
+    ${!past && (mine || maker) ? opt("rnSwap", "🔁", L3("Minta tukar / pengganti", "Pangido pangganti", "Ask for a swap or replacement"), L3("Pilih teman; roster berubah setelah ia setuju", "", "Pick a teammate; the roster changes once they accept")) : ""}
+    ${!past && (mine || maker) ? opt("rnCant", "⚠️", L3("Tidak bisa bertugas", "Ndang boi marhobas", "Can't make it"), L3("Beri tahu ketua dan para Maker", "", "Tell the section leader and Makers")) : ""}
+    ${!past && mine ? opt("rnCal", "📅", L3("Tambah ke kalender HP", "Tu kalender HP", "Add to my calendar"), L3("Dengan pengingat sehari sebelumnya", "", "With a reminder the day before")) : ""}
+    ${p && p.id !== D.me.id ? `<a class="opt-card" href="#/chat/${esc(dmRoom(p.id))}">${ic("chat")}<span><b>${esc(L3(`Kirim pesan ke ${firstName(p.name)}`, `Kirim pesan tu ${firstName(p.name)}`, `Message ${firstName(p.name)}`))}</b><small>${esc(L3("Chat pribadi", "Chat pribadi", "Private chat"))}</small></span>${ic("chev", "chev")}</a>` : ""}
+    ${p ? `<a class="opt-card" href="#/duties/${esc(p.id === D.me.id ? "" : p.id)}">${ic("roster")}<span><b>${esc(p.id === D.me.id ? L3("Tugas saya", "Ulaonku", "My duties") : L3(`Tugas ${firstName(p.name)}`, `Ulaon ${firstName(p.name)}`, `${firstName(p.name)}'s duties`))}</b><small>${esc(L3("Semua jadwal mendatang di semua seksi", "", "All upcoming slots in every section"))}</small></span>${ic("chev", "chev")}</a>` : `<p class="small muted">${esc(L3("Nama ini belum cocok dengan anggota di Sada.", "", "This name doesn't match a Sada member yet."))}</p>`}
+    ${sw && (maker || sw.by_id === D.me.id || mine) ? `<button class="opt-card" data-act="swapCancel" data-id="${esc(sw.id)}">${ic("x")}<span><b>${esc(sw.kind === "cant" ? L3("Tandai sudah beres", "Nunga sae", "Mark as sorted") : L3("Batalkan permintaan tukar", "Batalhon", "Withdraw the swap request"))}</b></span></button>` : ""}
+    ${!past ? rnMakerOpts(d, r) : ""}</div>`);
+};
+// Makers: long-press a name for Edit / Remove straight away.
+A.rnMaker = (d) => { const r = rnRoster(d.r); if (!r) return; if (!canRoster(r.group_id) || !rnMade(r)) return A.rn(d);
+  sheet(d.who, `<p class="muted">${esc(gname(G(r.group_id)))} · ${esc(fmt(d.day, { weekday: "short", day: "numeric", month: "short" }))} · ${esc(d.job)}</p><div class="stack">${rnMakerOpts(d, r)}
+    <button class="opt-card" data-act="rn" data-r="${esc(r.id)}" data-day="${esc(d.day)}" data-job="${esc(d.job)}" data-who="${esc(d.who)}">⋯<span><b>${esc(L3("Pilihan lain", "Na asing", "More options"))}</b></span>${ic("chev", "chev")}</button></div>`); };
+(() => { let tm = null, x0 = 0, y0 = 0, fired = null;
+  const clear = () => { clearTimeout(tm); tm = null; };
+  document.addEventListener("pointerdown", (e) => { const b = e.target.closest && e.target.closest("button.rn"); if (!b) return; x0 = e.clientX; y0 = e.clientY; clear();
+    tm = setTimeout(() => { tm = null; fired = b; try { navigator.vibrate && navigator.vibrate(15); } catch (er) {} A.rnMaker({ ...b.dataset }); }, 550); }, { passive: true });
+  document.addEventListener("pointermove", (e) => { if (tm && Math.hypot(e.clientX - x0, e.clientY - y0) > 10) clear(); }, { passive: true });
+  ["pointerup", "pointercancel"].forEach((n) => document.addEventListener(n, clear, { passive: true }));
+  // the click that ends a long-press must not open the normal sheet on top
+  document.addEventListener("click", (e) => { if (fired && e.target.closest && e.target.closest("button.rn") === fired) { e.preventDefault(); e.stopImmediatePropagation(); } fired = null; }, true);
+  document.addEventListener("contextmenu", (e) => { if (e.target.closest && e.target.closest("button.rn")) e.preventDefault(); });
+})();
+// links in the name sheet close it as they go
+document.addEventListener("click", (e) => { const a = e.target.closest && e.target.closest("#sheet a.opt-card[href^='#/']"); if (a) closeSheet(); });
+A.rnEdit = (d) => { const r = rnRoster(d.r); if (!r) return; A.uploadRoster({ g: r.group_id, m: r.month, day: d.day, edit: 1 }); };
+A.rnRemove = async (d, btn) => {
+  if (!btn.classList.contains("armed")) { btn.classList.add("armed"); btn.querySelector("small").textContent = L3("Ketuk lagi untuk menghapus", "Tuktuk muse", "Tap again to remove"); return; }
+  const r = rnRoster(d.r); if (!rnMade(r)) return; const rows = r.table_json[0].rows.map((x) => x.slice()); const head = rows[0]; const j = head.findIndex((h) => h === d.job);
+  const row = rows.slice(1).find((x) => rowDate(x, r.month) === d.day); if (!row || j < 1) return toast(L3("Tugas ini sudah berubah. Muat ulang.", "", "This slot has changed. Pull to refresh."), true);
+  const parts = String(row[j] || "").split(RN_SEP).filter((x, i) => !(i % 2)).map((x) => x.trim()).filter(Boolean);
+  const k = parts.findIndex((x) => norm(x) === norm(d.who)); if (k < 0) return toast(L3("Tugas ini sudah berubah. Muat ulang.", "", "This slot has changed. Pull to refresh."), true);
+  parts.splice(k, 1); row[j] = parts.join(", ");
+  await busy(btn, async () => { await rosterWrite(r.group_id, r.month, r, head, rows.slice(1), false); closeSheet(); await refresh(); toast(t("deleted")); render(); swapsLoad(); });
+};
+// Add one duty to the phone's calendar: an .ics file (iPhone / Android calendar) or Google Calendar.
+function rnEvent(d) { const r = rnRoster(d.r); const g = r ? G(r.group_id) : null;
+  return { id: `duty-${d.day}-${norm((r && r.group_id) + " " + d.job).replace(/ /g, "-")}`, title: `⛪ ${L3("Bertugas", "Marhobas", "Serving")}: ${d.job}${g ? " · " + gname(g) : ""}`, starts_at: `${d.day}T09:00:00+08:00`, ends_at: `${d.day}T12:30:00+08:00`, place: "HKBP Singapore", notes: `${d.who} · ${gname(g)}\n${appUrl()}${r ? rosterHome(r.group_id, r.month) : "#/duties"}`, remind_min: 1440 }; }
+A.rnCal = (d) => { const e = rnEvent(d);
+  sheet(L3("Ke kalender HP", "Tu kalender HP", "To my phone calendar"), `<p class="muted">${esc(e.title)} · ${esc(fmt(d.day, { weekday: "long", day: "numeric", month: "long" }))}</p><div class="stack">
+    <button class="opt-card" data-act="rnIcs" data-r="${esc(d.r)}" data-day="${esc(d.day)}" data-job="${esc(d.job)}" data-who="${esc(d.who)}">📅<span><b>${esc(L3("Kalender HP (iPhone / Android)", "Kalender HP", "Phone calendar (iPhone / Android)"))}</b><small>${esc(L3("Pengingat sehari sebelumnya", "", "Reminder the day before"))}</small></span>${ic("chev", "chev")}</button>
+    <a class="opt-card" href="${esc(gcal(e))}" target="_blank" rel="noopener">🗓️<span><b>Google Calendar</b></span>${ic("chev", "chev")}</a></div>`); };
+A.rnIcs = (d) => { download(`sada-duty-${d.day}.ics`, ics([rnEvent(d)]), "text/calendar"); closeSheet(); };
+// "Can't make it" from a name: the server keeps it open (so makers see it on the name) and tells them.
+A.rnCant = (d) => { const r = rnRoster(d.r); if (!r) return; A.cantMake({ g: r.group_id, day: d.day, jobs: d.job, who: d.who, r: r.id }); };
+// Ask a teammate to take the slot. Section members first; anyone already serving that date is shown but can't be picked.
+A.rnSwap = (d) => {
+  const r = rnRoster(d.r); if (!r) return; const gid = r.group_id; const owner = rnPerson(d.who);
+  const ppl = (D.people || []).filter((p) => !(owner && p.id === owner.id) && !hit(d.who, myNames(p)) && p.name);
+  const row = (p) => { const busyAt = rnBusy(p, d.day); return `<label class="li rn-pick${busyAt ? " off" : ""}" data-n="${esc(norm(p.name + " " + (p.alias || "")))}"><input type="radio" name="to" value="${esc(p.id)}" data-label="${esc(rnLabel(p))}" ${busyAt ? "disabled" : ""}>${avatarOf(p)}<span class="grow"><b>${esc(p.name)}</b><small>${busyAt ? esc(L3(`Sudah bertugas: ${busyAt}`, `Nunga marhobas: ${busyAt}`, `Already serving: ${busyAt}`)) : esc(L3("Kosong hari itu", "Kosong", "Free that day"))}</small></span></label>`; };
+  const team = ppl.filter((p) => gid in (p.groups || {})).sort((a, b) => (rnBusy(a, d.day) ? 1 : 0) - (rnBusy(b, d.day) ? 1 : 0) || a.name.localeCompare(b.name));
+  const rest = ppl.filter((p) => !(gid in (p.groups || {}))).sort((a, b) => a.name.localeCompare(b.name));
+  sheet(L3("Minta tukar", "Pangido pangganti", "Ask for a swap"), `<form class="form" data-form="rnswap" data-r="${esc(r.id)}" data-day="${esc(d.day)}" data-job="${esc(d.job)}" data-who="${esc(d.who)}">
+    <p class="muted">${esc(gname(G(gid)))} · ${esc(fmt(d.day, { weekday: "short", day: "numeric", month: "short" }))} · ${esc(d.job)} · <b>${esc(d.who)}</b></p>
+    <input type="search" placeholder="${esc(L3("Cari nama", "Bilang goar", "Search a name"))}" data-filter=".rn-pick" aria-label="${esc(L3("Cari nama", "Bilang goar", "Search a name"))}">
+    ${team.length ? `<h4 class="rn-h">${esc(L3("Tim seksi ini", "Tim seksi on", "This section's team"))}</h4><div class="card rn-list">${team.map(row).join("")}</div>` : ""}
+    <details class="rn-more"${team.length ? "" : " open"}><summary>${esc(L3("Anggota lain", "Ruas na asing", "Other members"))} (${rest.length})</summary><div class="card rn-list">${rest.map(row).join("")}</div></details>
+    <label>${esc(L3("Pesan (boleh kosong)", "Pesan", "Message (optional)"))}<textarea name="note" rows="2" maxlength="200"></textarea></label>
+    <button class="btn primary block">🔁 ${esc(L3("Kirim permintaan", "Kirim", "Send the request"))}</button>
+    <p class="small muted">${esc(L3("Roster berubah otomatis setelah ia menerima. Jadwal ganda tetap dicegah.", "", "The roster changes by itself once they accept. Double booking is still blocked."))}</p></form>`,
+    (el) => el.querySelectorAll(".rn-pick").forEach((x) => (x.dataset.q = x.dataset.n)));
+};
+F.rnswap = async (f) => {
+  const pick = f.querySelector("input[name=to]:checked"); if (!pick) { toast(L3("Pilih satu orang dulu.", "Pillit sada halak.", "Pick someone first."), true); return; }
+  const r = rnRoster(f.dataset.r);
+  const res = await api.swap("ask", { group_id: r.group_id, roster_id: r.id, day: f.dataset.day, job: f.dataset.job, who: f.dataset.who, to_id: pick.value, to_label: pick.dataset.label, note: f.note.value.trim() });
+  closeSheet(); toast(L3("Permintaan terkirim. Anda akan diberi tahu jawabannya.", "Nunga tarkirim.", "Request sent. You'll be told the answer.")); if (res) await swapsLoad(true);
+};
+A.swapAnswer = async (d, btn) => {
+  await busy(btn, async () => { try { const r = await api.swap("answer", { id: d.id, ok: d.ok === "1" }); toast(r && r.status === "accepted" ? L3("Terima kasih! Roster sudah diperbarui.", "Mauliate! Roster nunga diubah.", "Thank you! The roster is updated.") : L3("Sudah dijawab.", "Nunga dialusi.", "Answered."));
+    await refresh(); await swapsLoad(false); render(); } catch (e) { toast(e && e.code === "slot_changed" ? L3("Tugas ini sudah diubah di roster.", "", "This slot has already changed in the roster.") : errMsg(e), true); await swapsLoad(true); } });
+};
+A.swapCancel = async (d, btn) => { await busy(btn, async () => { await api.swap("cancel", { id: d.id }); closeSheet(); toast(t("saved")); await swapsLoad(true); }); };
+// Open swap requests and "can't make it"s that involve me (or that I look after as a roster maker).
+async function swapsLoad(rerender) {
+  if (!D || isGuest() || !api.swap) return;
+  try { const list = await api.swap("list", {}); const before = JSON.stringify(D.swaps || []); D.swaps = Array.isArray(list) ? list : [];
+    if (rerender !== false && before !== JSON.stringify(D.swaps) && /^#\/(home|duties|s\/|g\/|serve)/.test(location.hash) && $("#sheet").hidden) render(); } catch (e) {}
+}
+// Requests waiting for my answer, on Home and on My duties.
+function swapAsks() {
+  const mine = (D.swaps || []).filter((x) => x.status === "open" && x.kind === "swap" && x.to_id === D.me.id);
+  return mine.map((x) => `<div class="li rn-ask" style="--gc:${(G(x.group_id) || {}).color || "var(--brand)"}"><span class="date-chip"><b>${esc(fmt(x.day, { day: "numeric" }))}</b><small>${esc(fmt(x.day, { month: "short" }))}</small></span>
+    <span class="grow"><b>🔁 ${esc(L3(`${x.by_name} minta Anda menggantikan`, `${x.by_name} mangido ho gabe pangganti`, `${x.by_name} asks you to take over`))}</b><small>${esc(gname(G(x.group_id)))} · ${esc(x.job)} · ${esc(x.who)}${x.note ? " · " + esc(x.note) : ""}</small>
+    <span class="row" style="margin-top:6px;gap:6px"><button class="btn sm primary" data-act="swapAnswer" data-id="${esc(x.id)}" data-ok="1">${ic("check")} ${esc(L3("Terima", "Jalo", "Accept"))}</button><button class="btn sm ghost" data-act="swapAnswer" data-id="${esc(x.id)}" data-ok="0">${esc(L3("Tidak bisa", "Ndang boi", "Decline"))}</button></span></span></div>`).join("");
+}
+function swapHomeCard() { if (isGuest()) return ""; const h = swapAsks(); return h ? `<article class="card rn-asks"><div class="card-h"><h3>🔁 ${esc(L3("Permintaan tukar", "Pangidoan pangganti", "Swap requests"))}</h3><a class="small" href="#/duties">${esc(L3("Tugas saya", "Ulaonku", "My duties"))}</a></div>${h}</article>` : ""; }
+// Every upcoming slot of one person across all categories and sections, with the names as tappable buttons.
+function dutySlots(p) {
+  const names = myNames(p); const out = []; if (!names.length) return out;
+  (D.rosters || []).forEach((r) => (r.table_json || []).forEach((tb) => { const rows = tb.rows || []; const hi = Math.max(0, rows.findIndex((x) => x.filter(Boolean).length >= 2)); const head = rows[hi] || [];
+    rows.slice(hi + 1).forEach((row) => { const iso = rowDate(row, r.month); if (!iso || iso < today()) return;
+      row.forEach((c, j) => { if (!j || RN_SKIP.test(head[j] || "") || !hit(c, names)) return;
+        const who = String(c).split(RN_SEP).filter((x, i) => !(i % 2)).map((x) => x.trim()).find((x) => hit(x, names)) || String(c).trim();
+        out.push({ r, iso, job: head[j] || "", who }); }); }); }));
+  return out.sort((a, b) => a.iso.localeCompare(b.iso) || gname(G(a.r.group_id)).localeCompare(gname(G(b.r.group_id))));
+}
+R.duties = (id) => {
+  const p = id ? (D.people || []).find((x) => x.id === id) : D.me; if (!p) return R.notFound();
+  const self = p.id === D.me.id; const list = dutySlots(p); setTimeout(() => swapsLoad(), 0);
+  const open = (D.swaps || []).filter((x) => x.status === "open" && (x.from_id === p.id || x.by_id === p.id) && !(x.kind === "swap" && x.to_id === D.me.id));
+  const watch = self ? (D.swaps || []).filter((x) => x.status === "open" && x.from_id !== D.me.id && x.by_id !== D.me.id && x.to_id !== D.me.id && canRoster(x.group_id)) : [];
+  const recent = self ? (D.swaps || []).filter((x) => x.status !== "open" && (x.by_id === D.me.id || x.to_id === D.me.id || x.from_id === D.me.id)) : [];
+  const swLine = (x, btn) => `<div class="li"><span class="date-chip"><b>${esc(fmt(x.day, { day: "numeric" }))}</b><small>${esc(fmt(x.day, { month: "short" }))}</small></span><span class="grow"><b>${x.kind === "cant" ? "⚠️ " + esc(L3(`${x.who} tidak bisa`, `${x.who} ndang boi`, `${x.who} can't make it`)) : "🔁 " + esc(L3(`${x.who} → ${x.to_name || ""}`, `${x.who} → ${x.to_name || ""}`, `${x.who} → ${x.to_name || ""}`))}${x.status !== "open" ? ` · ${esc(x.status === "accepted" ? L3("diterima", "dijalo", "accepted") : x.status === "declined" ? L3("ditolak", "ditolak", "declined") : L3("dibatalkan", "dibatalhon", "withdrawn"))}` : ""}</b><small>${esc(gname(G(x.group_id)))} · ${esc(x.job)}${x.note ? " · " + esc(x.note) : ""}</small></span>${btn && x.status === "open" ? `<button class="btn sm ghost" data-act="swapCancel" data-id="${esc(x.id)}">${esc(x.kind === "cant" ? L3("Beres", "Sae", "Sorted") : L3("Batalkan", "Batalhon", "Withdraw"))}</button>` : ""}</div>`;
+  let lastM = "";
+  const body = list.map((x) => { const m = x.iso.slice(0, 7); const hd = m !== lastM ? `<h3 class="sec-h">${esc(monthName(m))}</h3>` : ""; lastM = m; const g = G(x.r.group_id); const sw = rnSwapOf(x.r.group_id, x.iso, x.job, x.who);
+    return `${hd}<button class="li rn-duty" style="--gc:${g ? g.color : "var(--brand)"}" data-act="rn" data-r="${esc(x.r.id)}" data-day="${x.iso}" data-job="${esc(x.job)}" data-who="${esc(x.who)}"><span class="date-chip"><b>${esc(fmt(x.iso, { day: "numeric" }))}</b><small>${esc(fmt(x.iso, { month: "short" }))}</small></span><span class="grow"><b>${esc(gname(g))} · ${esc(x.job)}</b><small>${esc(fmt(x.iso, { weekday: "long" }))}${sw ? " · " + esc(sw.kind === "cant" ? L3("tidak bisa (sudah diberitahu)", "", "can't make it (told)") : L3(`tukar menunggu ${sw.to_name || ""}`, "", `swap waiting for ${sw.to_name || ""}`)) : ""}</small></span>${ic("chev", "chev")}</button>`; }).join("");
+  const title = self ? L3("Tugas saya", "Ulaonku", "My duties") : L3(`Tugas ${firstName(p.name)}`, `Ulaon ${firstName(p.name)}`, `${firstName(p.name)}'s duties`);
+  return shell("#/calendar", `<h2 class="page-h">${ic("roster")} ${esc(title)}</h2>
+    ${self ? "" : `<div class="row two"><a class="btn" href="#/chat/${esc(dmRoom(p.id))}">${ic("chat")} ${esc(L3("Kirim pesan", "Kirim pesan", "Message"))}</a><a class="btn" href="#/duties">${ic("roster")} ${esc(L3("Tugas saya", "Ulaonku", "My duties"))}</a></div>`}
+    ${self && swapAsks() ? `<article class="card rn-asks"><div class="card-h"><h3>🔁 ${esc(L3("Menunggu jawaban Anda", "Mangalap alusmu", "Waiting for your answer"))}</h3></div>${swapAsks()}</article>` : ""}
+    ${open.length ? `<article class="card"><div class="card-h"><h3>${esc(L3("Sedang berjalan", "Na mardalan", "In progress"))}</h3></div>${open.map((x) => swLine(x, self || canRoster(x.group_id))).join("")}</article>` : ""}
+    ${watch.length ? `<article class="card"><div class="card-h"><h3>${ic("gear")} ${esc(L3("Di seksi yang Anda kelola", "Di seksi na niurusmu", "In sections you manage"))}</h3></div>${watch.map((x) => swLine(x, true)).join("")}</article>` : ""}
+    ${list.length ? `<p class="small muted">${esc(L3("Ketuk satu tugas untuk tukar, tidak bisa, kalender, atau pesan.", "", "Tap a slot to swap, say you can't make it, add it to your calendar or send a message."))}</p>${body}` : empty(L3("Tidak ada tugas mendatang.", "Ndang adong ulaon.", "No upcoming duties."), "roster")}
+    ${recent.length ? `<details class="card"><summary><b>${esc(L3("Baru dijawab", "Na baru dialusi", "Recently answered"))}</b></summary>${recent.map((x) => swLine(x, false)).join("")}</details>` : ""}`,
+    { back: "#/calendar", title });
+};
+try { document.head.insertAdjacentHTML("beforeend", `<style>
+  button.rn { all: unset; cursor: pointer; display: inline; border-radius: 6px; padding: 0 2px; margin: 0 -2px; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; text-decoration: underline dotted color-mix(in srgb, currentColor 35%, transparent); text-underline-offset: 3px; }
+  button.rn:active, button.rn:focus-visible { background: color-mix(in srgb, var(--gc, var(--brand)) 22%, transparent); outline: none; }
+  button.rn i { font-style: normal; font-size: .72em; font-weight: 800; margin-left: 3px; padding: 0 4px; border-radius: 6px; vertical-align: 2px; background: var(--brand); color: var(--brand-ink); }
+  button.rn.rn-cant i { background: var(--bad, #dc2626); color: #fff; }
+  button.rn.rn-cant { text-decoration: line-through; }
+  .rn-h { margin: 14px 0 4px; font-size: 13px; color: var(--muted); display: flex; gap: 6px; align-items: center; }
+  .rn-note { padding: 8px 10px; border-radius: 10px; background: color-mix(in srgb, var(--brand) 10%, transparent); }
+  .opt-card.danger b { color: var(--bad, #dc2626); } .opt-card.danger.armed { background: color-mix(in srgb, var(--bad, #dc2626) 14%, var(--surface)); }
+  .rn-list { padding: 4px 8px; max-height: 42vh; overflow: auto; } .form label.rn-pick { cursor: pointer; display: flex; flex-direction: row; align-items: center; gap: 10px; margin: 0; padding: 8px 2px; font-weight: 400; } .rn-pick input { flex: none; width: 20px; height: 20px; margin: 0; } .rn-pick .grow b, .rn-pick .grow small { display: block; }
+  .rn-pick.off { opacity: .5; } .rn-more summary { cursor: pointer; font-weight: 700; padding: 6px 0; }
+  button.li.rn-duty { width: 100%; text-align: left; font: inherit; color: inherit; background: none; border: 0; border-bottom: 1px solid var(--line); }
+  .rn-ask .row .btn { flex: none; }
+</style>`); } catch (e) {}
 
 // Event RSVP: Going / Maybe / Can't, with counts; reminders then go only to those coming.
 const rsvpOf = (e) => (D.rsvps && D.rsvps[e.id]) || { going: 0, maybe: 0, no: 0, who: [] };
