@@ -460,7 +460,7 @@ R.home = () => {
       ${isGuest() ? "" : `<a class="search-entry hero-search" href="#/search">${ic("search")}<span>${esc(L3("Cari anggota, lagu, dokumen, acara…", "Lului ruas, ende, dokumen…", "Search members, songs, documents, events…"))}</span></a>`}
     </section>
     ${isGuest() ? `<button class="card notify-ask" data-act="signIn">${ic("lock")}<span><b>${esc(t("guestTitle"))}</b><small>${esc(L3("Masuk untuk melihat Tata Ibadah, kalender, roster, kategorial dan tugas Anda.", "Bongot jolo asa diida Tata Ibadah, kalender, roster, kategorial dohot ulaonmu.", "Sign in to see the Tata Ibadah, calendar, rosters, your categories and your duties."))}</small></span>${ic("chev", "chev")}</button>` : ""}
-    ${isGuest() ? `<a class="card notify-ask" href="#/notasi"><span style="font-size:24px">🎼</span><span><b>${esc(L3("Not Angka lagu gereja", "Not Angka ende", "Hymn number notation"))}</b><small>Buku Ende · Buku Nyanyian HKBP · Kidung Jemaat</small></span>${ic("chev", "chev")}</a>` : ""}
+    ${isGuest() ? `<a class="card notify-ask" href="#/notasi"><span style="font-size:24px">🎼</span><span><b>${esc(L3("Not Angka lagu gereja", "Not Angka ende", "Hymn number notation"))}</b><small>Buku Ende · Buku Nyanyian HKBP · Kidung Jemaat · Pelengkap Kidung Jemaat</small></span>${ic("chev", "chev")}</a>` : ""}
     ${mine ? `<div class="card hbd">${ic("cake")}<div><h2>${esc(t("hbdTitle", firstName(m.name)))}</h2><p>${esc(t("hbdBody"))}</p></div></div>` : ""}
     ${wishesCard()}
     ${m.wed && m.wed.slice(5) === day.slice(5) ? `<div class="card hbd">💍<div><h2>${esc(t("annivTitle", firstName(m.name)))}</h2><p>${esc(t("annivBody"))}</p></div></div>` : ""}
@@ -2564,12 +2564,14 @@ function docsHome() {
       ${tile("#/library?s=KJ", "🎵", "Kidung Jemaat", L3("Nomor & judul", "Nomor & judul", "By number and title"))}
       ${tile("#/library?s=BE", "🎶", "Buku Ende", L3("Nomor & judul", "Nomor & judul", "By number and title"))}
       ${tile("#/library?s=BN", "🎼", "Buku Nyanyian", "HKBP")}
+      ${tile("#/library?s=PKJ", "🎹", "Pelengkap Kidung Jemaat", L3("Nomor & judul", "Nomor & judul", "By number and title"))}
     </div>
     <h3 class="sec-h">${esc(L3("Not Angka", "Not Angka", "Number notation"))}</h3>
     <div class="doc-grid">
       ${tile("#/notasi/BE", "🎶", "Buku Ende", L3("Not angka · Doc & Slides", "Not angka · Doc & Slides", "Notation · Doc & Slides"))}
       ${tile("#/notasi/BN", "🎼", "Buku Nyanyian HKBP", L3("Not angka · Doc & Slides", "Not angka · Doc & Slides", "Notation · Doc & Slides"))}
       ${tile("#/notasi/KJ", "🎵", "Kidung Jemaat", L3("Not angka · Doc & Slides", "Not angka · Doc & Slides", "Notation · Doc & Slides"))}
+      ${tile("#/notasi/PKJ", "🎹", "Pelengkap Kidung Jemaat", L3("Not angka · Doc & Slides", "Not angka · Doc & Slides", "Notation · Doc & Slides"))}
     </div>
     <h3 class="sec-h">${esc(L3("Buku gereja", "Buku ni huria", "Church books"))}</h3>
     <div class="doc-grid" id="docTiles">${docTiles()}</div>`, {});
@@ -2888,10 +2890,10 @@ async function songsCollect(quiet) {
 }
 // Page
 R.library = () => {
-  const q = new URLSearchParams(location.hash.split("?")[1] || ""); let sec = q.get("s") || ""; if (!["bible", "KJ", "BE", "BN"].includes(sec)) sec = ""; LS.set("libSec", sec || "KJ");
+  const q = new URLSearchParams(location.hash.split("?")[1] || ""); let sec = q.get("s") || ""; if (!["bible", "KJ", "BE", "BN", "PKJ"].includes(sec)) sec = ""; LS.set("libSec", sec || "KJ");
   if (!sec) return docsHome();
   const seg = (k, label) => `<a role="tab" aria-selected="${sec === k}" href="#/library?s=${k}">${esc(label)}</a>`;
-  const head = `<a class="lib-back" href="#/library">‹ ${esc(L3("Dokumen Gereja", "Dokumen Huria", "Church documents"))}</a><div class="seg lib-seg" role="tablist" style="--gc:var(--brand)">${seg("bible", L3("Alkitab", "Bibel", "Bible"))}${seg("KJ", "Kidung Jemaat")}${seg("BE", "Buku Ende")}${seg("BN", "Buku Nyanyian")}</div>`;
+  const head = `<a class="lib-back" href="#/library">‹ ${esc(L3("Dokumen Gereja", "Dokumen Huria", "Church documents"))}</a><div class="seg lib-seg" role="tablist" style="--gc:var(--brand)">${seg("bible", L3("Alkitab", "Bibel", "Bible"))}${seg("KJ", "Kidung Jemaat")}${seg("BE", "Buku Ende")}${seg("BN", "Buku Nyanyian")}${seg("PKJ", "PKJ")}</div>`;
   if (sec === "bible") { setTimeout(bibPaint, 0); return shell("#/library", `${head}<div id="bibBox">${skel(3)}</div>`, {}); }
   setTimeout(async () => { await songsLoad(false); songListPaint(sec); songsCollect(true).then((n) => { if (n) songListPaint(sec); }); }, 0);
   return shell("#/library", `${head}
@@ -2919,7 +2921,7 @@ R.song = (key) => {
     box.innerHTML = `<div class="song-head"><span class="song-book">${esc((SONG_BOOKS[x.b] || [x.b])[0])}${x.n != null ? " · " + x.n : ""}</span><h2>${esc(x.t || "")}</h2></div>
       <div class="song-text" style="font-size:${fs}px">${nums.map((n, i) => `<div class="sv"><span class="svn">${n}</span><div>${x.v[n].map((l) => `<p>${esc(l)}</p>`).join("")}</div></div>${i === 0 && (x.r || []).length ? `<div class="sv reff"><span class="svn">Reff</span><div>${x.r.map((l) => `<p>${esc(l)}</p>`).join("")}</div></div>` : ""}`).join("")}</div>
       <div class="row two" style="margin-top:14px"><button class="btn" data-act="songFs" data-d="-2">A−</button><button class="btn" data-act="songFs" data-d="2">A+</button></div>
-      ${x.n != null && ["BE", "BN", "KJ"].includes(x.b) ? `<a class="btn block" href="#/notasi/${x.b}/${x.n}">🎼 ${esc(L3("Lihat not angka", "Ida not angka", "See the number notation"))}</a>` : ""}
+      ${x.n != null && ["BE", "BN", "KJ", "PKJ"].includes(x.b) ? `<a class="btn block" href="#/notasi/${x.b}/${x.n}">🎼 ${esc(L3("Lihat not angka", "Ida not angka", "See the number notation"))}</a>` : ""}
       ${x.b === "BE" ? `<button class="btn block" data-act="songMeaning" data-k="${esc(x.k)}">🎵 ${esc(L3("Arti setiap baris", "Lapatan", "The meaning of each line"))}</button>` : ""}
       ${canSongs() ? `<button class="btn ghost block" data-act="songEdit" data-k="${esc(x.k)}">✏️ ${esc(L3("Ubah lagu ini", "Ubah", "Edit this song"))}</button>` : ""}`; }, 0);
   return shell("#/library", `<div id="songBox">${skel(3)}</div>`, { back: "#/library", title: L3("Nyanyian", "Ende", "Songs") });
@@ -2931,7 +2933,7 @@ A.songEdit = (d) => {
   const x = d.k ? (SONGS.list || []).find((y) => y.k === d.k) : null; const book = x ? x.b : d.book || "KJ";
   const text = x ? Object.keys(x.v || {}).map(Number).sort((a, b) => a - b).map((n, i) => x.v[n].join("\n") + (i === 0 && (x.r || []).length ? "\n\nReff:\n" + x.r.join("\n") : "")).join("\n\n") : "";
   sheet(x ? "✏️ " + L3("Ubah lagu", "Ubah", "Edit song") : "➕ " + L3("Tambah lagu", "Tambah", "Add a song"), `<form class="form" data-form="song" data-k="${esc(x ? x.k : "")}">
-    <div class="row two"><label>${esc(L3("Buku", "Buku", "Book"))}<select name="book">${["KJ", "BE", "BN"].map((k) => `<option value="${k}"${k === book ? " selected" : ""}>${esc(SONG_BOOKS[k][0])}</option>`).join("")}</select></label>
+    <div class="row two"><label>${esc(L3("Buku", "Buku", "Book"))}<select name="book">${["KJ", "BE", "BN", "PKJ"].map((k) => `<option value="${k}"${k === book ? " selected" : ""}>${esc(SONG_BOOKS[k][0])}</option>`).join("")}</select></label>
       <label>${esc(L3("Nomor", "Nomor", "Number"))}<input name="num" inputmode="numeric" value="${x && x.n != null ? x.n : d.num || ""}"></label></div>
     <label>${esc(L3("Judul", "Judul", "Title"))}<input name="title" value="${esc(x ? x.t || "" : "")}"></label>
     <label>${esc(L3("Lirik (baris kosong = bait baru, “Reff:” untuk reff, bait dimulai dari 1)", "Lirik", "Lyrics (blank line = new verse, “Reff:” for the refrain, verses start at 1)"))}<textarea name="text" rows="12">${esc(text)}</textarea></label>
