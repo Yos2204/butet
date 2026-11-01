@@ -11,6 +11,9 @@ const NT_BOOKS = {
   KJ: { name: "Kidung Jemaat", sub: ["Not angka · Bahasa Indonesia", "Not angka · Hata Indonesia", "Number notation · Indonesian"], icon: "🎵" },
 };
 const NT = { idx: {}, show: null };
+// The search text is kept only while the app is open (sessionStorage), so it starts empty after closing the app.
+const ntQ = { get: (b) => { try { return sessionStorage.getItem("ntq:" + b) || ""; } catch (e) { return ""; } }, set: (b, v) => { try { sessionStorage.setItem("ntq:" + b, v); } catch (e) {} } };
+try { ["BE", "BN", "KJ"].forEach((b) => LS.set("ntq:" + b, null)); } catch (e) {}
 async function ntIndex(book) {
   if (NT.idx[book]) return NT.idx[book];
   const r = await fetch(`notasi/${book.toLowerCase()}/index.json?v=1`); if (!r.ok) throw new Error("index " + r.status);
@@ -26,13 +29,17 @@ try { document.head.insertAdjacentHTML("beforeend", `<style>
   .nt-tools { display: flex; gap: 8px; align-items: center; margin: 6px 0 12px; flex-wrap: wrap; }
   .nt-tools .seg { flex: 1 1 100%; margin: 0; }
   .nt-tools .btn { flex: 1; }
-  #ntFind { width: 100%; box-sizing: border-box; font-size: 16px; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--line, #e5e7eb); background: var(--surface, #fff); color: inherit; }
+  .nt-find { position: relative; }
+  .nt-find .nt-clr { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); width: 36px; height: 36px; border: 0; border-radius: 50%; background: var(--line, #e5e7eb); color: inherit; font-size: 16px; cursor: pointer; }
+  .nt-find .nt-clr[hidden] { display: none; }
+  #ntFind::-webkit-search-cancel-button { display: none; }
+  #ntFind { width: 100%; box-sizing: border-box; font-size: 16px; padding: 12px 48px 12px 14px; border-radius: 12px; border: 1px solid var(--line, #e5e7eb); background: var(--surface, #fff); color: inherit; }
   .nt-doc { overflow-x: auto; -webkit-overflow-scrolling: touch; background: #fff; border-radius: 12px; border: 1px solid var(--line, #e5e7eb); }
   .nt-doc img { display: block; width: calc(100% * var(--z, 1)); max-width: none; height: auto; }
   .nt-doc.inv img, .nt-show.inv .nt-slide img { filter: invert(1); }
   .nt-doc.inv { background: #000; }
   .nt-nav { display: flex; gap: 8px; margin-top: 12px; } .nt-nav .btn { flex: 1; }
-  .nt-show { position: fixed; inset: 0; z-index: 9999; background: #fff; display: flex; flex-direction: column; user-select: none; -webkit-user-select: none; touch-action: pan-y; }
+  .nt-show { position: fixed; inset: 0; z-index: 9999; background: #fff; display: flex; flex-direction: column; user-select: none; -webkit-user-select: none; touch-action: none; overscroll-behavior: contain; }
   .nt-show.inv { background: #000; color: #fff; }
   .nt-stage { flex: 1; display: flex; align-items: center; justify-content: center; overflow: hidden; padding: 1.5vh 1.5vw; }
   .nt-slide { position: relative; overflow: hidden; width: min(97vw, calc(var(--ar) * 86vh)); aspect-ratio: var(--ar); }
@@ -41,6 +48,8 @@ try { document.head.insertAdjacentHTML("beforeend", `<style>
   .nt-bar b { flex: 1; text-align: center; font-weight: 600; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   .nt-bar button { background: none; border: 1px solid currentColor; color: inherit; border-radius: 10px; padding: 6px 12px; font: inherit; cursor: pointer; }
   .nt-show.idle .nt-bar { opacity: 0; transition: opacity .6s; }
+  .nt-x { position: absolute; top: calc(10px + env(safe-area-inset-top)); right: calc(10px + env(safe-area-inset-right)); z-index: 3; width: 48px; height: 48px; border-radius: 50%; border: 0; background: rgba(0,0,0,.55); color: #fff; font-size: 22px; line-height: 48px; padding: 0; cursor: pointer; }
+  .nt-show.inv .nt-x { background: rgba(255,255,255,.25); }
   .nt-tap { position: absolute; top: 0; bottom: 48px; width: 35%; z-index: 1; } .nt-tap.l { left: 0; } .nt-tap.r { right: 0; }
 </style>`); } catch (e) {}
 
@@ -63,12 +72,13 @@ function ntHome() {
 function ntBook(book) {
   const b = NT_BOOKS[book];
   setTimeout(async () => { try { await ntIndex(book); ntListPaint(book); } catch (e) { const el = document.getElementById("ntList"); if (el) el.innerHTML = empty(L3("Tidak bisa memuat daftar lagu. Periksa internet.", "Ndang tarbungka.", "Couldn't load the song list. Check the internet."), "book"); } }, 0);
-  return shell("#/library", `<input type="search" id="ntFind" data-book="${book}" placeholder="${esc(L3("Nomor atau judul lagu…", "Nomor manang goar ni ende…", "Song number or title…"))}" inputmode="search" autocomplete="off" value="${esc(LS.get("ntq:" + book, "") || "")}">
+  const q0 = ntQ.get(book);
+  return shell("#/library", `<div class="nt-find"><input type="search" id="ntFind" data-book="${book}" placeholder="${esc(L3("Nomor atau judul lagu…", "Nomor manang goar ni ende…", "Song number or title…"))}" inputmode="search" autocomplete="off" value="${esc(q0)}"><button type="button" class="nt-clr" data-act="ntClr" aria-label="${esc(L3("Hapus pencarian", "Apus", "Clear search"))}"${q0 ? "" : " hidden"}>✕</button></div>
     <div id="ntList" style="margin-top:10px">${skel(6)}</div>`, { back: "#/notasi", title: b.name, sub: L3(...b.sub) });
 }
 function ntListPaint(book) {
   const box = document.getElementById("ntList"), ix = NT.idx[book]; if (!box || !ix) return;
-  const raw = ((document.getElementById("ntFind") || {}).value || "").trim(); LS.set("ntq:" + book, raw);
+  const raw = ((document.getElementById("ntFind") || {}).value || "").trim(); ntQ.set(book, raw); const clr = document.querySelector(".nt-clr"); if (clr) clr.hidden = !raw;
   const q = norm(raw), qn = raw.toLowerCase().replace(/\s+/g, "");
   let list = ix.songs;
   if (q) list = /^\d+[a-z]?$/.test(qn) ? list.filter((s) => s.n === qn || s.n.replace(/[a-z]$/, "") === qn || s.n.startsWith(qn)) : list.filter((s) => norm(s.n + " " + s.t).includes(q));
@@ -78,6 +88,7 @@ function ntListPaint(book) {
     : empty(L3("Tidak ditemukan.", "Ndang dapot.", "Nothing found."), "search");
 }
 document.addEventListener("input", (e) => { if (e.target && e.target.id === "ntFind") ntListPaint(e.target.dataset.book); });
+A.ntClr = () => { const el = document.getElementById("ntFind"); if (!el) return; el.value = ""; ntListPaint(el.dataset.book); el.focus(); };
 function ntSong(book, n) {
   const b = NT_BOOKS[book]; const z = LS.get("ntZoom", 1), inv = !!LS.get("ntInv", false);
   setTimeout(async () => {
@@ -114,7 +125,8 @@ A.ntShow = async (d) => {
   el.innerHTML = `<div class="nt-stage"><div class="nt-slide"><img alt="" src="${ntImg(d.book, s.n)}"></div></div>
     <button class="nt-tap l" data-act="ntGo" data-d="-1" aria-label="${esc(L3("Sebelumnya", "Na parjolo", "Previous"))}" style="background:none;border:0"></button>
     <button class="nt-tap r" data-act="ntGo" data-d="1" aria-label="${esc(L3("Berikutnya", "Na mangihut", "Next"))}" style="background:none;border:0"></button>
-    <div class="nt-bar"><button data-act="ntClose">✕</button><button data-act="ntGo" data-d="-1">‹</button><b></b><button data-act="ntGo" data-d="1">›</button><button data-act="ntInvShow" aria-label="${esc(L3("Warna gelap", "Warna gelap", "Dark colours"))}">🌓</button><button data-act="ntFull" aria-label="${esc(L3("Layar penuh", "Layar penuh", "Full screen"))}">⛶</button></div>`;
+    <button class="nt-x" data-act="ntClose" aria-label="${esc(L3("Tutup", "Tutup", "Close"))}">✕</button>
+    <div class="nt-bar"><button data-act="ntGo" data-d="-1">‹</button><b></b><button data-act="ntGo" data-d="1">›</button><button data-act="ntInvShow" aria-label="${esc(L3("Warna gelap", "Warna gelap", "Dark colours"))}">🌓</button><button data-act="ntFull" aria-label="${esc(L3("Layar penuh", "Layar penuh", "Full screen"))}">⛶</button></div>`;
   document.body.appendChild(el); ntPaint(); ntIdle();
   try { if (el.requestFullscreen && !document.fullscreenElement && matchMedia("(min-width: 700px)").matches) await el.requestFullscreen(); } catch (e) {}
 };
