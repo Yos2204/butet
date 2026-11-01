@@ -430,6 +430,7 @@ details.wsec[open] summary { margin-bottom: 10px; }
 .fin-rows .fin-row:last-child { border-bottom: 0; }
 .fin-date { margin-top: 2px !important; }
 @media (max-width: 400px) { .fin-row { grid-template-columns: 1fr auto; } .fin-row .fin-sm { grid-column: 1; grid-row: 2; } .fin-row:not(.fa) .icon-btn { grid-column: 2; grid-row: 1; } }
+@media (max-width: 400px) { .fin-row.rr-row .icon-btn { grid-column: 3; grid-row: 1; } } /* roster day form: keep the bin beside the Name box, not on top of it */
 .natal { border: 1px solid color-mix(in srgb, #c62828 30%, var(--line)); }
 .natal-tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 10px 0; }
 .natal-tiles .btn { flex-direction: column; gap: 4px; padding: 10px 4px; font-size: 13px; }
@@ -612,6 +613,7 @@ nav.tabs .nav-brand, nav.tabs .nav-chat, nav.tabs .nav-foot { display: none; }
 <script src="store.js?v=68"></script>
 <script src="parse.js?v=60"></script>
 <script src="notasi.js?v=10"></script>
-<script src="app.js?v=163"></script>
+<script src="fields.js?v=1"></script>
+<script src="app.js?v=164"></script>
 </body>
 </html>
