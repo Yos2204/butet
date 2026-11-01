@@ -160,9 +160,20 @@ const serveOn = () => !!D && !isGuest() && !!me() && SERVE_PILOT.includes(S.phon
 // Asked again on the first open of every month (YB 2026-10-24), with last month's picks ticked.
 const serveDue = () => { if (!serveOn()) return false; const p = me().profile || {}; return !p.serve || (p.serve_ym || "") < today().slice(0, 7); };
 const serveShown = (g) => { if (g.kind !== "service" || !serveOn() || LS.get("allServe")) return true; const sv = (me().profile || {}).serve; return !sv || !sv.length || sv.includes(g.id); };
-const catShown = (g) => { if (g.kind !== "sermon" || !profileOn() || isAdmin() && LS.get("allCats")) return true; const r = roleIn(g.id); if (r && r !== "member") return true; const c = profileCats(me().profile); return !c || c.includes(g.id); };
+const catShown = (g) => { if (g.kind !== "sermon" || !TEACH.includes(g.id) || !profileOn() || isAdmin() && LS.get("allCats")) return true; const r = roleIn(g.id); if (r && r !== "member") return true; const c = profileCats(me().profile); return !c || c.includes(g.id); };
 const G = (id) => D.groups.find((g) => g.id === id);
 const gname = (g) => (g ? g["name_" + lang] || g.name_en || g.id : t("wholeChurch"));
+// Church structure (YB 2026-11-01, "Badan Organisasi HKBP Singapore"): Parhalado on top, Spiritual Committee, Administration
+// (offices, admin staff, auditors), then Dewan Koinonia, Marturia and Diakonia with their subgroups, and Jemaat last.
+// hk_groups.council says where a group belongs; offices have none. The dewan-* groups are the councils themselves.
+const COUNCILS = [["parhalado", ["Parhalado (Sintua & Pendeta)", "Parhalado", "Elders & Pastor"]], ["spiritual", ["Komisi Spiritual", "Komisi Spiritual", "Spiritual Committee"]],
+  ["admin", ["Komisi Biasa – Administrasi", "Komisi Biasa – Administrasi", "Ordinary Committee – Administration"]], ["koinonia", ["Dewan Koinonia", "Dewan Koinonia", "Koinonia Council"]],
+  ["marturia", ["Dewan Marturia", "Dewan Marturia", "Marturia Council"]], ["diakonia", ["Dewan Diakonia", "Dewan Diakonia", "Diakonia Council"]], ["jemaat", ["Jemaat", "Ruas", "Congregation"]]];
+const councilRank = (g) => { const i = COUNCILS.findIndex(([c]) => c === (g && g.council)); return i < 0 ? 9 : i; };
+const byCouncil = (a, b) => councilRank(a) - councilRank(b) || (a.sort || 0) - (b.sort || 0);
+const councilName = (g) => { const c = COUNCILS.find(([k]) => k === (g && g.council)); return c ? L3(...c[1]) : ""; };
+const isCouncilHead = (g) => !!g && /^dewan-/.test(g.id);
+const gHref = (g) => `#/${({ sermon: "g", office: "o" })[g.kind] || "s"}/${g.id}`;
 const firstName = (n) => String(n || "").replace(/^(Pdt|St|Sintua|Bapak|Ibu|Kak|Bang|Ev|Dr)\.?\s+/i, "").split(/\s+/)[0];
 
 // ---------- toast / sheets ----------
@@ -538,25 +549,34 @@ function updateCard(u, compact) {
 
 // Categories (sermonic): same format, each with its own colour, icon and verse.
 R.groups = () => {
-  const all = D.groups.filter((g) => g.kind === "sermon"); const list = all.filter(catShown);
+  const list = D.groups.filter((g) => catShown(g) && serveShown(g)).sort(byCouncil);
   const pf = profileOn() && me().profile;
   return shell("#/groups", `
     <h2 class="page-h">${esc(t("groupsTitle"))}</h2>
     <p class="lead">${esc(t("groupsLead"))}</p>
     ${pf && manage() ? `<div class="card row between pf-note"><span class="small muted">${esc(t(isAdmin() && LS.get("allCats") ? "pfAllShown" : "pfFiltered"))}</span><span class="row"><button class="btn sm ghost" data-act="profile">${esc(t("pfChange"))}</button>${LS.get("pfTest") ? `<button class="btn sm" data-act="pfTest">${esc(t("pfTestEnd"))}</button>` : ""}${isAdmin() && !LS.get("pfTest") ? `<button class="btn sm" data-act="allCats">${esc(t(LS.get("allCats") ? "pfMine" : "pfAll"))}</button>` : ""}</span></div>` : ""}
-    <div class="gcards">${list.map((g) => {
-      const n = D.people.filter((p) => g.id in (p.groups || {})).length; const posts = D.posts.filter((p) => p.group_id === g.id).length; const ok = canSee(g);
-      return `<a class="gcard ${ok ? "" : "locked"}" href="#/g/${g.id}" style="--gc:${g.color}">
+    ${COUNCILS.map(([c, names]) => { const gs = list.filter((g) => g.council === c); if (!gs.length) return "";
+      return `<section class="council"><h3 class="sec-h council-h">${esc(L3(...names))}</h3><div class="gcards">${gs.map(gcard).join("")}</div></section>`; }).join("")}
+    ${(() => { const rest = list.filter((g) => councilRank(g) === 9); return rest.length ? `<section class="council"><h3 class="sec-h council-h">${esc(L3("Lainnya", "Na asing", "Other"))}</h3><div class="gcards">${rest.map(gcard).join("")}</div></section>` : ""; })()}`);
+};
+// One group's card on the Groups page; the council's own card is drawn wide, above its subgroups.
+const gcard = (g) => {
+  const n = D.people.filter((p) => g.id in (p.groups || {})).length; const posts = D.posts.filter((p) => p.group_id === g.id).length; const ok = canSee(g);
+  const head = isCouncilHead(g) ? D.people.find((p) => (p.groups || {})[g.id] === "chair") : null;
+  const sub = head ? L3("Ketua: ", "Ketua: ", "Head: ") + head.name : t("motto_" + g.id) !== "motto_" + g.id ? t("motto_" + g.id) : g.kind === "service" ? t("kindService") : "";
+  return `<a class="gcard ${ok ? "" : "locked"}${isCouncilHead(g) ? " council-card" : ""}" href="${gHref(g)}" style="--gc:${g.color}">
         <span class="gcard-bg"></span>${gIcon(g, "lg")}
-        <span class="gcard-t"><b>${esc(gname(g))}</b><small>${esc(t("motto_" + g.id) !== "motto_" + g.id ? t("motto_" + g.id) : "")}</small></span>
-        <span class="gcard-f">${newBadge(ok && groupNew(g.id))}${roleBadge(g.id) || (ok ? "" : `<span class="badge">${ic("lock")} ${esc(t("membersOnly"))}</span>`)}<span class="small">${n} ${esc(t("members"))}${ok ? ` · ${posts} ${esc(t("posts"))}` : ""}</span></span>
-      </a>`; }).join("")}</div>`);
+        <span class="gcard-t"><b>${esc(gname(g))}</b><small>${esc(sub)}</small></span>
+        <span class="gcard-f">${newBadge(ok && groupNew(g.id))}${roleBadge(g.id) || (ok ? "" : `<span class="badge">${ic("lock")} ${esc(t("membersOnly"))}</span>`)}<span class="small">${n} ${esc(t("members"))}${ok && g.kind === "sermon" ? ` · ${posts} ${esc(t("posts"))}` : ""}</span></span>
+      </a>`;
 };
 
 R.group = (gid) => {
   const g = G(gid); if (!g) return R.notFound();
   markGroupSeen(gid);
-  const tab = new URLSearchParams(location.hash.split("?")[1] || "").get("tab") || "sermon";
+  // Councils, committees and their new groups (Zending, Diakonia's groups…) have news, events and members but no sermon tab.
+  const sermonOn = !(g.kind === "sermon" && !TEACH.includes(gid));
+  const tab = new URLSearchParams(location.hash.split("?")[1] || "").get("tab") || (sermonOn ? "sermon" : "news");
   const ok = canSee(g); const edit = canEdit(gid);
   const posts = D.posts.filter((p) => p.group_id === gid);
   const sermons = posts.filter((p) => p.kind === "sermon").sort((a, b) => (b.day || b.created_at).localeCompare(a.day || a.created_at));
@@ -572,7 +592,7 @@ R.group = (gid) => {
   const rym = new URLSearchParams(location.hash.split("?")[1] || "").get("m") || LS.get("ym." + gid, monthKey(today()));
   const slidesOn = gid === "sekolah-minggu" && Array.isArray(D.ss_decks);
   const quizOn = gid === "remaja" && !isGuest() && (D.me.is_admin || gid in (D.me.groups || {}));
-  const tabs = [["sermon", "t_sermon", sermons.length], ...(slidesOn ? [["slides", "Slide", 0]] : []), ...(filesOn ? [["files", "File & Video", yfiles.length]] : []), ...(rosterOn ? [["roster", "Roster", D.rosters.filter((r) => r.group_id === gid && r.month === rym).length]] : []), ...(pollsOn ? [["polls", "t_polls", polls.filter((p) => p.status === "open").length]] : []), ...(quizOn ? [["quiz", "🎯 Kuis", 0]] : []), ["news", "t_news", news.length], ["events", "t_events", evs.length], ...(teach ? [["teachers", "t_teachers", teachers.length]] : []), ["members", "t_members", people.length]];
+  const tabs = [...(sermonOn ? [["sermon", "t_sermon", sermons.length]] : []), ...(slidesOn ? [["slides", "Slide", 0]] : []), ...(filesOn ? [["files", "File & Video", yfiles.length]] : []), ...(rosterOn ? [["roster", "Roster", D.rosters.filter((r) => r.group_id === gid && r.month === rym).length]] : []), ...(pollsOn ? [["polls", "t_polls", polls.filter((p) => p.status === "open").length]] : []), ...(quizOn ? [["quiz", "🎯 Kuis", 0]] : []), ["news", "t_news", news.length], ["events", "t_events", evs.length], ...(teach ? [["teachers", "t_teachers", teachers.length]] : []), ["members", "t_members", people.length]];
   let body = "";
   if (!ok) body = isGuest() ? signInCard(t("signInCat")) : empty(t("membersOnlyLong"), "lock");
   else if (tab === "slides" && slidesOn) body = ssList();
@@ -589,7 +609,7 @@ R.group = (gid) => {
   return shell(svc ? "#/serve" : "#/groups", `
     <section class="ghero" style="--gc:${g.color}">
       ${heroPic(g)}
-      <div><h2>${esc(gname(g))}</h2><p>${esc(t("motto_" + g.id) !== "motto_" + g.id ? t("motto_" + g.id) : t(svc ? "kindService" : "kindSermon"))}</p>${roleBadge(gid) ? `<div class="hero-role">${roleBadge(gid)} <small>${esc(edit ? t("canUpdate") : teach && canRunPoll(gid) ? t("teacherSub") : t("readOnly"))}</small></div>` : ""}</div>
+      <div><h2>${esc(gname(g))}</h2><p>${esc(t("motto_" + g.id) !== "motto_" + g.id ? t("motto_" + g.id) : councilName(g) || t(svc ? "kindService" : "kindSermon"))}</p>${roleBadge(gid) ? `<div class="hero-role">${roleBadge(gid)} <small>${esc(edit ? t("canUpdate") : teach && canRunPoll(gid) ? t("teacherSub") : t("readOnly"))}</small></div>` : ""}</div>
     </section>
     ${ok ? wishCard(g, people) : ""}
     ${elders && ok ? `<div class="row two"><a class="btn" href="#/elders">${ic("book")} ${esc(t("eldersUpdates"))}</a><a class="btn" href="#/bread">${ic("bread")} ${esc(t("breadTitle"))}</a></div>` : ""}
@@ -3003,15 +3023,14 @@ try { document.head.insertAdjacentHTML("beforeend", `<style>
 // (the server sends their real data). While viewing, nothing can be saved; the banner's Keluar returns to your own view.
 const VIEWAS = { on: false, orig: null, api: null, data: null, name: "" };
 const ROLE_NAMES = { chair: "Ketua", maker: "Maker", tmaker: "Teacher Maker", teacher: "Guru", ychair: "Ketua", ytreasurer: "Bendahara", ysecretary: "Sekretaris", member: "Anggota" };
-const KIND_NAMES = { sermon: ["Kategorial", "Kategorial", "Categories"], service: ["Seksi pelayanan", "Seksi", "Service sections"], office: ["Kantor / jabatan", "Jabatan", "Offices"] };
 R.access = () => {
   if (!isYB()) { location.replace("#/more"); return ""; }
   const people = (D.people || []).slice().sort((a, b) => a.name.localeCompare(b.name));
   const roleOrder = (r) => ["chair", "ychair", "maker", "tmaker", "ytreasurer", "ysecretary", "teacher", "member"].indexOf(r) + 1 || 9;
   const row = (p, r) => `<div class="li acc-p" data-n="${esc(norm(p.name + " " + (p.alias || "")))}">${avatarOf(p)}<span class="grow"><b>${esc(p.name)}</b>${r ? `<small><span class="badge${r !== "member" ? " gold" : ""}">${esc(ROLE_NAMES[r] || r)}</span></small>` : ""}</span><button class="icon-btn" data-act="viewAs" data-id="${p.id}" aria-label="${esc(L3("Lihat sebagai", "Ida songon", "View as"))} ${esc(p.name)}">👁</button></div>`;
-  const kinds = ["sermon", "service", "office"].map((k) => {
-    const gs = (D.groups || []).filter((g) => g.kind === k); if (!gs.length) return "";
-    return `<h3 class="sec-h">${esc(L3(...KIND_NAMES[k]))}</h3><div class="acc-grid">${gs.map((g) => {
+  const kinds = [...COUNCILS, ["", ["Lainnya", "Na asing", "Other"]]].map(([k, names]) => {
+    const gs = (D.groups || []).filter((g) => (k ? g.council === k : councilRank(g) === 9)).sort(byCouncil); if (!gs.length) return "";
+    return `<h3 class="sec-h">${esc(L3(...names))}</h3><div class="acc-grid">${gs.map((g) => {
       const ms = people.filter((p) => g.id in (p.groups || {})).sort((a, b) => roleOrder(a.groups[g.id]) - roleOrder(b.groups[g.id]) || a.name.localeCompare(b.name));
       const lead = ms.filter((p) => p.groups[g.id] !== "member").length;
       return `<details class="card acc-g" style="--gc:${g.color || "var(--brand)"}"><summary>${gIcon(g)}<span class="grow"><b>${esc(gname(g))}</b><small>${ms.length} ${esc(L3("anggota", "ruas", "members"))} · ${lead} ${esc(L3("pengurus/maker", "pengurus", "leaders/makers"))}</small></span></summary>
@@ -5283,10 +5302,9 @@ const chatRooms = () => [
 // The server decides who may use which: hk_data lists them in chat_last as "g:<group id>".
 function chatGroupRooms() {
   if (!D || !D.chat_last || isGuest()) return [];
-  const KO = { sermon: 1, service: 2, office: 3 };
   return Object.keys(D.chat_last).filter((k) => k.startsWith("g:")).map((k) => G(k.slice(2))).filter(Boolean)
-    .sort((x, y) => (KO[x.kind] || 9) - (KO[y.kind] || 9) || (x.sort || 0) - (y.sort || 0))
-    .map((g) => ({ id: "g:" + g.id, name: gname(g), sub: g.kind === "sermon" ? L3("Kategorial", "Kategorial", "Category") : g.kind === "office" ? L3("Kantor", "Kantor", "Office") : L3("Seksi pelayanan", "Seksi", "Service section"), color: g.color, icon: g.icon, gid: g.id, group: true }));
+    .sort(byCouncil)
+    .map((g) => ({ id: "g:" + g.id, name: gname(g), sub: g.council ? councilName(g) : g.kind === "sermon" ? L3("Kategorial", "Kategorial", "Category") : g.kind === "office" ? L3("Kantor", "Kantor", "Office") : L3("Seksi pelayanan", "Seksi", "Service section"), color: g.color, icon: g.icon, gid: g.id, group: true }));
 }
 const REACTS = ["🙏", "❤️", "👍", "😂", "🎉"];
 let CH = { room: null, msgs: [], last: 0, timer: null, sending: false, reacts: {}, sel: null, reply: null, image: null };
@@ -5876,8 +5894,8 @@ A.newEvent = (d) => {
 };
 A.evSpecific = () => {
   const cats = canEvents() ? D.groups.filter((g) => g.kind !== "office") : [];
-  const list = (kind) => cats.filter((g) => g.kind === kind).map((g) => `<button class="gtile" data-act="evPick" data-g="${g.id}" style="--gc:${g.color}">${gIcon(g)}<span class="gname"><b>${esc(gname(g))}</b></span>${ic("chev", "chev")}</button>`).join("");
-  sheet(t("evPickCat"), `${list("sermon") ? `<h4>${esc(t("kindSermon"))}</h4><div class="glist">${list("sermon")}</div>` : ""}${list("service") ? `<h4>${esc(t("kindService"))}</h4><div class="glist">${list("service")}</div>` : ""}`);
+  const list = (c) => cats.filter((g) => (c ? g.council === c : councilRank(g) === 9)).sort(byCouncil).map((g) => `<button class="gtile" data-act="evPick" data-g="${g.id}" style="--gc:${g.color}">${gIcon(g)}<span class="gname"><b>${esc(gname(g))}</b></span>${ic("chev", "chev")}</button>`).join("");
+  sheet(t("evPickCat"), [...COUNCILS, ["", ["Lainnya", "Na asing", "Other"]]].map(([c, names]) => { const h = list(c); return h ? `<h4>${esc(L3(...names))}</h4><div class="glist">${h}</div>` : ""; }).join(""));
 };
 A.evPick = (d) => eventForm({ group_id: d.g || null });
 function eventForm(e) {
