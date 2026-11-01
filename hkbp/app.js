@@ -2634,7 +2634,7 @@ function docDeck(doc, i) {
   document.querySelector('.deck').addEventListener('click',function(e){var r=this.getBoundingClientRect();go(i+(e.clientX-r.left>r.width/3?1:-1))});var x0=null;document.addEventListener('touchstart',function(e){x0=e.touches[0].clientX},{passive:true});document.addEventListener('touchend',function(e){if(x0==null)return;var d=e.changedTouches[0].clientX-x0;if(Math.abs(d)>50)go(i+(d<0?1:-1));x0=null},{passive:true});
   document.getElementById('prev').onclick=function(e){e.stopPropagation();go(i-1)};document.getElementById('next').onclick=function(e){e.stopPropagation();go(i+1)};document.getElementById('fs').onclick=function(e){e.stopPropagation();var d=document.documentElement;(d.requestFullscreen||d.webkitRequestFullscreen||function(){}).call(d)};
   var t;function wake(){document.body.classList.remove('idle');clearTimeout(t);t=setTimeout(function(){document.body.classList.add('idle')},2500)}['mousemove','touchstart','keydown'].forEach(function(n){document.addEventListener(n,wake,{passive:true})});wake()})();`;
-  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${e(doc.title)} · ${e(secs[a].title)}</title><style>${css}</style></head><body><div class="stage"><div class="deck">${S.join("")}</div></div><div class="bar"><button id="prev">‹</button><span id="cnt"></span><button id="next">›</button><button id="fs">⛶</button></div><script>${js}<\/script></body></html>`;
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${e(doc.title)} · ${e(secs[a].title)}</title><style>${css}</style>${NO_DL_FRAME}</head><body><div class="stage"><div class="deck">${S.join("")}</div></div><div class="bar"><button id="prev">‹</button><span id="cnt"></span><button id="next">›</button><button id="fs">⛶</button></div><script>${js}<\/script></body></html>`;
 }
 A.docSlides = async (d) => { const doc = await docLoad(d.slug, false); const html = docDeck(doc, +d.i);
   sheet("📽 " + L3("Slide", "Slide", "Slides"), `<div id="docPrev"></div><div class="row two" style="margin-top:10px"><button class="btn primary" data-act="docSlidesFull">⛶ ${esc(L3("Layar penuh", "Layar penuh", "Full screen"))}</button><button class="btn" data-act="closeSheet">${esc(L3("Tutup", "Tutup", "Close"))}</button></div><p class="small muted">${esc(L3("Ketuk sisi kanan/kiri atau gunakan panah. Di komputer: sambungkan proyektor lalu layar penuh.", "", "Tap right/left or use the arrows. On a computer, connect the projector and go full screen."))}</p>`);
@@ -2819,6 +2819,14 @@ async function kjvLoad(download) {
   if (!r && download) { const f = await fetch(KJV_URL); if (!f.ok) throw new Error("download " + f.status); if (c) await c.put(KJV_URL, f.clone()); r = f; }
   if (!r) return null; const txt = (await r.text()).replace(/^\uFEFF/, ""); BIB.kjv = JSON.parse(txt); return BIB.kjv;
 }
+// KJV on every phone (YB 2026-11-01): once Sada is opened, the whole KJV downloads quietly in the background and is kept for offline.
+// It waits a few seconds so the first screen loads first, only runs when online, and tries again on the next open if it fails.
+addEventListener("load", () => setTimeout(async () => {
+  try { if (!navigator.onLine) return; const c = await bibCache(); if (!c || await c.match(KJV_URL)) return;
+    const f = await fetch(KJV_URL); if (!f.ok) return; await c.put(KJV_URL, f);
+    try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch (e) {}
+  } catch (e) {}
+}, 8000));
 async function bibChapter(ver, b, c) {
   if (BIB_VERS[ver].kjv) { const k = await kjvLoad(false); if (!k) return { need: "kjv" }; return { verses: (k[b - 1].chapters[c - 1] || []).map((t0, i) => ({ v: i + 1, t: t0 })), offline: true }; }
   const url = bibUrl(ver, b, c); const cache = await bibCache();
@@ -3234,7 +3242,8 @@ function ssRender(lang, day, secs) {
       slide("song-t", `<p class="kick">♪ ♫</p><h1>${e(title)}</h1>${x.extra ? `<p class="sub">${e(x.extra)}</p>` : ""}`);
       (x.images || []).forEach((src) => S.push(`<section class="dk-slide pic"><img src="${src}" alt=""><footer>${e(foot)}</footer></section>`));
       if (x.body) { const r = HYMN.splitHymn(title + " " + (x.extra || ""), String(x.body).split(/\r?\n/));
-        (r.ok ? r.slides : chunk(String(x.body).split(/\n/).filter(Boolean), 6).map((ls, i) => ({ kind: "verse", verse: i + 1, lines: ls }))).forEach((v) => {
+        // the Reff always gets a slide of its own, never shared with a verse (YB 2026-11-01)
+        (r.ok ? r.slides.flatMap((v) => v.withReff ? [{ ...v, withReff: false, lines: v.lines.slice(0, v.reffFrom) }, { kind: "reff", verse: null, lines: v.lines.slice(v.reffFrom) }] : [v]) : chunk(String(x.body).split(/\n/).filter(Boolean), 6).map((ls, i) => ({ kind: "verse", verse: i + 1, lines: ls }))).forEach((v) => {
           const ref = v.kind === "reff"; const tag = v.withReff ? v.reffFrom : -1;
           slide("lyric" + (ref ? " reff" : ""), `<p class="vn">${ref ? "Reff" : e(v.verse)}</p><div class="ly">${v.lines.map((l, i) => (i === tag ? `<p class="tag">Reff</p>` : "") + `<p>${e(l)}</p>`).join("")}</div>`); }); }
       return;
@@ -7473,6 +7482,29 @@ document.addEventListener("bip", () => { if (gateState !== "done") gateRender();
 document.addEventListener("hk-installed", () => { gateState = "done"; gateRender(); });
 try { matchMedia("(display-mode: standalone)").addEventListener("change", () => gateRender()); } catch {}
 gateRender();
+
+// ---------- Documents: no saving or downloading (YB 2026-11-01) ----------
+// Everything under the Documents tab (Bible, songbooks, Not Angka, church books) can be read in Sada but not saved:
+// no long-press "Save image", no right-click, no dragging pictures out, no copying text, no printing to PDF and no
+// Ctrl+S. Search boxes still work normally. Screenshots can't be blocked by a web app.
+const NO_DL = /^#\/(library|doc|song|notasi)(\/|\?|$)/;
+const noDlOn = () => document.body.classList.contains("no-dl");
+const noDlSync = () => { try { document.body.classList.toggle("no-dl", NO_DL.test(location.hash || "")); } catch (e) {} };
+const noDlField = (el) => !!(el && el.closest && el.closest("input, textarea, select, [contenteditable=true]"));
+addEventListener("hashchange", noDlSync); noDlSync();
+["contextmenu", "dragstart", "copy", "cut", "selectstart"].forEach((n) => document.addEventListener(n, (e) => { if (noDlOn() && !noDlField(e.target)) e.preventDefault(); }, true));
+document.addEventListener("keydown", (e) => { if (noDlOn() && (e.ctrlKey || e.metaKey) && /^[spc]$/i.test(e.key) && !(e.key.toLowerCase() === "c" && noDlField(e.target))) e.preventDefault(); }, true);
+addEventListener("beforeprint", () => { if (noDlOn()) document.body.classList.add("no-dl-print"); });
+addEventListener("afterprint", () => document.body.classList.remove("no-dl-print"));
+try { document.head.insertAdjacentHTML("beforeend", `<style>
+  body.no-dl { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  body.no-dl input, body.no-dl textarea, body.no-dl select { -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }
+  body.no-dl img, body.no-dl canvas, body.no-dl video, body.no-dl iframe { -webkit-touch-callout: none; -webkit-user-drag: none; user-drag: none; }
+  body.no-dl img { pointer-events: none; }
+  @media print { body.no-dl > *, body.no-dl-print > * { display: none !important; } body.no-dl::after, body.no-dl-print::after { content: "Sada HKBPS · Dokumen ini tidak dapat dicetak / This document can't be printed."; display: block; padding: 40px; font: 16px Arial; } }
+</style>`); } catch (e) {}
+// The same guard inside slide frames made from Documents (they run in their own sandboxed page).
+const NO_DL_FRAME = `<style>*{-webkit-user-select:none!important;user-select:none!important;-webkit-touch-callout:none!important}img{pointer-events:none;-webkit-user-drag:none}@media print{body{display:none!important}}</style><script>["contextmenu","dragstart","copy","cut","selectstart"].forEach(function(n){document.addEventListener(n,function(e){e.preventDefault()},true)});document.addEventListener("keydown",function(e){if((e.ctrlKey||e.metaKey)&&/^[spc]$/i.test(e.key))e.preventDefault()},true);<\/script>`;
 
 // Not angka hymnals (notasi.js, loaded before this file)
 if (window.SADA_NOTASI) window.SADA_NOTASI({ R, A, L3, shell, tile, skel, empty, ic, LS, norm, esc, isGuest, songsLoad });
