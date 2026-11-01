@@ -11,8 +11,19 @@ const NT_BOOKS = {
   KJ: { name: "Kidung Jemaat", sub: ["Not angka · Bahasa Indonesia", "Not angka · Hata Indonesia", "Number notation · Indonesian"], icon: "🎵" },
 };
 const NT = { idx: {}, show: null };
-// The search text is kept only while the app is open (sessionStorage), so it starts empty after closing the app.
-const ntQ = { get: (b) => { try { return sessionStorage.getItem("ntq:" + b) || ""; } catch (e) { return ""; } }, set: (b, v) => { try { sessionStorage.setItem("ntq:" + b, v); } catch (e) {} } };
+// The search text lives only in memory, so it is empty whenever the app starts again. iPhone often keeps the app
+// alive in the background, so the song searches (here and in the text songbooks) are also cleared when the app
+// comes back after being away for 20 seconds or more.
+const NTQ = {};
+const ntQ = { get: (b) => NTQ[b] || "", set: (b, v) => { NTQ[b] = v; } };
+try { ["BE", "BN", "KJ"].forEach((b) => sessionStorage.removeItem("ntq:" + b)); } catch (e) {}
+let ntAway = 0;
+const ntResume = () => {
+  for (const k in NTQ) delete NTQ[k];
+  ["ntFind", "songFind"].forEach((id) => { const el = document.getElementById(id); if (el && el.value) { el.value = ""; el.dispatchEvent(new Event("input", { bubbles: true })); } });
+};
+document.addEventListener("visibilitychange", () => { if (document.hidden) ntAway = Date.now(); else if (ntAway && Date.now() - ntAway >= 20000) { ntAway = 0; ntResume(); } });
+addEventListener("pageshow", (e) => { if (e.persisted) ntResume(); });
 try { ["BE", "BN", "KJ"].forEach((b) => LS.set("ntq:" + b, null)); } catch (e) {}
 async function ntIndex(book) {
   if (NT.idx[book]) return NT.idx[book];
