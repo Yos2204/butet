@@ -5004,7 +5004,8 @@ try { document.head.insertAdjacentHTML("beforeend", `<style>
   .ch-ghead .gicon { width: 36px; height: 36px; border-radius: 12px; }
   .ch-online { display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 12.5px; color: var(--muted); margin: 6px 0 0; min-height: 18px; }
   .ch-online i { width: 9px; height: 9px; border-radius: 50%; background: #22c55e; display: inline-block; }
-  .ch-bar { position: fixed; left: 0; right: 0; bottom: calc(66px + env(safe-area-inset-bottom)); z-index: 19; display: grid; gap: 6px; padding: 8px max(12px, env(safe-area-inset-left)); background: color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-top: 1px solid var(--line); }
+  .ch-bar { position: fixed; left: 0; right: 0; bottom: calc(66px + env(safe-area-inset-bottom)); z-index: 19; display: grid; gap: 6px; padding: 8px max(12px, env(safe-area-inset-left)); isolation: isolate; border-top: 1px solid var(--line); }
+  .ch-bar::before { content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; background: color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); } /* blur behind the bar, not on it, so iPhone text stays sharp */
   .ch-row { display: flex; gap: 8px; align-items: flex-end; }
   .ch-pend { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 6px 8px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); }
   .ch-pend img { width: 40px; height: 40px; object-fit: cover; border-radius: 8px; }
