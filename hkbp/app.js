@@ -2819,6 +2819,14 @@ async function kjvLoad(download) {
   if (!r && download) { const f = await fetch(KJV_URL); if (!f.ok) throw new Error("download " + f.status); if (c) await c.put(KJV_URL, f.clone()); r = f; }
   if (!r) return null; const txt = (await r.text()).replace(/^\uFEFF/, ""); BIB.kjv = JSON.parse(txt); return BIB.kjv;
 }
+// KJV on every phone (YB 2026-11-01): once Sada is opened, the whole KJV downloads quietly in the background and is kept for offline.
+// It waits a few seconds so the first screen loads first, only runs when online, and tries again on the next open if it fails.
+addEventListener("load", () => setTimeout(async () => {
+  try { if (!navigator.onLine) return; const c = await bibCache(); if (!c || await c.match(KJV_URL)) return;
+    const f = await fetch(KJV_URL); if (!f.ok) return; await c.put(KJV_URL, f);
+    try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch (e) {}
+  } catch (e) {}
+}, 8000));
 async function bibChapter(ver, b, c) {
   if (BIB_VERS[ver].kjv) { const k = await kjvLoad(false); if (!k) return { need: "kjv" }; return { verses: (k[b - 1].chapters[c - 1] || []).map((t0, i) => ({ v: i + 1, t: t0 })), offline: true }; }
   const url = bibUrl(ver, b, c); const cache = await bibCache();
