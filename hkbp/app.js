@@ -996,6 +996,7 @@ R.more = () => {
     <div class="menu card">
       <a class="li" href="#/elders">${ic("book")}<span class="grow"><b>${esc(t("eldersUpdates"))}</b></span>${ic("chev", "chev")}</a>
       <a class="li" href="#/bread">${ic("bread")}<span class="grow"><b>${esc(t("breadTitle"))}</b></span>${ic("chev", "chev")}</a>
+      <a class="li" href="#/nearest">${ic("pin")}<span class="grow"><b>⛪ ${esc(L3("HKBP terdekat", "HKBP na jonok", "Nearest HKBP"))}</b><small>${esc(L3("Semua HKBP di dunia, jarak dan petunjuk arah", "Sude HKBP, dao dohot dalan", "Every HKBP worldwide, distance and directions"))}</small></span>${ic("chev", "chev")}</a>
       <button class="li" data-act="notify">${ic("bell")}<span class="grow"><b>${esc(t("notifications"))}</b><small>${esc(perm === "granted" ? t("notifyOnTxt") : perm === "denied" ? t("notifyDenied") : t("notifyAskBody"))}</small></span>${ic("chev", "chev")}</button>
       <button class="li" data-act="install">${ic("phone")}<span class="grow"><b>${esc(t("installTitle"))}</b><small>${esc(standalone() ? t("installed") : t("installHint"))}</small></span>${ic("chev", "chev")}</button>
     </div>
@@ -1066,8 +1067,8 @@ async function render() {
     if (!api.hasSession() && await api.needsSetup()) { await R.login(); return; }
     if (!D) await refresh();
     if (!r) { history.replaceState(null, "", "#/home"); r = "home"; }
-    if (isGuest() && !["home", "bread", "checkin", "notasi"].includes(r)) { history.replaceState(null, "", "#/home"); r = "home"; arg = undefined; }
-    const map = { duties: R.duties, quizwb: R.quizwb, sunday: R.sunday, usage: R.usage, tarombo: R.tarombo, rpp: R.rpp, lit: R.lit, litwb: R.litwb, doc: R.doc, library: R.library, song: R.song, notasi: R.notasi, access: R.access, sswb: R.sswb, ssdeck: R.ssdeck, fx: R.fx, meet: R.meet, tutur: R.tutur, ende: R.ende, stories: R.stories, voyage: R.voyage, live: R.live, grief: R.grief, care: R.care, search: R.search, prayer: R.prayer, checkin: R.checkin, checkinqr: R.checkinqr, chat: R.chat, call: R.call, tata: R.tata, home: R.home, groups: R.groups, g: R.group, serve: R.serve, s: R.section, calendar: R.calendar, bread: R.bread, elders: R.elders, berita: R.berita, people: R.people, more: R.more, appstatus: R.appstatus, o: R.office, warta: R.warta };
+    if (isGuest() && !["home", "bread", "checkin", "notasi", "nearest"].includes(r)) { history.replaceState(null, "", "#/home"); r = "home"; arg = undefined; }
+    const map = { nearest: R.nearest, duties: R.duties, quizwb: R.quizwb, sunday: R.sunday, usage: R.usage, tarombo: R.tarombo, rpp: R.rpp, lit: R.lit, litwb: R.litwb, doc: R.doc, library: R.library, song: R.song, notasi: R.notasi, access: R.access, sswb: R.sswb, ssdeck: R.ssdeck, fx: R.fx, meet: R.meet, tutur: R.tutur, ende: R.ende, stories: R.stories, voyage: R.voyage, live: R.live, grief: R.grief, care: R.care, search: R.search, prayer: R.prayer, checkin: R.checkin, checkinqr: R.checkinqr, chat: R.chat, call: R.call, tata: R.tata, home: R.home, groups: R.groups, g: R.group, serve: R.serve, s: R.section, calendar: R.calendar, bread: R.bread, elders: R.elders, berita: R.berita, people: R.people, more: R.more, appstatus: R.appstatus, o: R.office, warta: R.warta };
     try { usageTick(r); } catch (e) {}
     const html = (map[r] || R.notFound)(arg);
     if (typeof html === "string") view().innerHTML = html;
@@ -1971,7 +1972,7 @@ function usageTick(r) {
   if (LS.get("usageSent", "") !== d0) { LS.set("usageSent", d0); api.save("usage_log", { days: u }).catch(() => {}); }
   prepOffline();
 }
-const ROUTE_NAMES = { home: "Beranda", groups: "Kategorial", g: "Halaman kategori", calendar: "Warnasari", serve: "Roster", meet: "Rapat", lit: "Liturgi", litwb: "Workbench liturgi", chat: "Chat", library: "Alkitab & nyanyian", song: "Lagu", doc: "Dokumen Gereja", more: "Lainnya", bread: "Renungan harian", tata: "Tata Ibadah", live: "Ikuti live", sunday: "Minggu Ini", rpp: "RPP", tarombo: "Tarombo", tutur: "Partuturan", ende: "Arti Buku Ende", care: "Kunjungan", prayer: "Pokok doa", fx: "Kurs", search: "Cari", o: "Seksi", sswb: "Workbench SM", stories: "Turi-turian", grief: "Dukacita", sea: "Pelaut", access: "Akses", appstatus: "Status aplikasi", usage: "Pemakaian fitur" };
+const ROUTE_NAMES = { home: "Beranda", groups: "Kategorial", g: "Halaman kategori", calendar: "Warnasari", serve: "Roster", meet: "Rapat", lit: "Liturgi", litwb: "Workbench liturgi", chat: "Chat", library: "Alkitab & nyanyian", song: "Lagu", doc: "Dokumen Gereja", more: "Lainnya", nearest: "HKBP terdekat", bread: "Renungan harian", tata: "Tata Ibadah", live: "Ikuti live", sunday: "Minggu Ini", rpp: "RPP", tarombo: "Tarombo", tutur: "Partuturan", ende: "Arti Buku Ende", care: "Kunjungan", prayer: "Pokok doa", fx: "Kurs", search: "Cari", o: "Seksi", sswb: "Workbench SM", stories: "Turi-turian", grief: "Dukacita", sea: "Pelaut", access: "Akses", appstatus: "Status aplikasi", usage: "Pemakaian fitur" };
 R.usage = () => {
   if (!D.me.is_admin) { location.replace("#/more"); return ""; }
   const days = +(new URLSearchParams(location.hash.split("?")[1] || "").get("d") || 90);
@@ -3486,6 +3487,255 @@ try { document.head.insertAdjacentHTML("beforeend", `<style>
   .fx-li { width: 100%; text-align: left; display: flex; align-items: center; gap: 12px; } .fx-li .grow { flex: 1; min-width: 0; } .fx-v { font-size: 15.5px; white-space: nowrap; margin-left: auto; }
 </style>`); } catch (e) {}
 
+// ---------- Nearest HKBP (YB 2026-11-01) ----------
+// Every HKBP church in the world that OpenStreetMap knows, sorted by distance from where the phone is now.
+// Free sources only: nearest/churches.json (built monthly by .github/workflows/hkbp-churches.yml from OpenStreetMap),
+// plus a live OpenStreetMap search around the phone, so new churches show up before the next monthly build.
+// Directions open Apple Maps on iPhone and Google Maps elsewhere (Waze too), with the route, traffic and turn-by-turn there.
+// The location stays on this phone (localStorage); nothing is sent to Sada's server.
+const NB = { list: null, live: [], pos: LS.get("nbPos", null), shown: 60, q: "", loading: false, online: "", road: {}, map: null };
+const NB_MIRRORS = ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter", "https://overpass.private.coffee/api/interpreter"];
+const NB_NAME = "HKBP|H\\\\.K\\\\.B\\\\.P|Huria Kristen Batak Protestan|Batak Christian Protestant";
+const nbKm = (a, b, c, d) => { const R = 6371, x = ((c - a) * Math.PI) / 180, y = ((d - b) * Math.PI) / 180; const h = Math.sin(x / 2) ** 2 + Math.cos((a * Math.PI) / 180) * Math.cos((c * Math.PI) / 180) * Math.sin(y / 2) ** 2; return 2 * R * Math.asin(Math.sqrt(h)); };
+const nbFmtKm = (k) => k == null ? "" : k < 1 ? Math.round(k * 1000) + " m" : k < 100 ? k.toFixed(1).replace(".", lang === "en" ? "." : ",") + " km" : Math.round(k).toLocaleString(lang === "en" ? "en-GB" : "id-ID") + " km";
+const nbFmtMin = (s) => { const m = Math.round(s / 60); return m < 60 ? m + " " + L3("mnt", "mnt", "min") : Math.floor(m / 60) + " " + L3("jam", "jam", "h") + " " + (m % 60) + " " + L3("mnt", "mnt", "min"); };
+const nbRow = (c, src) => ({ name: c[0], lat: c[1], lon: c[2], place: c[3] || "", street: c[4] || "", phone: c[5] || "", cc: c[6] || "", src });
+const nbKey = (c) => c.lat.toFixed(4) + "," + c.lon.toFixed(4);
+// Turn OpenStreetMap results into church rows (same rules as tools/hkbp-churches/build.mjs).
+function nbFromOsm(els) {
+  const out = [];
+  for (const e of els || []) {
+    const tg = e.tags || {}; const lat = e.lat != null ? e.lat : e.center && e.center.lat, lon = e.lon != null ? e.lon : e.center && e.center.lon;
+    if (lat == null || lon == null) continue;
+    let name = String(tg.name || tg.official_name || "HKBP").replace(/\s+/g, " ").trim();
+    if (/\b(sekolah|school|sd|smp|sma|smk|tk|paud|universitas|university|rumah sakit|hospital|klinik|yayasan|kantor|office|pastori|parsonage|rumah dinas|asrama|toko|makam|kuburan|cemetery|parkir)\b/i.test(name) && !/gereja|church/i.test(name)) continue;
+    if (!/hkbp|h\.k\.b\.p|batak/i.test(name)) name = "HKBP " + name;
+    out.push(nbRow([name, +lat.toFixed(5), +lon.toFixed(5), tg["addr:city"] || tg["addr:town"] || tg["addr:village"] || tg["addr:subdistrict"] || tg["addr:district"] || tg["addr:county"] || tg["addr:state"] || "",
+      [tg["addr:street"], tg["addr:housenumber"]].filter(Boolean).join(" "), tg.phone || tg["contact:phone"] || "", tg["addr:country"] || ""], "live"));
+  }
+  return out;
+}
+async function nbOverpass(area, timeout) {
+  const q = `[out:json][timeout:${timeout}];(nwr["amenity"="place_of_worship"]["name"~"${NB_NAME}",i]${area};nwr["amenity"="place_of_worship"]["operator"~"HKBP|Huria Kristen Batak Protestan",i]${area};nwr["building"~"^(church|chapel)$"]["name"~"${NB_NAME}",i]${area};);out center tags;`;
+  let last;
+  for (const url of NB_MIRRORS) {
+    try {
+      const ctl = new AbortController(); const tm = setTimeout(() => ctl.abort(), (timeout + 15) * 1000);
+      const r = await fetch(url, { method: "POST", body: new URLSearchParams({ data: q }), signal: ctl.signal }); clearTimeout(tm);
+      if (!r.ok) throw new Error(r.status); return nbFromOsm((await r.json()).elements);
+    } catch (e) { last = e; }
+  }
+  throw last || new Error("offline");
+}
+// The world list: the monthly file; if it can't be read (or is empty), the phone asks OpenStreetMap for the whole world itself.
+async function nbLoad() {
+  if (NB.list) return NB.list;
+  let rows = [];
+  try { const r = await fetch("nearest/churches.json?d=" + new Date().toISOString().slice(0, 10)); if (r.ok) { const j = await r.json(); NB.meta = j; rows = (j.c || []).map((c) => nbRow(c, "list")); } } catch (e) {}
+  if (!rows.length) { try { const x = await (await fetch("nearest/extra.json")).json(); rows = x.map((c) => nbRow([c.name, c.lat, c.lon, c.place, c.street, c.phone, c.cc], "list")); } catch (e) {} }
+  const world = LS.get("nbWorld", null);
+  if (rows.length < 50 && world && world.c) rows = rows.concat(world.c.map((c) => nbRow(c, "live")));
+  NB.list = rows; return rows;
+}
+async function nbWorldOnline() {
+  NB.online = "world"; nbPaint();
+  try {
+    const rows = await nbOverpass("", 180);
+    LS.set("nbWorld", { at: Date.now(), c: rows.map((c) => [c.name, c.lat, c.lon, c.place, c.street, c.phone, c.cc]) });
+    NB.list = null; await nbLoad(); NB.online = "done";
+  } catch (e) { NB.online = "fail"; }
+  nbPaint();
+}
+// Live search around the phone (100 km, then 400 km if nothing is that close).
+async function nbNearOnline() {
+  if (!NB.pos) return; NB.online = "near"; nbPaint();
+  try {
+    let rows = await nbOverpass(`(around:100000,${NB.pos.lat},${NB.pos.lon})`, 40);
+    if (!rows.length) rows = await nbOverpass(`(around:400000,${NB.pos.lat},${NB.pos.lon})`, 60);
+    NB.live = rows; LS.set("nbLive", { at: Date.now(), lat: NB.pos.lat, lon: NB.pos.lon, c: rows.map((c) => [c.name, c.lat, c.lon, c.place, c.street, c.phone, c.cc]) });
+    NB.online = "done";
+  } catch (e) { NB.online = "fail"; }
+  nbPaint();
+}
+// All churches, each once, with the distance from here, nearest first.
+function nbAll() {
+  const all = (NB.list || []).slice();
+  NB.live.forEach((c) => { if (!all.some((x) => Math.abs(x.lat - c.lat) < 0.002 && Math.abs(x.lon - c.lon) < 0.002 && nbKm(x.lat, x.lon, c.lat, c.lon) < 0.15)) all.push(c); });
+  if (NB.pos) { all.forEach((c) => (c.km = nbKm(NB.pos.lat, NB.pos.lon, c.lat, c.lon))); all.sort((a, b) => a.km - b.km); }
+  else { all.forEach((c) => (c.km = null)); all.sort((a, b) => a.name.localeCompare(b.name)); }
+  return all;
+}
+const nbWhere = (c) => [c.street, c.place, c.cc].filter(Boolean).join(", ");
+// Map links. Apple Maps / Google Maps start from where you are; the route, traffic, lanes, ETA and voice guidance are theirs.
+const nbApple = (c, f = "d") => `https://maps.apple.com/?daddr=${c.lat},${c.lon}&q=${encodeURIComponent(c.name)}&dirflg=${f}`;
+const nbGoogle = (c, m = "driving") => `https://www.google.com/maps/dir/?api=1&destination=${c.lat},${c.lon}&travelmode=${m}`;
+const nbWaze = (c) => `https://waze.com/ul?ll=${c.lat},${c.lon}&navigate=yes`;
+const nbDirUrl = (c) => (IOS ? nbApple(c) : nbGoogle(c));
+const nbGo = (c, cls = "btn primary") => `<a class="${cls}" href="${esc(nbDirUrl(c))}" target="_blank" rel="noopener">🧭 ${esc(L3("Petunjuk arah", "Dalan tu son", "Directions"))}</a>`;
+function nbItem(c, i) {
+  return `<button class="li nb-li" data-act="nbOpen" data-i="${i}"><span class="nb-n">${i + 1}</span><span class="grow"><b>${esc(c.name)}</b><small>${esc(nbWhere(c) || `${c.lat.toFixed(4)}, ${c.lon.toFixed(4)}`)}</small></span>${c.km != null ? `<b class="nb-km">${esc(nbFmtKm(c.km))}</b>` : ""}</button>`;
+}
+function nbPaint() {
+  const box = document.getElementById("nbBox"); if (!box) return;
+  const all = nbAll(); NB.view = all;
+  const q = norm(NB.q); const rows = q ? all.filter((c) => norm(c.name + " " + nbWhere(c)).includes(q)) : all;
+  const top = rows[0];
+  const posTxt = NB.pos ? L3("Lokasi Anda", "Lokasim", "Your location") + " · " + fmtTime(new Date(NB.pos.at).toISOString()) + (NB.pos.acc ? ` · ±${Math.round(NB.pos.acc)} m` : "") : "";
+  const onl = { near: "🔎 " + L3("Mencari HKBP di sekitar Anda secara online…", "Mangalului HKBP na jonok…", "Searching online for HKBP churches near you…"),
+    world: "🌏 " + L3("Mencari semua HKBP di dunia secara online… (bisa 1–3 menit)", "Mangalului sude HKBP…", "Searching online for every HKBP in the world… (can take 1–3 minutes)"),
+    fail: "⚠️ " + L3("Pencarian online belum berhasil. Daftar tersimpan tetap dipakai.", "Ndang dapot online.", "The online search didn't work this time. The saved list is still used."),
+    done: NB.live.length ? "✓ " + L3(`Pencarian online: ${NB.live.length} HKBP dalam 100 km`, `${NB.live.length} HKBP online`, `Online search: ${NB.live.length} HKBP within 100 km`) : "" }[NB.online] || "";
+  box.innerHTML = `
+    <div class="nb-loc card">
+      ${NB.pos ? `<span class="grow"><b>📍 ${esc(posTxt)}</b><small>${esc(L3("Jarak dihitung dari sini, garis lurus", "Dao sian on", "Distances are from here, as the crow flies"))}</small></span>
+        <button class="btn sm" data-act="nbLocate">↻ ${esc(L3("Perbarui", "Perbarui", "Update"))}</button>`
+      : `<span class="grow"><b>📍 ${esc(L3("Di mana Anda sekarang?", "Didia ho nuaeng?", "Where are you now?"))}</b><small>${esc(L3("Izinkan lokasi agar Sada bisa mengurutkan HKBP dari yang terdekat. Lokasi hanya disimpan di HP ini.", "Lehon lokasi.", "Allow location so Sada can sort the HKBP churches nearest first. Your location stays on this phone."))}</small></span>
+        <button class="btn primary sm" data-act="nbLocate">${esc(L3("Pakai lokasi saya", "Pake lokasingku", "Use my location"))}</button>`}
+    </div>
+    ${NB.err ? `<p class="nb-err">${esc(NB.err)}</p>` : ""}
+    ${onl ? `<p class="small muted nb-onl">${esc(onl)}</p>` : ""}
+    ${top && NB.pos && !q ? `<div class="nb-top">
+      <small>${esc(L3("HKBP terdekat", "HKBP na jonok", "Nearest HKBP"))}</small>
+      <h3>${esc(top.name)}</h3><p>${esc(nbWhere(top))}</p>
+      <div class="nb-big">${esc(nbFmtKm(top.km))}</div><p class="nb-road" id="nbRoad">${esc(NB.road[nbKey(top)] || "")}</p>
+      <div class="nb-btns">${nbGo(top, "btn nb-go")}<button class="btn nb-more" data-act="nbOpen" data-i="0">🗺️ ${esc(L3("Peta & pilihan", "Peta", "Map & options"))}</button></div>
+    </div>` : ""}
+    <div id="nbMap" class="nb-map" ${NB.pos ? "" : "hidden"}></div>
+    <h3 class="sec-h">${esc(q ? L3(`${rows.length} hasil`, `${rows.length} hasil`, `${rows.length} results`) : NB.pos ? L3(`Semua HKBP (${all.length}), terdekat dulu`, `Sude HKBP (${all.length})`, `All HKBP churches (${all.length}), nearest first`) : L3(`Semua HKBP (${all.length})`, `Sude HKBP (${all.length})`, `All HKBP churches (${all.length})`))}</h3>
+    <div class="card menu nb-list">${rows.slice(0, NB.shown).map((c) => nbItem(c, all.indexOf(c))).join("") || empty(NB.list ? L3("Tidak ada HKBP yang cocok.", "Ndang adong.", "No HKBP church matches.") : L3("Memuat daftar…", "Memuat…", "Loading the list…"), "pin")}</div>
+    ${rows.length > NB.shown ? `<button class="btn block" id="nbMoreBtn" data-act="nbMore">${esc(L3(`Tampilkan lebih banyak (${rows.length - NB.shown} lagi)`, `Lan torus (${rows.length - NB.shown})`, `Show more (${rows.length - NB.shown} more)`))}</button>` : ""}
+    <div class="row between nb-foot"><small class="muted">${esc((NB.meta ? L3("Daftar diperbarui ", "Diperbarui ", "List updated ") + NB.meta.updated + " · " : "") + "© OpenStreetMap")}</small>
+      <button class="btn sm ghost" data-act="nbOnline">🔎 ${esc(L3("Cari online", "Lului online", "Search online"))}</button></div>
+    <p class="small muted">${esc(L3("Gereja HKBP yang belum ada? Tambahkan di openstreetmap.org (gratis) dengan nama berawalan “HKBP”; Sada mengambilnya otomatis setiap bulan.", "Tambahkan di openstreetmap.org.", "Missing an HKBP church? Add it at openstreetmap.org (free) with a name starting “HKBP”; Sada picks it up automatically every month."))}</p>`;
+  if (top && NB.pos && !q) nbRoadFor(top, "nbRoad");
+  nbMapDraw(rows.slice(0, 60), top);
+  nbAutoMore();
+}
+// Driving distance and time by road (free OSRM demo server), for the nearest one and any opened church.
+async function nbRoadFor(c, elId) {
+  const k = nbKey(c); const set = () => { const el = document.getElementById(elId); if (el) el.textContent = NB.road[k] || ""; };
+  if (NB.road[k] !== undefined || !NB.pos || c.km > 1500) { set(); return; }
+  NB.road[k] = "";
+  try {
+    const r = await fetch(`https://router.project-osrm.org/route/v1/driving/${NB.pos.lon},${NB.pos.lat};${c.lon},${c.lat}?overview=false`);
+    const j = await r.json(); const rt = j.routes && j.routes[0];
+    if (rt) NB.road[k] = "🚗 " + L3("Lewat jalan ±", "Dalan ±", "By road about ") + nbFmtKm(rt.distance / 1000) + " · " + nbFmtMin(rt.duration);
+  } catch (e) {}
+  set();
+}
+// Free map (Leaflet + OpenStreetMap tiles), loaded only when this page opens.
+let nbLeaflet = null;
+function nbLeafletLoad() {
+  if (window.L && window.L.map) return Promise.resolve(window.L);
+  if (nbLeaflet) return nbLeaflet;
+  nbLeaflet = new Promise((ok, bad) => {
+    const css = document.createElement("link"); css.rel = "stylesheet"; css.href = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"; document.head.appendChild(css);
+    const s = document.createElement("script"); s.src = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"; s.onload = () => ok(window.L); s.onerror = () => { nbLeaflet = null; bad(new Error("map")); }; document.head.appendChild(s);
+  });
+  return nbLeaflet;
+}
+async function nbMapDraw(rows, top, elId = "nbMap") {
+  const el = document.getElementById(elId); if (!el || !NB.pos || el.hidden) return;
+  let L; try { L = await nbLeafletLoad(); } catch (e) { el.hidden = true; return; }
+  if (!document.body.contains(el)) return;
+  const map = L.map(el, { zoomControl: true, attributionControl: true }); map.attributionControl.setPrefix(false);
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap" }).addTo(map);
+  const me = L.circleMarker([NB.pos.lat, NB.pos.lon], { radius: 8, color: "#fff", weight: 3, fillColor: "#1a73e8", fillOpacity: 1 }).addTo(map).bindPopup(L3("Anda di sini", "Ho di son", "You are here"));
+  const pts = [[NB.pos.lat, NB.pos.lon]];
+  rows.forEach((c) => {
+    const i = (NB.view || []).indexOf(c);
+    const m = L.circleMarker([c.lat, c.lon], { radius: c === top ? 9 : 6, color: "#fff", weight: 2, fillColor: c === top ? "#c62828" : "#8e24aa", fillOpacity: 0.95 }).addTo(map);
+    m.bindPopup(`<b>${esc(c.name)}</b><br>${esc(nbFmtKm(c.km))}<br><a href="${esc(nbDirUrl(c))}" target="_blank" rel="noopener">🧭 ${esc(L3("Petunjuk arah", "Dalan", "Directions"))}</a> · <a href="#" data-act="nbOpen" data-i="${i}">${esc(L3("Detail", "Detail", "Details"))}</a>`);
+  });
+  if (top) pts.push([top.lat, top.lon]);
+  rows.slice(0, 5).forEach((c) => { if (c.km < 60) pts.push([c.lat, c.lon]); });
+  map.fitBounds(L.latLngBounds(pts).pad(0.25), { maxZoom: 15 });
+  void me;
+}
+// Load more rows when the end of the list scrolls into view.
+function nbAutoMore() {
+  const b = document.getElementById("nbMoreBtn"); if (!b || !("IntersectionObserver" in window)) return;
+  const io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) { io.disconnect(); A.nbMore(); } }, { rootMargin: "400px" }); io.observe(b);
+}
+A.nbMore = () => { NB.shown += 100; const y = window.scrollY; nbPaint(); window.scrollTo(0, y); };
+A.nbLocate = () => {
+  if (!("geolocation" in navigator)) { NB.err = L3("HP ini tidak bisa memberi lokasi.", "Ndang boi lokasi.", "This phone can't give a location."); nbPaint(); return; }
+  NB.err = ""; toast(L3("Mencari lokasi Anda…", "Mangalului lokasi…", "Finding your location…"));
+  navigator.geolocation.getCurrentPosition((p) => {
+    NB.pos = { lat: p.coords.latitude, lon: p.coords.longitude, acc: p.coords.accuracy, at: Date.now() }; LS.set("nbPos", NB.pos);
+    NB.shown = 60; NB.road = {}; nbPaint(); nbNearOnline();
+  }, (e) => {
+    NB.err = e.code === 1 ? (IOS ? L3("Lokasi ditolak. Buka Pengaturan → Privasi → Layanan Lokasi → Sada HKBPS (atau Safari) → Saat Digunakan.", "Lokasi ditolak.", "Location was blocked. Open Settings → Privacy → Location Services → Sada HKBPS (or Safari Websites) → While Using.")
+      : L3("Lokasi ditolak. Izinkan lokasi untuk Sada di pengaturan situs browser (ikon gembok/ⓘ di sebelah alamat).", "Lokasi ditolak.", "Location was blocked. Allow location for Sada in the browser's site settings (the lock/ⓘ icon by the address)."))
+      : L3("Lokasi belum ditemukan. Coba lagi di tempat terbuka.", "Ndang dapot lokasi.", "Couldn't find your location. Try again, ideally outdoors.");
+    nbPaint();
+  }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 60000 });
+};
+A.nbOnline = () => { if ((NB.list || []).length < 50) nbWorldOnline(); else if (NB.pos) nbNearOnline(); else A.nbLocate(); };
+A.nbOpen = (d) => {
+  const c = (NB.view || [])[+d.i]; if (!c) return;
+  const tel = c.phone ? String(c.phone).split(/[;,]/)[0].trim() : "";
+  sheet("⛪ " + c.name, `
+    <p class="nb-addr">${esc(nbWhere(c) || L3("Alamat belum tercatat", "Alamat ndang adong", "No street address recorded"))}</p>
+    ${c.km != null ? `<p class="nb-dist"><b>${esc(nbFmtKm(c.km))}</b> ${esc(L3("dari Anda (garis lurus)", "sian ho", "from you (straight line)"))}</p><p class="small muted" id="nbRoadS">${esc(NB.road[nbKey(c)] || "")}</p>` : ""}
+    <div id="nbMapS" class="nb-map sm"${NB.pos ? "" : " hidden"}></div>
+    <h4 class="nb-h">🧭 ${esc(L3("Petunjuk arah", "Dalan tu son", "Directions"))}</h4>
+    <div class="nb-grid">
+      ${IOS ? `      <a class="btn" href="${esc(nbApple(c, "d"))}" target="_blank" rel="noopener">🍎 ${esc(L3("Apple Maps · mobil", "Apple · motor", "Apple Maps · drive"))}</a>
+      <a class="btn" href="${esc(nbApple(c, "r"))}" target="_blank" rel="noopener">🚆 ${esc(L3("Apple Maps · transportasi umum", "Apple · bus", "Apple Maps · transit"))}</a>
+      <a class="btn" href="${esc(nbApple(c, "w"))}" target="_blank" rel="noopener">🚶 ${esc(L3("Apple Maps · jalan kaki", "Apple · mardalan", "Apple Maps · walk"))}</a>
+      <a class="btn" href="${esc(nbGoogle(c, "driving"))}" target="_blank" rel="noopener">🗺️ ${esc(L3("Google Maps · mobil", "Google · motor", "Google Maps · drive"))}</a>
+      <a class="btn" href="${esc(nbGoogle(c, "transit"))}" target="_blank" rel="noopener">🚌 ${esc(L3("Google Maps · transportasi umum", "Google · bus", "Google Maps · transit"))}</a>
+      <a class="btn" href="${esc(nbGoogle(c, "walking"))}" target="_blank" rel="noopener">🚶 ${esc(L3("Google Maps · jalan kaki", "Google · mardalan", "Google Maps · walk"))}</a>` : `      <a class="btn" href="${esc(nbGoogle(c, "driving"))}" target="_blank" rel="noopener">🗺️ ${esc(L3("Google Maps · mobil", "Google · motor", "Google Maps · drive"))}</a>
+      <a class="btn" href="${esc(nbGoogle(c, "transit"))}" target="_blank" rel="noopener">🚌 ${esc(L3("Google Maps · transportasi umum", "Google · bus", "Google Maps · transit"))}</a>
+      <a class="btn" href="${esc(nbGoogle(c, "walking"))}" target="_blank" rel="noopener">🚶 ${esc(L3("Google Maps · jalan kaki", "Google · mardalan", "Google Maps · walk"))}</a>
+      <a class="btn" href="${esc(nbApple(c, "d"))}" target="_blank" rel="noopener">🍎 ${esc(L3("Apple Maps · mobil", "Apple · motor", "Apple Maps · drive"))}</a>
+      <a class="btn" href="${esc(nbApple(c, "r"))}" target="_blank" rel="noopener">🚆 ${esc(L3("Apple Maps · transportasi umum", "Apple · bus", "Apple Maps · transit"))}</a>
+      <a class="btn" href="${esc(nbApple(c, "w"))}" target="_blank" rel="noopener">🚶 ${esc(L3("Apple Maps · jalan kaki", "Apple · mardalan", "Apple Maps · walk"))}</a>`}
+      <a class="btn" href="${esc(nbWaze(c))}" target="_blank" rel="noopener">🚙 Waze</a>
+      ${!IOS ? `<a class="btn" href="geo:${c.lat},${c.lon}?q=${c.lat},${c.lon}(${encodeURIComponent(c.name)})">📱 ${esc(L3("Aplikasi peta lain", "Peta na asing", "Other map app"))}</a>` : ""}
+    </div>
+    <div class="nb-grid two">
+      ${tel ? `<a class="btn" href="tel:${esc(tel.replace(/[^\d+]/g, ""))}">📞 ${esc(tel)}</a>` : ""}
+      <button class="btn" data-act="nbShare" data-i="${d.i}">📤 ${esc(L3("Bagikan lokasi", "Bagi lokasi", "Share location"))}</button>
+      <button class="btn" data-act="nbCopy" data-i="${d.i}">📋 ${esc(L3("Salin alamat", "Salin alamat", "Copy address"))}</button>
+      <a class="btn" href="https://www.openstreetmap.org/?mlat=${c.lat}&mlon=${c.lon}#map=18/${c.lat}/${c.lon}" target="_blank" rel="noopener">✏️ ${esc(L3("Lihat/perbaiki di OSM", "Ida di OSM", "View/fix on OSM"))}</a>
+    </div>`, () => { nbRoadFor(c, "nbRoadS"); setTimeout(() => nbMapDraw([c], c, "nbMapS"), 260); });
+};
+const nbText = (c) => `${c.name}\n${nbWhere(c)}\n${IOS ? nbApple(c) : nbGoogle(c)}`.replace(/\n\n/, "\n");
+A.nbShare = async (d) => { const c = (NB.view || [])[+d.i]; if (!c) return; try { if (navigator.share) { await navigator.share({ title: c.name, text: nbText(c) }); return; } } catch (e) { if (e && e.name === "AbortError") return; } A.nbCopy(d); };
+A.nbCopy = async (d) => { const c = (NB.view || [])[+d.i]; if (!c) return; try { await navigator.clipboard.writeText(nbText(c)); toast(L3("Disalin", "Disalin", "Copied")); } catch (e) { toast(nbText(c)); } };
+R.nearest = () => {
+  setTimeout(async () => {
+    const lv = LS.get("nbLive", null); if (lv && NB.pos && !NB.live.length && Math.abs(lv.lat - NB.pos.lat) < 0.5 && Math.abs(lv.lon - NB.pos.lon) < 0.5) NB.live = lv.c.map((c) => nbRow(c, "live"));
+    await nbLoad(); nbPaint();
+    if ((NB.list || []).length < 50 && !NB.online) nbWorldOnline();
+    else if (NB.pos && !NB.online && (!lv || Date.now() - lv.at > 864e5)) nbNearOnline();
+  }, 0);
+  return shell("#/more", `<h2 class="page-h">⛪ ${esc(L3("HKBP terdekat", "HKBP na jonok", "Nearest HKBP"))}</h2>
+    <p class="lead">${esc(L3("Semua gereja HKBP di dunia, diurutkan dari yang paling dekat dengan Anda, lengkap dengan petunjuk arah.", "Sude HKBP di portibi on, na jonok parjolo.", "Every HKBP church in the world, nearest to you first, with directions."))}</p>
+    <input type="search" id="nbFind" placeholder="${esc(L3("Cari nama atau kota…", "Lului goar manang kota…", "Search a name or city…"))}" autocomplete="off" value="${esc(NB.q)}">
+    <div id="nbBox">${skel(5)}</div>`, { back: "#/more", title: L3("HKBP terdekat", "HKBP na jonok", "Nearest HKBP") });
+};
+document.addEventListener("input", (e) => { if (e.target && e.target.id === "nbFind") { NB.q = e.target.value; NB.shown = 60; clearTimeout(nbPaint.h); nbPaint.h = setTimeout(nbPaint, 200); } });
+try { document.head.insertAdjacentHTML("beforeend", `<style>
+  #nbFind { margin: 4px 0 10px; width: 100%; box-sizing: border-box; }
+  .nb-loc { display: flex; align-items: center; gap: 12px; padding: 12px 14px; } .nb-loc .grow { flex: 1; min-width: 0; } .nb-loc small { display: block; }
+  .nb-err { color: var(--danger, #c62828); font-weight: 600; } .nb-onl { margin: 6px 2px; }
+  .nb-top { margin: 12px 0; padding: 18px; border-radius: 24px; background: linear-gradient(145deg, var(--brand), color-mix(in srgb, var(--brand) 60%, #0b1022)); color: #fff; box-shadow: var(--shadow-lg); }
+  .nb-top small { opacity: .85; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; } .nb-top h3 { margin: 4px 0 2px; font-size: 20px; } .nb-top p { margin: 0; opacity: .9; }
+  .nb-big { font-size: 40px; font-weight: 800; margin: 8px 0 0; line-height: 1.1; } .nb-road { min-height: 1.2em; margin-top: 4px !important; font-weight: 600; }
+  .nb-btns { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; } .nb-btns .btn { flex: 1; justify-content: center; text-align: center; min-width: 140px; }
+  .nb-go { background: #fff !important; color: var(--brand) !important; font-weight: 800; border: 0; } .nb-more { background: rgba(255,255,255,.18) !important; color: #fff !important; border: 0; }
+  .nb-map { height: 260px; border-radius: 18px; overflow: hidden; margin: 10px 0; z-index: 0; } .nb-map.sm { height: 200px; }
+  .nb-li { width: 100%; text-align: left; display: flex; align-items: center; gap: 10px; } .nb-li .grow { flex: 1; min-width: 0; }
+  .nb-n { flex: none; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 800; background: color-mix(in srgb, var(--brand) 12%, transparent); color: var(--brand); }
+  .nb-km { white-space: nowrap; margin-left: auto; font-size: 15px; }
+  .nb-foot { margin: 10px 0 4px; gap: 8px; } .nb-addr { margin: 0 0 6px; } .nb-dist { margin: 0; font-size: 17px; } .nb-h { margin: 12px 0 6px; }
+  .nb-grid { display: grid; grid-template-columns: 1fr; gap: 8px; } .nb-grid.two { grid-template-columns: 1fr 1fr; margin-top: 8px; }
+  .nb-grid .btn { justify-content: center; text-align: center; }
+</style>`); } catch (e) {}
+
 // ---------- Private messages (YB 2026-10-30) ----------
 // One-to-one, like Messenger: the room is dm:<id>:<id> (both ids, sorted). Only the two people can read it, not even the admin.
 // Inbox with unread counts in the Chat tab, read receipts ("Dilihat"), live dot, photos, replies and reactions as in group chat.
@@ -4223,6 +4473,7 @@ function communityMenu() {
   const elder = "parhalado" in (D.me.groups || {});   // Time for a visit: Parhalado only (the pastor and the elders)
   const it = (href, icon, title, sub) => `<a class="li" href="${href}">${ic(icon)}<span class="grow"><b>${title}</b><small>${esc(sub)}</small></span>${ic("chev", "chev")}</a>`;
   return (isYB() ? it("#/access", "lock", "🔐 " + esc(L3("Akses & tampilan", "Akses", "Access & views")), L3("Periksa setiap kategori dan seksi, dan lihat Sada sebagai anggota mana pun", "Ida songon ruas", "Check every category and section, and see Sada as any member")) : "")
+    + it("#/nearest", "pin", "⛪ " + esc(L3("HKBP terdekat", "HKBP na jonok", "Nearest HKBP")), L3("Semua HKBP di dunia, jarak dan petunjuk arah", "Sude HKBP, dao dohot dalan", "Every HKBP worldwide, distance and directions"))
     + it("#/fx", "coins", "💱 " + esc(L3("Kurs", "Kurs", "Exchange rates")), L3("Konversi mata uang, kurs terbaru", "Kurs hepeng", "Currency converter, latest rates"))
     + it("#/tutur", "people", "🤝 Partuturan", L3("Cara saling menyapa menurut Dalihan Na Tolu", "Partuturan Dalihan Na Tolu", "How to address each other (Dalihan Na Tolu)"))
     + it("#/tarombo", "people", "🌳 Tarombo", L3("Silsilah marga Batak dari Si Raja Batak", "Tarombo sian Si Raja Batak", "The Batak marga tree from Si Raja Batak"))
@@ -4779,6 +5030,7 @@ const SX_FEATS = () => [
   ["tutur", "🤝", ["Partuturan", "Partuturan", "Partuturan"], ["Cara saling menyapa (Dalihan Na Tolu)", "Partuturan", "How to address each other"], "partuturan tutur dalihan na tolu address kinship sapaan", "#/tutur", () => true],
   ["stories", "🎙️", ["Turi-turian", "Turi-turian", "Elders' stories"], ["Cerita orang tua yang direkam", "Turi-turian", "Recorded stories from the elders"], "turi turian stories story cerita rekaman", "#/stories", () => true],
   ["grief", "🕊️", ["Dukacita", "Dukacita", "Grief support"], ["Dukung keluarga yang berduka", "Apuli na marsak", "Support a grieving family"], "dukacita grief duka mourning funeral meninggal", "#/grief", () => true],
+  ["nearest", "⛪", ["HKBP terdekat", "HKBP na jonok", "Nearest HKBP"], ["Jarak dan petunjuk arah ke gereja", "Dao dohot dalan", "Distance and directions to a church"], "hkbp terdekat nearest church gereja lokasi location map peta arah direction alamat address jarak distance", "#/nearest", () => true],
   ["fx", "💱", ["Kurs", "Kurs", "Exchange rates"], ["Konversi mata uang", "Kurs", "Currency converter"], "kurs exchange rate currency sgd idr rupiah dollar", "#/fx", () => true],
   ["textsize", "🔠", ["Ukuran teks", "Balga ni surat", "Text size"], ["Perbesar huruf", "Pabalga surat", "Make the text larger"], "text size ukuran huruf font besar larger zoom", "act:textSize", () => true],
   ["notify", "🔔", ["Notifikasi", "Notifikasi", "Notifications"], ["Nyalakan pemberitahuan", "Notifikasi", "Turn on notifications"], "notifikasi notification notifications push bell pemberitahuan", "act:notify", () => true],
