@@ -1049,10 +1049,15 @@ async function render() {
     if (typeof html === "string") view().innerHTML = html;
     draftRestore(view()); wAutoBase();
     document.title = r === "home" ? "Sada HKBPS" : `${$(".brand b") ? $(".brand b").textContent : ""} · Sada HKBPS`;
-    hydrate();
+    hydrate(); topSafe();
   } catch (e) { console.error(e); view().innerHTML = `<div class="login">${empty(errMsg(e))}<button class="btn primary" data-act="retry">${esc(t("retry"))}</button></div>`; }
   finally { rendering = false; }
 }
+// A fixed solid strip as tall as the header (YB 2026-11-01, iPhone on iOS 27): with only the sticky header at the top, the
+// iPhone blurred the title line under the clock until the page was scrolled. A fixed bar is seen as the top bar straight away.
+function topSafe() { const ts = document.getElementById("topsafe"), hd = document.querySelector("header.top"); if (!ts) return;
+  ts.style.height = hd && hd.offsetHeight && innerWidth < 1100 ? hd.offsetHeight + "px" : ""; }
+addEventListener("resize", topSafe);
 function hydrate() {
   // Jarvis "go" (YB 2026-10-26) opens #/s/multimedia?wb=1: open the workbench straight away for a Multimedia Maker.
   if (/^#\/s\/multimedia\?(.*&)?wb=1\b/.test(location.hash) && D && !isGuest() && !document.getElementById("wb")) {
