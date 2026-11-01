@@ -934,13 +934,15 @@ function Presenter(root, DATA, OPTS){
     var el = slide.querySelector('.dk-fit');
     if (el) {
       var over = function(){ return el.scrollHeight > el.clientHeight + 1 || el.scrollWidth > el.clientWidth + 1; };
-      var lo = 1.6, hi = Math.min(9, (por ? 7 : 5.4) * sc), setF = function(x){ el.style.fontSize = (x * curU) + 'px'; };
+      var lyr = !!el.querySelector('.dk-lyric');   // song verses may grow larger than reading text
+      var lo = 1.6, hi = Math.min(9, (por || lyr ? 7 : 5.4) * sc), setF = function(x){ el.style.fontSize = (x * curU) + 'px'; };
       var best = hi; setF(hi);
       if (over()) { for (var i = 0; i < 14; i++) { var mid = (lo + hi) / 2; setF(mid); if (over()) hi = mid; else lo = mid; } best = lo; setF(lo); }
       // hymn lines: rather a little smaller than a line breaking in two, as long as it stays easy to read
+      // and still fills the slide (at most about a fifth smaller; long lines otherwise wrap so the verse fills the space)
       var ps = [].slice.call(el.querySelectorAll('.dk-lyric p'));
       var wraps = function(){ return ps.some(function(x){ return x.offsetHeight > parseFloat(getComputedStyle(x).lineHeight) * 1.5; }); };
-      var floor = Math.max(1.6, (por ? 4.2 : 3) * Math.min(sc, 1.2));
+      var floor = Math.max(1.6, (por ? 4.2 : 3) * Math.min(sc, 1.2), best * .8);
       if (ps.length && wraps() && best > floor) {
         var a = floor, z = best; setF(a);
         if (!wraps()) { for (var j = 0; j < 12; j++) { var m2 = (a + z) / 2; setF(m2); if (wraps()) z = m2; else a = m2; } setF(a); }
