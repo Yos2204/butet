@@ -3588,7 +3588,8 @@ function nbPaint() {
     done: NB.live.length ? "✓ " + L3(`Pencarian online: ${NB.live.length} HKBP dalam 100 km`, `${NB.live.length} HKBP online`, `Online search: ${NB.live.length} HKBP within 100 km`) : "" }[NB.online] || "";
   box.innerHTML = `
     <div class="nb-loc card">
-      ${NB.pos ? `<span class="grow"><b>📍 ${esc(posTxt)}</b><small>${esc(L3("Jarak dihitung dari sini, garis lurus", "Dao sian on", "Distances are from here, as the crow flies"))}</small></span>
+      ${NB.locating && !NB.pos ? `<span class="grow"><b>📍 ${esc(L3("Mencari lokasi Anda…", "Mangalului lokasi…", "Finding your location…"))}</b><small>${esc(L3("Lokasi hanya disimpan di HP ini.", "Lokasi di HP on do.", "Your location stays on this phone."))}</small></span>`
+      : NB.pos ? `<span class="grow"><b>📍 ${esc(NB.locating ? L3("Memperbarui lokasi…", "Memperbarui…", "Updating your location…") : posTxt)}</b><small>${esc(L3("Jarak dihitung dari sini, garis lurus", "Dao sian on", "Distances are from here, as the crow flies"))}</small></span>
         <button class="btn sm" data-act="nbLocate">↻ ${esc(L3("Perbarui", "Perbarui", "Update"))}</button>`
       : `<span class="grow"><b>📍 ${esc(L3("Di mana Anda sekarang?", "Didia ho nuaeng?", "Where are you now?"))}</b><small>${esc(L3("Izinkan lokasi agar Sada bisa mengurutkan HKBP dari yang terdekat. Lokasi hanya disimpan di HP ini.", "Lehon lokasi.", "Allow location so Sada can sort the HKBP churches nearest first. Your location stays on this phone."))}</small></span>
         <button class="btn primary sm" data-act="nbLocate">${esc(L3("Pakai lokasi saya", "Pake lokasingku", "Use my location"))}</button>`}
@@ -3682,13 +3683,19 @@ function nbAutoMore() {
   const io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) { io.disconnect(); A.nbMore(); } }, { rootMargin: "400px" }); io.observe(b);
 }
 A.nbMore = () => { NB.shown += 100; const y = window.scrollY; nbPaint(); window.scrollTo(0, y); };
-A.nbLocate = () => {
+// The page finds the location by itself each time it opens (YB 2026-11-02); the phone asks permission only the first time.
+A.nbLocate = (d = {}) => {
   if (!("geolocation" in navigator)) { NB.err = L3("HP ini tidak bisa memberi lokasi.", "Ndang boi lokasi.", "This phone can't give a location."); nbPaint(); return; }
-  NB.err = ""; toast(L3("Mencari lokasi Anda…", "Mangalului lokasi…", "Finding your location…"));
+  NB.err = ""; NB.locating = true; nbPaint(); if (!d.quiet) toast(L3("Mencari lokasi Anda…", "Mangalului lokasi…", "Finding your location…"));
   navigator.geolocation.getCurrentPosition((p) => {
+    const old = NB.pos; NB.locating = false;
     NB.pos = { lat: p.coords.latitude, lon: p.coords.longitude, acc: p.coords.accuracy, at: Date.now() }; LS.set("nbPos", NB.pos);
-    NB.shown = 60; NB.road = {}; nbPaint(); nbNearOnline();
-  }, (e) => {
+    const moved = !old || nbKm(old.lat, old.lon, NB.pos.lat, NB.pos.lon) > 0.2;
+    if (moved) { NB.shown = 60; NB.road = {}; NB.fitKey = null; }
+    nbPaint();
+    const lv = LS.get("nbLive", null);
+    if (!d.quiet || !lv || Date.now() - lv.at > 864e5 || nbKm(lv.lat, lv.lon, NB.pos.lat, NB.pos.lon) > 30) nbNearOnline();
+  }, (e) => { NB.locating = false;
     NB.err = e.code === 1 ? (IOS ? L3("Lokasi ditolak. Buka Pengaturan → Privasi → Layanan Lokasi → Sada HKBPS (atau Safari) → Saat Digunakan.", "Lokasi ditolak.", "Location was blocked. Open Settings → Privacy → Location Services → Sada HKBPS (or Safari Websites) → While Using.")
       : L3("Lokasi ditolak. Izinkan lokasi untuk Sada di pengaturan situs browser (ikon gembok/ⓘ di sebelah alamat).", "Lokasi ditolak.", "Location was blocked. Allow location for Sada in the browser's site settings (the lock/ⓘ icon by the address)."))
       : L3("Lokasi belum ditemukan. Coba lagi di tempat terbuka.", "Ndang dapot lokasi.", "Couldn't find your location. Try again, ideally outdoors.");
@@ -3735,7 +3742,9 @@ R.nearest = () => {
     const lv = LS.get("nbLive", null); if (lv && NB.pos && !NB.live.length && Math.abs(lv.lat - NB.pos.lat) < 0.5 && Math.abs(lv.lon - NB.pos.lon) < 0.5) NB.live = lv.c.map((c) => nbRow(c, "live"));
     await nbLoad(); nbPaint();
     if ((NB.list || []).length < 50 && !NB.online) nbWorldOnline();
-    else if (NB.pos && !NB.online && (!lv || Date.now() - lv.at > 864e5)) nbNearOnline();
+    let perm = "prompt"; try { if (navigator.permissions) perm = (await navigator.permissions.query({ name: "geolocation" })).state; } catch (e) {}
+    if (perm !== "denied" && document.getElementById("nbBox")) A.nbLocate({ quiet: 1 });
+    else if (perm === "denied" && !NB.pos) { NB.err = IOS ? L3("Lokasi ditolak. Buka Pengaturan → Privasi → Layanan Lokasi → Sada HKBPS (atau Safari) → Saat Digunakan.", "Lokasi ditolak.", "Location was blocked. Open Settings → Privacy → Location Services → Sada HKBPS (or Safari Websites) → While Using.") : L3("Lokasi ditolak. Izinkan lokasi untuk Sada di pengaturan situs browser (ikon gembok/ⓘ di sebelah alamat).", "Lokasi ditolak.", "Location was blocked. Allow location for Sada in the browser's site settings (the lock/ⓘ icon by the address)."); nbPaint(); }
   }, 0);
   return shell("#/more", `<h2 class="page-h">⛪ ${esc(L3("HKBP terdekat", "HKBP na jonok", "Nearest HKBP"))}</h2>
     <p class="lead">${esc(L3("Semua gereja HKBP di dunia, diurutkan dari yang paling dekat dengan Anda, lengkap dengan petunjuk arah.", "Sude HKBP di portibi on, na jonok parjolo.", "Every HKBP church in the world, nearest to you first, with directions."))}</p>
