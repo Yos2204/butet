@@ -6,33 +6,42 @@ import { readFileSync, writeFileSync, existsSync } from "node:fs";
 const OUT = "hkbp/nearest/churches.json", EXTRA = "hkbp/nearest/extra.json";
 const MIRRORS = ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter", "https://overpass.private.coffee/api/interpreter"];
 const NAME = "HKBP|H\\\\.K\\\\.B\\\\.P|Huria Kristen Batak Protestan|Batak Christian Protestant";
-const QUERY = `[out:json][timeout:900];
+// One worldwide query is too slow for Overpass, so ask box by box: Indonesia in 10 cells, the rest of the world in 6.
+const BOXES = [];
+{ const lons = [94, 101, 106.5, 115, 126, 141.5], lats = [-11.5, -2, 7.5];
+  for (let i = 0; i < 2; i++) for (let j = 0; j < 5; j++) BOXES.push([lats[i], lons[j], lats[i + 1], lons[j + 1]]); }
+BOXES.push([-90, -180, 90, -30], [-90, -30, 90, 60], [-90, 60, 90, 94], [-90, 94, -11.5, 180], [7.5, 94, 90, 180], [-11.5, 141.5, 7.5, 180]);
+const query = (b) => { const bb = `(${b.join(",")})`; return `[out:json][timeout:180];
 (
-  nwr["amenity"="place_of_worship"]["name"~"${NAME}",i];
-  nwr["amenity"="place_of_worship"]["official_name"~"${NAME}",i];
-  nwr["amenity"="place_of_worship"]["operator"~"HKBP|Huria Kristen Batak Protestan",i];
-  nwr["amenity"="place_of_worship"]["denomination"~"^(hkbp|batak_protestant|huria_kristen_batak_protestan)$",i];
-  nwr["building"~"^(church|chapel)$"]["name"~"${NAME}",i];
+  nwr["amenity"="place_of_worship"]["name"~"${NAME}",i]${bb};
+  nwr["amenity"="place_of_worship"]["official_name"~"${NAME}",i]${bb};
+  nwr["amenity"="place_of_worship"]["operator"~"HKBP|Huria Kristen Batak Protestan",i]${bb};
+  nwr["amenity"="place_of_worship"]["denomination"~"^(hkbp|batak_protestant|huria_kristen_batak_protestan)$",i]${bb};
+  nwr["building"~"^(church|chapel)$"]["name"~"${NAME}",i]${bb};
 );
-out center tags;`;
+out center tags;`; };
 // Not a church building: schools, hospitals, offices, houses.
 const NOT_CHURCH = /\b(sekolah|school|sd|smp|sma|smk|tk|paud|universitas|university|rumah sakit|hospital|klinik|yayasan|kantor|office|pastori|parsonage|rumah dinas|asrama|toko|makam|kuburan|cemetery|parkir)\b/i;
 
-async function overpass() {
+const wait = (ms) => new Promise((ok) => setTimeout(ok, ms));
+async function ask(q) {
   let last;
-  for (const url of MIRRORS) {
-    for (let i = 0; i < 2; i++) {
-      try {
-        const r = await fetch(url, { method: "POST", body: new URLSearchParams({ data: QUERY }), headers: { "User-Agent": "SadaHKBPS/1.0 (github.com/Yos2204/butet)" } });
-        if (!r.ok) throw new Error(url + " " + r.status);
-        const j = await r.json();
-        if (!j.elements || !j.elements.length) throw new Error(url + " returned nothing");
-        console.log(url, j.elements.length, "elements");
-        return j.elements;
-      } catch (e) { last = e; console.warn("retry:", e.message); await new Promise((s) => setTimeout(s, 20000)); }
-    }
+  for (let round = 0; round < 2; round++) for (const url of MIRRORS) {
+    const ctl = new AbortController(); const tm = setTimeout(() => ctl.abort(), 240000);
+    try {
+      const r = await fetch(url, { method: "POST", body: new URLSearchParams({ data: q }), headers: { "User-Agent": "SadaHKBPS/1.0 (github.com/Yos2204/butet)" }, signal: ctl.signal });
+      if (!r.ok) throw new Error(url + " " + r.status);
+      const j = await r.json(); if (j.remark && /timed out|runtime error/i.test(j.remark)) throw new Error(url + " " + j.remark);
+      return j.elements || [];
+    } catch (e) { last = e; console.warn("  retry:", e.message); await wait(15000); } finally { clearTimeout(tm); }
   }
   throw last;
+}
+async function overpass() {
+  const all = [];
+  for (const b of BOXES) { const els = await ask(query(b)); console.log("box", b.join(","), els.length); all.push(...els); await wait(3000); }
+  if (!all.length) throw new Error("Overpass returned nothing");
+  return all;
 }
 const km = (a, b, c, d) => { const R = 6371, x = ((c - a) * Math.PI) / 180, y = ((d - b) * Math.PI) / 180; const h = Math.sin(x / 2) ** 2 + Math.cos((a * Math.PI) / 180) * Math.cos((c * Math.PI) / 180) * Math.sin(y / 2) ** 2; return 2 * R * Math.asin(Math.sqrt(h)); };
 const clean = (s) => String(s || "").replace(/\s+/g, " ").trim();
