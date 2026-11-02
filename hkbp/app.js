@@ -3516,7 +3516,7 @@ function nbFromOsm(els) {
   return out;
 }
 async function nbOverpass(area, timeout) {
-  const q = `[out:json][timeout:${timeout}];(nwr["amenity"="place_of_worship"]["name"~"${NB_NAME}",i]${area};nwr["amenity"="place_of_worship"]["operator"~"HKBP|Huria Kristen Batak Protestan",i]${area};nwr["building"~"^(church|chapel)$"]["name"~"${NB_NAME}",i]${area};);out center tags;`;
+  const q = `[out:json][timeout:${timeout}];(nwr["amenity"="place_of_worship"]["name"~"${NB_NAME}",i]${area};nwr["amenity"="place_of_worship"]["operator"~"HKBP|Huria Kristen Batak Protestan",i]${area};nwr["building"="church"]["name"~"${NB_NAME}",i]${area};);out center tags;`;
   let last;
   for (const url of NB_MIRRORS) {
     try {
