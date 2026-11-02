@@ -7,6 +7,7 @@ const OUT = "hkbp/nearest/churches.json", EXTRA = "hkbp/nearest/extra.json";
 const MIRRORS = ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter", "https://overpass.private.coffee/api/interpreter"];
 const NAME = "HKBP|H\\\\.K\\\\.B\\\\.P|Huria Kristen Batak Protestan|Batak Christian Protestant";
 // One worldwide query is too slow for Overpass, so ask box by box: Indonesia in 10 cells, the rest of the world in 6.
+// Every line starts from an exact tag (amenity / building=church), never a regex over a whole key: that timed out.
 const BOXES = [];
 { const lons = [94, 101, 106.5, 115, 126, 141.5], lats = [-11.5, -2, 7.5];
   for (let i = 0; i < 2; i++) for (let j = 0; j < 5; j++) BOXES.push([lats[i], lons[j], lats[i + 1], lons[j + 1]]); }
@@ -17,7 +18,7 @@ const query = (b) => { const bb = `(${b.join(",")})`; return `[out:json][timeout
   nwr["amenity"="place_of_worship"]["official_name"~"${NAME}",i]${bb};
   nwr["amenity"="place_of_worship"]["operator"~"HKBP|Huria Kristen Batak Protestan",i]${bb};
   nwr["amenity"="place_of_worship"]["denomination"~"^(hkbp|batak_protestant|huria_kristen_batak_protestan)$",i]${bb};
-  nwr["building"~"^(church|chapel)$"]["name"~"${NAME}",i]${bb};
+  nwr["building"="church"]["name"~"${NAME}",i]${bb};
 );
 out center tags;`; };
 // Not a church building: schools, hospitals, offices, houses.
